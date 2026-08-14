@@ -1,0 +1,12 @@
+{
+  // renderer(浏览器上下文,含 DOM 类型;无 Node 全局)。
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": [],
+    "paths": {},
+    "outDir": "lib/types/web",
+    "tsBuildInfoFile": "lib/types/web/tsconfig.tsbuildinfo"
+  },
+  "include": ["src/renderer/**/*"]
+}

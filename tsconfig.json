@@ -1,0 +1,10 @@
+{
+  // Solution file for apps/pet: typecheck via
+  //   pnpm --filter @deepseek-ai/dsh-pet run typecheck
+  // (which passes `--composite false` so --noEmit is legal).
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.node.json" },
+    { "path": "./tsconfig.web.json" }
+  ]
+}

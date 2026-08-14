@@ -1,0 +1,14 @@
+{
+  // main 进程 + preload + electron-vite 配置。
+  // 继承仓库 base(严格模式、仓库路径映射),但清空 paths:
+  // workspace 依赖改走 node_modules 里已构建的 lib/types/*.d.ts,
+  // 让 pet 的 typecheck 快速、自包含(与 doc 03 §9 的"读 .d.ts"建议一致)。
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2024"],
+    "paths": {},
+    "outDir": "lib/types/node",
+    "tsBuildInfoFile": "lib/types/node/tsconfig.tsbuildinfo"
+  },
+  "include": ["electron.vite.config.ts", "src/main/**/*", "src/preload/**/*"]
+}

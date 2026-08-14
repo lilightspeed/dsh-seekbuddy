@@ -1,0 +1,41 @@
+{
+  "name": "@deepseek-ai/dsh-pet",
+  "description": "Desktop pet peer client for DSH: /api + WebSocket client, MCP server, desktop shell (main / preload / renderer)",
+  "version": "0.1.0-rc.5",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "apps/pet"
+  },
+  "type": "module",
+  "main": "./out/main/index.js",
+  "exports": {
+    "./out/*": "./out/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "out",
+    "assets"
+  ],
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json --composite false && tsc --noEmit -p tsconfig.web.json --composite false"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@deepseek-ai/dsh-client-connection": "workspace:^",
+    "@deepseek-ai/dsh-host-apiproxy": "workspace:^",
+    "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.0",
+    "electron": "^43.4.0",
+    "electron-vite": "^5.0.0",
+    "typescript": "^6.0.3"
+  }
+}
