@@ -37,3 +37,4 @@ NNNN-<简短英文slug>.md
 | 编号 | 主题 | 状态 |
 |---|---|---|
 | [0001-scaffold-and-network-setup.md](./0001-scaffold-and-network-setup.md) | 阶段 0:脚手架搭建 + 国内网络镜像配置 | 已验证 |
+| [0002-connectivity-poc.md](./0002-connectivity-poc.md) | 阶段 1:连通性 PoC(主进程 DSH 客户端层) | 已验证 |

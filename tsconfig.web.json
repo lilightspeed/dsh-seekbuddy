@@ -8,5 +8,5 @@
     "outDir": "lib/types/web",
     "tsBuildInfoFile": "lib/types/web/tsconfig.tsbuildinfo"
   },
-  "include": ["src/renderer/**/*"]
+  "include": ["src/renderer/**/*", "src/shared/**/*"]
 }
