@@ -22,6 +22,9 @@
       #stage {
         position: fixed;
         inset: 0;
+        /* 原生拖拽区域:系统级移动窗口(60fps,零 IPC);
+           输入条等可交互区域必须标 no-drag */
+        -webkit-app-region: drag;
       }
       #stage canvas {
         position: absolute;
@@ -61,6 +64,7 @@
         border-radius: 12px;
         padding: 6px;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        -webkit-app-region: no-drag;
       }
       #inputbar input {
         flex: 1;

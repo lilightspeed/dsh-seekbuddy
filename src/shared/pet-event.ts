@@ -27,10 +27,6 @@ export interface PetApi {
   getState(): Promise<PetConnectionState>
   /** 向 DSH 最近的会话发送一条文本消息(session.prompt)。 */
   sendMessage(text: string): Promise<PetOpResult>
-  /** 窗口拖拽(传 screen 坐标,CSS px)。 */
-  dragStart(x: number, y: number): void
-  dragMove(x: number, y: number): void
-  dragEnd(): void
 }
 
 export type PetConnectionState = {

@@ -16,7 +16,6 @@ const statusEl = document.querySelector<HTMLDivElement>('#status')
 const bubbleEl = document.querySelector<HTMLDivElement>('#bubble')
 const inputEl = document.querySelector<HTMLInputElement>('#msg-input')
 const sendBtn = document.querySelector<HTMLButtonElement>('#btn-send')
-const stageHost = document.querySelector<HTMLDivElement>('#stage')
 
 let bubbleTimer: ReturnType<typeof setTimeout> | undefined
 let connText = 'connecting'
@@ -96,21 +95,8 @@ async function boot(): Promise<void> {
     }
   })
 
-  // 拖拽:按住宠物区域拖动窗口(坐标收敛为有限数值,防 undefined/NaN 过 IPC)
-  let dragging = false
-  stageHost?.addEventListener('pointerdown', (e) => {
-    dragging = true
-    api.dragStart(Number(e.screenX) || 0, Number(e.screenY) || 0)
-  })
-  window.addEventListener('pointermove', (e) => {
-    if (dragging) api.dragMove(Number(e.screenX) || 0, Number(e.screenY) || 0)
-  })
-  window.addEventListener('pointerup', () => {
-    if (dragging) {
-      dragging = false
-      api.dragEnd()
-    }
-  })
+  // 窗口拖拽:由 #stage 的 -webkit-app-region: drag 原生处理(见 index.html),
+  // 不再走 IPC 逐帧 setPosition(曾导致卡顿 + setPosition 参数转换崩溃)。
 
   // 气泡输入 → 发消息
   const send = (): void => {
