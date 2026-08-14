@@ -39,3 +39,4 @@ NNNN-<简短英文slug>.md
 | [0001-scaffold-and-network-setup.md](./0001-scaffold-and-network-setup.md) | 阶段 0:脚手架搭建 + 国内网络镜像配置 | 已验证 |
 | [0002-connectivity-poc.md](./0002-connectivity-poc.md) | 阶段 1:连通性 PoC(主进程 DSH 客户端层) | 已验证 |
 | [0003-stage2-mvp.md](./0003-stage2-mvp.md) | 阶段 2:MVP(透明窗口 + 占位动画管线 + 状态机 + 气泡发消息) | 已验证 |
+| [0004-ipc-undefined-arg-crash.md](./0004-ipc-undefined-arg-crash.md) | 修复:IPC 参数 undefined 触发主进程崩溃 | 已验证 |

@@ -96,12 +96,12 @@ app.whenReady().then(() => {
 
   ipcMain.on('pet:drag-start', (event, x: number, y: number) => {
     const win = BrowserWindow.fromWebContents(event.sender)
-    if (!win) return
+    if (!win || !Number.isFinite(x) || !Number.isFinite(y)) return
     const [winX = 0, winY = 0] = win.getPosition()
     dragState = { startMouseX: x, startMouseY: y, startWinX: winX, startWinY: winY }
   })
   ipcMain.on('pet:drag-move', (event, x: number, y: number) => {
-    if (!dragState) return
+    if (!dragState || !Number.isFinite(x) || !Number.isFinite(y)) return
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return
     win.setPosition(
