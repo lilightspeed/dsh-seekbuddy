@@ -5,6 +5,12 @@ import type { PetConnectionState, PetEvent, PetOpResult } from '../shared/pet-ev
 import { createConnection, type ConnectionHandle } from './dsh/connection.ts'
 import { createTray } from './tray.ts'
 
+// 全局兜底:注册后 Electron 不再弹默认错误对话框,完整错误打到终端
+// (默认对话框只显示截断堆栈,无法定位是哪条 IPC 消息、哪个参数)。
+process.on('uncaughtException', (error) => {
+  console.error('[pet] uncaughtException in main:', error)
+})
+
 let connection: ConnectionHandle | undefined
 let mainWindow: BrowserWindow | undefined
 
