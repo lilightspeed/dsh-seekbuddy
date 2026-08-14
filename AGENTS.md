@@ -2,21 +2,6 @@
 
 DSH 桌面宠物 —— DeepSeek Harness 的**第二个、常驻、对等客户端**:一个独立 Electron 窗口,既能通过 DSH 的 `/api` + WebSocket 主动操作/观察 DSH,又能作为 MCP server 被 DSH Agent 反驱动(Agent → 宠物)。设计见 [doc/01-architecture.md](./doc/01-architecture.md),按 [doc/06-roadmap.md](./doc/06-roadmap.md) 分阶段推进,每步改动记录在 [doc/changes/](./doc/changes/README.md)。
 
-## 当前进度(2026-08-15,新会话从这接续)
-
-- ✅ **阶段 0~4 全部完成**:脚手架 + 连通性 PoC + MVP + 关键操作面(会话/历史/审批/通知)+ **MCP 反向链路(Agent → 宠物)**。改动档案 `doc/changes/0001~0008`。
-- ✅ **阶段 4 已实机验证**:DSH 重启加载 `cordis.patch.yml` 后,Agent 真实调用 `mcp__pet__speak` / `mcp__pet__setExpression`,宠物弹气泡、切表情(双向闭环打通)。
-- ➡️ **下一步:阶段 5 打包与常驻** —— electron-builder NSIS + portable、开机自启、单实例、图标、配置持久化(详 doc/06)。
-- **待办/已知**:
-  - 动画素材未到位(`assets/pet/sprites/<state>/` 为空),当前是 PixiJS 几何占位球宠;放置规则见 `assets/pet/README.md`。
-  - 真实发消息端到端待用户手动验证(dev 窗口输入框打字;目标会话已在阶段 3 支持切换)。
-  - React/Zustand/Tailwind 待设置面板等复杂 UI 时再引入(当前 vanilla DOM)。
-  - MCP bridge 端口固定 39761(`PET_BRIDGE_PORT` 可覆盖);宠物未运行时 mcp 工具调用返回 bridge 错误,DSH 侧 `failOnStartupError: false` 不阻塞。
-- **阶段 4 架构要点**:MCP server 是 DSH spawn 的**独立 stdio 进程**(`out/main/mcp-server.js`),与常驻 Electron 主进程经 loopback HTTP bridge(39761)通信;工具名 `mcp__pet__speak/setExpression/notify`;DSH 配置在用户 profile 的 `cordis.patch.yml`(`$DSH_HOME/profiles/web/`),改它**必须重启 DSH**(web profile HMR 已禁用)。
-- **帧风暴保护(阶段 3 已做)**:`dsh:frame` 不再逐帧推给 renderer(主进程侧仍在,可调试);renderer 只收语义事件(turn/审批/错误/pet)。
-- **区分消息来源(设计已定,未实现)**:宠物自己发的消息可用 **rpcId 关联**——`session.prompt` 响应回显 `rpcId`,且该 rpcId 会进 `user/message` 事件的 `message.source.rpcId`(官方对账机制);协议**没有客户端身份字段**,无法区分 Web GUI 与其他 loopback 客户端(`clientTimeZone` 是时区非身份)。做气泡标注时直接实现 rpcId 关联(~15 行)。
-- **换 Live2D 评估(已定)**:优先**官方 Cubism Web SDK**(角色层换独立 canvas,不依赖 Pixi);`pixi-live2d-display` 锁 Pixi v6/v7,与项目 PixiJS v8 不兼容。工作量约 1~2 天,`PetAnimator` 接口零改动(见下文动画可插拔)。
-
 ## Repository layout
 
 ```
