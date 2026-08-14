@@ -2,6 +2,18 @@
 
 DSH 桌面宠物 —— DeepSeek Harness 的**第二个、常驻、对等客户端**:一个独立 Electron 窗口,既能通过 DSH 的 `/api` + WebSocket 主动操作/观察 DSH,又能作为 MCP server 被 DSH Agent 反驱动(Agent → 宠物)。设计见 [doc/01-architecture.md](./doc/01-architecture.md),按 [doc/06-roadmap.md](./doc/06-roadmap.md) 分阶段推进,每步改动记录在 [doc/changes/](./doc/changes/README.md)。
 
+## 当前进度(2026-08-15,新会话从这接续)
+
+- ✅ **阶段 0(脚手架)+ 阶段 1(连通性 PoC)+ 阶段 2(MVP)已完成**,改动档案 `doc/changes/0001~0005`(每篇含踩坑,先读 0002/0003/0004/0005)。
+- ➡️ **下一步:阶段 3 关键操作面** —— 会话列表/切换、历史查看、审批(允许/拒绝,loopback 特权)、系统通知、开机自启/单实例(详 doc/06)。
+- **待办/已知**:
+  - 动画素材未到位(`assets/pet/sprites/<state>/` 为空),当前是 PixiJS 几何占位球宠;放置规则见 `assets/pet/README.md`。
+  - 真实发消息端到端待用户手动验证(dev 窗口输入框打字)。
+  - 帧流 IPC 风暴保护(节流/批量)待做(renderer 目前不消费 `dsh:frame`)。
+  - React/Zustand/Tailwind 待设置面板等复杂 UI 时再引入(当前 vanilla DOM)。
+- **区分消息来源(设计已定,未实现)**:宠物自己发的消息可用 **rpcId 关联**——`session.prompt` 响应回显 `rpcId`,且该 rpcId 会进 `user/message` 事件的 `message.source.rpcId`(官方对账机制);协议**没有客户端身份字段**,无法区分 Web GUI 与其他 loopback 客户端(`clientTimeZone` 是时区非身份)。做气泡标注时直接实现 rpcId 关联(~15 行)。
+- **换 Live2D 评估(已定)**:优先**官方 Cubism Web SDK**(角色层换独立 canvas,不依赖 Pixi);`pixi-live2d-display` 锁 Pixi v6/v7,与项目 PixiJS v8 不兼容。工作量约 1~2 天,`PetAnimator` 接口零改动(见下文动画可插拔)。
+
 ## Repository layout
 
 ```
