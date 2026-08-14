@@ -46,6 +46,12 @@ export type PetEvent =
     }
   /** host 级 agent 失败(无 turn 位置的错误)。 */
   | { type: 'agent:error'; sessionId: string; message: string }
+  /** 阶段 4 反向链路:MCP 工具驱动宠物开口。 */
+  | { type: 'pet:speak'; text: string }
+  /** 阶段 4 反向链路:MCP 工具切换表情状态。 */
+  | { type: 'pet:expression'; state: 'idle' | 'thinking' | 'happy' | 'sad' | 'talking' }
+  /** 阶段 4 反向链路:MCP 工具触发系统通知。 */
+  | { type: 'pet:notify'; title: string; body: string }
   | { type: 'op:result'; label: string; ok: boolean; summary: string }
 
 /** 会话列表里的一行(renderer 只消费扁平字段)。 */

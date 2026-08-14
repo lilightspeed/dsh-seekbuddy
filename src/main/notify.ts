@@ -22,13 +22,16 @@ export function createNotifier(options: {
     }
   }
 
-  function onEvent(event: { type: string; sessionId?: string | null; message?: string; toolName?: string; reason?: string }): void {
+  function onEvent(event: { type: string; sessionId?: string | null; message?: string; toolName?: string; reason?: string; title?: string; body?: string }): void {
     switch (event.type) {
       case 'approval:pending':
         notify('🔐 DSH 需要审批', `${event.toolName ?? '工具'}${event.reason ? ` — ${event.reason}` : ''}`)
         break
       case 'agent:error':
         notify('⚠ DSH 报错', event.message ?? 'agent 执行失败')
+        break
+      case 'pet:notify':
+        notify(event.title ?? '🔔 DSH Pet', event.body ?? '')
         break
       case 'dsh:turn-end': {
         const bad = event.reason === 'error' || event.reason === 'max-tokens' || event.reason === 'blocked'

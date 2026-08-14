@@ -4,6 +4,7 @@ import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
 import type { PetConnectionState, PetEvent, PetOpResult, PetApprovalRequest } from '../shared/pet-event.ts'
 import { createConnection, type ConnectionHandle } from './dsh/connection.ts'
 import { createPetOps, type PetOps } from './dsh/ops.ts'
+import { createBridge, bridgeActionToEvent, type BridgeHandle } from './mcp/bridge.ts'
 import { createNotifier } from './notify.ts'
 import { createTray } from './tray.ts'
 
@@ -15,6 +16,7 @@ process.on('uncaughtException', (error) => {
 
 let connection: ConnectionHandle | undefined
 let mainWindow: BrowserWindow | undefined
+let bridge: BridgeHandle | undefined
 
 /** 目标会话:用户显式选择的会话(发消息的落点);null = 回退最近会话。 */
 let targetSessionId: string | null = null
@@ -65,7 +67,7 @@ function sendPetEvent(event: PetEvent): void {
   }
 }
 
-/** 统一事件出口:通知 + 转发 renderer。 */
+/** 统一事件出口:通知 + 转发 renderer。pet:* 是 MCP 反向动作,同样推给 renderer。 */
 function onPetEvent(event: PetEvent): void {
   notifier?.onEvent(event)
   sendPetEvent(event)
@@ -151,6 +153,20 @@ app.whenReady().then(() => {
   connection = createConnection(onPetEvent)
   connection.start()
 
+  // 阶段 4 反向链路:loopback bridge,MCP server(被 DSH spawn)经它驱动宠物。
+  // 端口约定固定值(环境变量 PET_BRIDGE_PORT 可覆盖),见 mcp/bridge.ts。
+  createBridge((action) => {
+    console.error(`[pet] bridge action: ${action.kind}`)
+    onPetEvent(bridgeActionToEvent(action))
+  })
+    .then((handle) => {
+      bridge = handle
+      console.error(`[pet] mcp bridge listening on 127.0.0.1:${handle.port}`)
+    })
+    .catch((error) => {
+      console.error('[pet] mcp bridge failed to start:', error)
+    })
+
   const tray = createTray(() => {
     if (!mainWindow || mainWindow.isDestroyed()) return
     if (mainWindow.isVisible()) {
@@ -174,4 +190,5 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   connection?.stop()
+  bridge?.close()
 })

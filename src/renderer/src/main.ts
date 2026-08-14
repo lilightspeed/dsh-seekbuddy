@@ -166,6 +166,25 @@ async function boot(): Promise<void> {
         actor.send({ type: 'DSH_ERROR' })
         showBubble(`✗ DSH 报错:${event.message}`, 4000)
         break
+      case 'pet:speak':
+        actor.send({ type: 'TALK' })
+        showBubble(event.text, 4000)
+        break
+      case 'pet:expression': {
+        const state = event.state
+        if (state === 'happy' || state === 'sad' || state === 'talking') {
+          actor.send({ type: state === 'happy' ? 'DSH_DONE' : state === 'sad' ? 'DSH_ERROR' : 'TALK' })
+        } else if (state === 'thinking') {
+          actor.send({ type: 'DSH_WORKING' })
+        } else {
+          // idle:直接切到 idle(状态机无直接入口,用 happy 的超时回落近似)
+          actor.send({ type: 'DSH_DONE' })
+        }
+        break
+      }
+      case 'pet:notify':
+        showBubble(`🔔 ${event.title}:${event.body}`, 4000)
+        break
       case 'op:result':
         if (event.ok) {
           actor.send({ type: 'TALK' })
