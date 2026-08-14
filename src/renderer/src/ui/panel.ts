@@ -43,6 +43,7 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
   let targetSessionId: string | null = null
   /** 历史查看的会话 + 已加载锚点。 */
   let historySessionId: string | null = null
+  let historySessionTitle: string | null = null
   let historyBeforeSeq: number | null = null
   let historyHasMore = false
   let historyLoading = false
@@ -54,7 +55,20 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     sessionsEl?.classList.toggle('active', name === 'sessions')
     historyEl?.classList.toggle('active', name === 'history')
     approvalsEl?.classList.toggle('active', name === 'approvals')
-    if (name === 'history') void refreshHistory()
+    if (name === 'history') {
+      if (!historySessionId) {
+        // 尚未选择会话:提示去会话页选一个
+        if (historyEl) {
+          historyEl.textContent = ''
+          const hint = document.createElement('div')
+          hint.className = 'history-row meta'
+          hint.textContent = '← 请先在「会话」页选择一个会话查看历史'
+          historyEl.appendChild(hint)
+        }
+      } else {
+        void refreshHistory()
+      }
+    }
     if (name === 'approvals') renderApprovals()
   }
 
@@ -68,30 +82,82 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     }
   }
 
-  async function refreshSessions(): Promise<void> {
+  async function refreshSessions(): Promise<PetSessionSummary[] | null> {
     const result = await api.listSessions()
     if (!result.ok) {
       hooks.onFlash(`✗ 会话列表:${result.summary}`, false)
-      return
+      return null
     }
     targetSessionId = result.targetSessionId
     renderSessions(result.items)
     // 会话列表刷新后,历史锚点失效,重置为尾部
     historySessionId = null
     historyBeforeSeq = null
-    if (!historyEl?.classList.contains('active')) return
+    if (!historyEl?.classList.contains('active')) return result.items
     const current = result.items.find((item) => item.sessionId === targetSessionId)
-    if (current) historySessionId = current.sessionId
+    if (current) {
+      historySessionId = current.sessionId
+      historySessionTitle = current.title
+    }
     void refreshHistory()
+    return result.items
   }
 
+  /**
+   * 目标会话解析:显式目标优先;未选时回退"最近更新的非空会话"(与主进程
+   * ensureTargetSession 一致)。返回 { id, title, isExplicit }。
+   */
+  function resolveTarget(items: PetSessionSummary[]): { id: string; title: string; isExplicit: boolean } | null {
+    const explicit = targetSessionId ? items.find((item) => item.sessionId === targetSessionId) : undefined
+    if (explicit) return { id: explicit.sessionId, title: shortTitle(explicit), isExplicit: true }
+    const fallback = items.find((item) => !item.blank)
+    if (fallback) return { id: fallback.sessionId, title: shortTitle(fallback), isExplicit: false }
+    return null
+  }
+
+  /** 清除显式目标 → 回退自动(最近会话),并刷新列表/横幅。 */
+  async function clearTarget(): Promise<void> {
+    const result = await api.selectSession(null)
+    if (!result.ok) {
+      hooks.onFlash(`✗ 清除目标:${result.summary}`, false)
+      return
+    }
+    targetSessionId = null
+    hooks.onFlash('📤 已回退自动发送目标', true)
+    await refreshSessions()
+  }
+
+  /** 会话页:顶部"发送目标"横幅(明确指出发消息落点)+ 会话列表。 */
   function renderSessions(items: PetSessionSummary[]): void {
     if (!sessionsEl) return
     sessionsEl.textContent = ''
+    const target = resolveTarget(items)
+
+    // 顶部横幅:说明当前发消息会到哪个会话
+    const banner = document.createElement('div')
+    banner.className = 'target-banner'
+    const label = document.createElement('span')
+    label.className = 'target-label'
+    label.textContent = target ? (target.isExplicit ? '📤 发送到' : '📤 自动发送到') : '📤 发送目标'
+    const name = document.createElement('span')
+    name.className = 'target-name'
+    name.textContent = target ? target.title : '（无可用会话，发送时将新建）'
+    name.title = target?.id ?? ''
+    banner.append(label, name)
+    if (target && target.isExplicit) {
+      const clearBtn = document.createElement('button')
+      clearBtn.className = 'target-clear'
+      clearBtn.textContent = '取消选择'
+      clearBtn.title = '回退为自动选择最近会话'
+      clearBtn.addEventListener('click', () => void clearTarget())
+      banner.appendChild(clearBtn)
+    }
+    sessionsEl.appendChild(banner)
+
     for (const item of items) {
       const row = document.createElement('div')
       row.className = 'session-row'
-      if (item.sessionId === targetSessionId) row.classList.add('selected')
+      if (item.sessionId === target?.id) row.classList.add('selected')
       const dot = document.createElement('span')
       dot.className = `dot${item.running ? ' running' : ''}`
       const title = document.createElement('span')
@@ -102,6 +168,12 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
       time.className = 'time'
       time.textContent = relativeTime(item.updatedAt)
       row.append(dot, title, time)
+      if (item.sessionId === target?.id) {
+        const tag = document.createElement('span')
+        tag.className = 'target-tag'
+        tag.textContent = '目标'
+        row.appendChild(tag)
+      }
       row.addEventListener('click', () => void selectSession(item.sessionId))
       sessionsEl.appendChild(row)
     }
@@ -119,13 +191,12 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
       return
     }
     targetSessionId = sessionId
+    // 只把该会话设为目标,停留在会话页(横幅/徽标由 refreshSessions 同步更新);
+    // 历史锚点也预置,之后用户主动切到"历史"tab 时直接看该会话。
+    const items = await refreshSessions()
     historySessionId = sessionId
     historyBeforeSeq = null
-    // 高亮当前选择
-    sessionsEl?.querySelectorAll('.session-row').forEach((row) => {
-      row.classList.toggle('selected', row.querySelector('.title')?.getAttribute('title') === sessionId)
-    })
-    switchTab('history')
+    historySessionTitle = items?.find((item) => item.sessionId === sessionId)?.title ?? null
   }
 
   async function createSession(): Promise<void> {
@@ -183,7 +254,19 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
       }
     } else {
       historyEl.textContent = ''
-      if (historyHasMore) {
+      // 标题:当前查看的会话
+      if (historySessionTitle) {
+        const title = document.createElement('div')
+        title.className = 'history-title'
+        title.textContent = `💬 ${historySessionTitle}`
+        historyEl.appendChild(title)
+      }
+      if (entries.length === 0) {
+        const empty = document.createElement('div')
+        empty.className = 'history-row meta'
+        empty.textContent = '（无历史消息）'
+        historyEl.appendChild(empty)
+      } else if (historyHasMore) {
         const olderBtn = document.createElement('button')
         olderBtn.className = 'panel-btn'
         olderBtn.textContent = '↑ 加载更早'

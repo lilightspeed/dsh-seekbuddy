@@ -42,3 +42,4 @@ NNNN-<简短英文slug>.md
 | [0004-ipc-undefined-arg-crash.md](./0004-ipc-undefined-arg-crash.md) | 修复:IPC 参数 undefined 触发主进程崩溃 | 已验证 |
 | [0005-native-drag-region.md](./0005-native-drag-region.md) | 修复:拖拽改用原生 app-region(消除卡顿与 setPosition 崩溃) | 已验证 |
 | [0006-stage3-operations.md](./0006-stage3-operations.md) | 阶段 3:会话列表/切换 + 历史查看 + 审批 + 系统通知 | 已验证 |
+| [0007-session-panel-ux.md](./0007-session-panel-ux.md) | 修复:会话面板 UX —— 发送目标横幅 + 点击只设目标不跳转 | 已验证 |
