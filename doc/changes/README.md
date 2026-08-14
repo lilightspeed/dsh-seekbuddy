@@ -41,3 +41,4 @@ NNNN-<简短英文slug>.md
 | [0003-stage2-mvp.md](./0003-stage2-mvp.md) | 阶段 2:MVP(透明窗口 + 占位动画管线 + 状态机 + 气泡发消息) | 已验证 |
 | [0004-ipc-undefined-arg-crash.md](./0004-ipc-undefined-arg-crash.md) | 修复:IPC 参数 undefined 触发主进程崩溃 | 已验证 |
 | [0005-native-drag-region.md](./0005-native-drag-region.md) | 修复:拖拽改用原生 app-region(消除卡顿与 setPosition 崩溃) | 已验证 |
+| [0006-stage3-operations.md](./0006-stage3-operations.md) | 阶段 3:会话列表/切换 + 历史查看 + 审批 + 系统通知 | 已验证 |

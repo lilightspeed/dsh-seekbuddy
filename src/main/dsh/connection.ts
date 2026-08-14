@@ -33,11 +33,59 @@ export function createConnection(onEvent: (event: PetEvent) => void): Connection
 
   async function pump(stream: AsyncIterable<RpcRequest<MuxFrame | HostFrame>>, kind: 'mux' | 'host'): Promise<void> {
     for await (const envelope of stream) {
-      const { frameType, eventType } = describeFrame(envelope)
+      const frame = envelope.payload
+      const { frameType, eventType } = describeFrame(frame)
       onEvent({ type: 'dsh:frame', stream: kind, frameType, eventType })
-      // 语义事件:turn 生命周期 → 状态机驱动(阶段 2)
-      if (eventType === 'turn/start') onEvent({ type: 'dsh:turn-start' })
-      if (eventType === 'turn/end') onEvent({ type: 'dsh:turn-end' })
+      if (kind === 'mux') pumpMuxFrame(frame as MuxFrame, envelope.rpcId)
+      else pumpHostFrame(frame as HostFrame)
+    }
+  }
+
+  /** mux 帧 → 语义事件(阶段 2:turn 生命周期;阶段 3:审批)。 */
+  function pumpMuxFrame(frame: MuxFrame, rpcId: string): void {
+    switch (frame.type) {
+      case 'session/event': {
+        const event = frame.event
+        if (event.type === 'turn/start') onEvent({ type: 'dsh:turn-start', sessionId: String(frame.sessionId) })
+        if (event.type === 'turn/end') {
+          const reason = event.data.reason.kind
+          onEvent({ type: 'dsh:turn-end', reason, sessionId: String(frame.sessionId) })
+        }
+        break
+      }
+      case 'approval/requested': {
+        // approval/requested 是 answerable server-request:rpcId 是稳定的对账键,
+        // 回包(approval:allowed-once/rejected)必须 echo 它。
+        const ev: PetEvent = {
+          type: 'approval:pending',
+          rpcId: String(rpcId),
+          sessionId: String(frame.sessionId),
+          approvalId: String(frame.approvalId),
+          toolName: frame.toolName,
+        }
+        if (frame.callId !== undefined) ev.callId = String(frame.callId)
+        if (frame.reason !== undefined) ev.reason = frame.reason
+        onEvent(ev)
+        break
+      }
+      case 'approval/resolved': {
+        onEvent({
+          type: 'approval:resolved',
+          sessionId: String(frame.sessionId),
+          approvalId: String(frame.approvalId),
+          outcome: frame.outcome,
+        })
+        break
+      }
+      default:
+        break
+    }
+  }
+
+  /** host 帧 → 语义事件(阶段 3:agent 错误)。 */
+  function pumpHostFrame(frame: HostFrame): void {
+    if (frame.type === 'host/agent-error') {
+      onEvent({ type: 'agent:error', sessionId: String(frame.sessionId), message: frame.message })
     }
   }
 
@@ -91,12 +139,11 @@ export function createConnection(onEvent: (event: PetEvent) => void): Connection
 }
 
 function describeFrame(
-  envelope: RpcRequest<MuxFrame | HostFrame>,
+  frame: MuxFrame | HostFrame,
 ): { frameType: string; eventType: string | null } {
-  const payload = envelope.payload
-  const frameType = (payload as { type?: string }).type ?? 'unknown'
+  const frameType = (frame as { type?: string }).type ?? 'unknown'
   if (frameType === 'session/event') {
-    return { frameType, eventType: (payload as { event?: { type?: string } }).event?.type ?? null }
+    return { frameType, eventType: (frame as { event?: { type?: string } }).event?.type ?? null }
   }
   return { frameType, eventType: null }
 }

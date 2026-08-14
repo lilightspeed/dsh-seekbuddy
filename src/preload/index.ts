@@ -1,5 +1,24 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import type { PetApi, PetEvent } from '../shared/pet-event.ts'
+import type { PetApi, PetApprovalRequest, PetEvent } from '../shared/pet-event.ts'
+
+/**
+ * IPC 参数收敛(0004 纪律):undefined/NaN 过 IPC 会触发主进程
+ * "Error processing argument at index N, conversion failure" 崩溃。
+ * 所有参数在 preload 边界统一 String/toFinite,null 保留为 null。
+ */
+function toFinite(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) ? n : 0
+}
+
+function sanitizeApproval(request: PetApprovalRequest | undefined): PetApprovalRequest {
+  return {
+    rpcId: String(request?.rpcId ?? ''),
+    sessionId: String(request?.sessionId ?? ''),
+    approvalId: String(request?.approvalId ?? ''),
+    outcome: request?.outcome === 'rejected' ? 'rejected' : 'allowed-once',
+  }
+}
 
 // contextBridge 白名单:renderer 只能看到这里暴露的最小能力,
 // 永远不把 ipcRenderer 或完整连接对象直接暴露出去。
@@ -15,6 +34,17 @@ const petApi: PetApi = {
   },
   getState: () => ipcRenderer.invoke('pet:get-state'),
   sendMessage: (text) => ipcRenderer.invoke('pet:send-message', String(text ?? '')),
+  listSessions: () => ipcRenderer.invoke('pet:list-sessions'),
+  getHistory: (sessionId, beforeSeq, maxMessages) =>
+    ipcRenderer.invoke(
+      'pet:get-history',
+      String(sessionId ?? ''),
+      beforeSeq == null ? null : toFinite(beforeSeq),
+      maxMessages == null ? null : toFinite(maxMessages),
+    ),
+  selectSession: (sessionId) => ipcRenderer.invoke('pet:select-session', sessionId == null ? null : String(sessionId)),
+  createSession: () => ipcRenderer.invoke('pet:create-session'),
+  respondApproval: (request) => ipcRenderer.invoke('pet:respond-approval', sanitizeApproval(request)),
 }
 
 contextBridge.exposeInMainWorld('petApi', petApi)

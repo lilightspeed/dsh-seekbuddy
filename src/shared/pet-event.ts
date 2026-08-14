@@ -6,7 +6,10 @@ export type HostDescription = ResponseValue<'host.describe'>
 /** 宠物侧粗粒度连接状态(与主进程连接循环对应)。 */
 export type ConnectionState = 'connected' | 'reconnecting'
 
-/** 主进程 → renderer 的归一化宠物事件。 */
+/**
+ * 主进程 → renderer 的归一化宠物事件。
+ * 阶段 3 新增:turn-end 带 reason、审批(approval:pending/resolved)、agent-error。
+ */
 export type PetEvent =
   | { type: 'dsh:connected'; description: HostDescription }
   | { type: 'dsh:state'; state: ConnectionState }
@@ -17,21 +20,103 @@ export type PetEvent =
       /** session/event 帧的 SessionEvent.type(其余帧为 null)。 */
       eventType: string | null
     }
-  | { type: 'dsh:turn-start' }
-  | { type: 'dsh:turn-end' }
+  | { type: 'dsh:turn-start'; sessionId: string }
+  | {
+      type: 'dsh:turn-end'
+      /** TurnEndReason.kind:completed / error / aborted / max-tokens / … */
+      reason: string
+      sessionId: string
+    }
+  /** DSH 请求审批(服务端 answerable server-request;rpcId 用于回包)。 */
+  | {
+      type: 'approval:pending'
+      rpcId: string
+      sessionId: string
+      approvalId: string
+      toolName: string
+      callId?: string
+      reason?: string
+    }
+  /** 审批已结算(允许/拒绝/取消/不可达)。 */
+  | {
+      type: 'approval:resolved'
+      sessionId: string
+      approvalId: string
+      outcome: string
+    }
+  /** host 级 agent 失败(无 turn 位置的错误)。 */
+  | { type: 'agent:error'; sessionId: string; message: string }
   | { type: 'op:result'; label: string; ok: boolean; summary: string }
 
-/** preload 暴露给 renderer 的 window.petApi 白名单(阶段 2)。 */
+/** 会话列表里的一行(renderer 只消费扁平字段)。 */
+export interface PetSessionSummary {
+  sessionId: string
+  /** 会话标题(projections.values.title;无则 null)。 */
+  title: string | null
+  updatedAt: number
+  running: boolean
+  blank: boolean
+}
+
+export interface PetSessionListResult {
+  ok: boolean
+  summary: string
+  /** 当前目标会话(主进程持有)。 */
+  targetSessionId: string | null
+  items: PetSessionSummary[]
+}
+
+/** 历史里的一行:主进程已把 SessionEvent 摊平成展示文本。 */
+export interface PetHistoryEntry {
+  seq: number
+  time: number
+  kind: 'user' | 'assistant' | 'tool' | 'meta'
+  text: string
+}
+
+export interface PetHistoryResult {
+  ok: boolean
+  summary: string
+  sessionId: string | null
+  hasMore: boolean
+  entries: PetHistoryEntry[]
+}
+
+export interface PetCreateResult {
+  ok: boolean
+  summary: string
+  sessionId?: string
+}
+
+/** renderer → 主进程的审批回包请求(echo 服务端 rpcId)。 */
+export interface PetApprovalRequest {
+  rpcId: string
+  sessionId: string
+  approvalId: string
+  outcome: 'allowed-once' | 'rejected'
+}
+
+/** preload 暴露给 renderer 的 window.petApi 白名单(阶段 3)。 */
 export interface PetApi {
   onPetEvent(handler: (event: PetEvent) => void): () => void
   getState(): Promise<PetConnectionState>
-  /** 向 DSH 最近的会话发送一条文本消息(session.prompt)。 */
+  /** 向当前目标会话发送一条文本消息(session.prompt)。 */
   sendMessage(text: string): Promise<PetOpResult>
+  listSessions(): Promise<PetSessionListResult>
+  /** 读会话历史;beforeSeq 为向上翻页锚点(省略 = 尾部页)。 */
+  getHistory(sessionId: string, beforeSeq?: number, maxMessages?: number): Promise<PetHistoryResult>
+  /** 设置目标会话(发消息的落点);null = 回退到最近会话。 */
+  selectSession(sessionId: string | null): Promise<PetOpResult>
+  /** 新建会话并选为目标。 */
+  createSession(): Promise<PetCreateResult>
+  /** 回包审批(echo rpcId,允许/拒绝)。 */
+  respondApproval(request: PetApprovalRequest): Promise<PetOpResult>
 }
 
 export type PetConnectionState = {
   connection: ConnectionState | null
   description: HostDescription | null
+  targetSessionId: string | null
 }
 
 export type PetOpResult = {
