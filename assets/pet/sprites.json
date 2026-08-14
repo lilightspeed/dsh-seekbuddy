@@ -1,0 +1,10 @@
+{
+  "defaultFps": 12,
+  "states": {
+    "idle": { "fps": 12 },
+    "thinking": { "fps": 10 },
+    "happy": { "fps": 12 },
+    "sad": { "fps": 10 },
+    "talking": { "fps": 12 }
+  }
+}
