@@ -15,10 +15,8 @@ const BACKOFF_MAX_MS = 30_000
 
 /**
  * 宠物自己的连接循环(生命周期胶水,协议仍由 AbstractApiClient 承担):
- * 每代 = host.describe 握手 → 起 mux/host 两条 SSE 流 → 泵帧到 onEvent;
+ * 每代 = host.describe 握手 → 起 mux/host 两条 WS 流 → 泵帧到 onEvent;
  * 任一流结束/出错 → reconnecting → 指数退避(带抖动)重试。
- * 说明:包的 ConnectionController 是包内私有(经 cordis 插件消费),主进程没有
- * cordis 运行时,这里按 doc 03 §8 的"AbstractApiClient 为基类实现 Node 载体"落地。
  */
 export function createConnection(onEvent: (event: PetEvent) => void): ConnectionHandle {
   const api = new DshApiClient()
@@ -35,7 +33,11 @@ export function createConnection(onEvent: (event: PetEvent) => void): Connection
 
   async function pump(stream: AsyncIterable<RpcRequest<MuxFrame | HostFrame>>, kind: 'mux' | 'host'): Promise<void> {
     for await (const envelope of stream) {
-      onEvent({ type: 'dsh:frame', stream: kind, frameType: frameTypeOf(envelope) })
+      const { frameType, eventType } = describeFrame(envelope)
+      onEvent({ type: 'dsh:frame', stream: kind, frameType, eventType })
+      // 语义事件:turn 生命周期 → 状态机驱动(阶段 2)
+      if (eventType === 'turn/start') onEvent({ type: 'dsh:turn-start' })
+      if (eventType === 'turn/end') onEvent({ type: 'dsh:turn-end' })
     }
   }
 
@@ -51,7 +53,7 @@ export function createConnection(onEvent: (event: PetEvent) => void): Connection
         if (!describe.ok) {
           throw new Error(`host.describe failed: ${JSON.stringify(describe.error)}`)
         }
-        // 下行:两条 SSE 流(全部会话聚合 mux + 全局 host)
+        // 下行:两条 WS 流(全部会话聚合 mux + 全局 host)
         const mux = api.events.mux({}, generation.signal)
         const host = api.events.host({}, generation.signal)
         description = describe.value
@@ -88,8 +90,15 @@ export function createConnection(onEvent: (event: PetEvent) => void): Connection
   }
 }
 
-function frameTypeOf(envelope: RpcRequest<MuxFrame | HostFrame>): string {
-  return (envelope.payload as { type?: string }).type ?? 'unknown'
+function describeFrame(
+  envelope: RpcRequest<MuxFrame | HostFrame>,
+): { frameType: string; eventType: string | null } {
+  const payload = envelope.payload
+  const frameType = (payload as { type?: string }).type ?? 'unknown'
+  if (frameType === 'session/event') {
+    return { frameType, eventType: (payload as { event?: { type?: string } }).event?.type ?? null }
+  }
+  return { frameType, eventType: null }
 }
 
 function sleep(ms: number): Promise<void> {

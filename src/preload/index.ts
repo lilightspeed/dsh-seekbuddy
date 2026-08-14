@@ -14,8 +14,10 @@ const petApi: PetApi = {
     }
   },
   getState: () => ipcRenderer.invoke('pet:get-state'),
-  listSessions: () => ipcRenderer.invoke('pet:list-sessions'),
-  debugReconnect: () => ipcRenderer.invoke('pet:debug-reconnect'),
+  sendMessage: (text) => ipcRenderer.invoke('pet:send-message', text),
+  dragStart: (x, y) => ipcRenderer.send('pet:drag-start', x, y),
+  dragMove: (x, y) => ipcRenderer.send('pet:drag-move', x, y),
+  dragEnd: () => ipcRenderer.send('pet:drag-end'),
 }
 
 contextBridge.exposeInMainWorld('petApi', petApi)

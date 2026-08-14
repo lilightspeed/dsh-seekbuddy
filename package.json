@@ -30,7 +30,9 @@
   "dependencies": {
     "@deepseek-ai/dsh-client-connection": "workspace:^",
     "@deepseek-ai/dsh-host-apiproxy": "workspace:^",
-    "ws": "^8.21.0"
+    "pixi.js": "^8.19.0",
+    "ws": "^8.21.0",
+    "xstate": "^5.32.5"
   },
   "devDependencies": {
     "@types/node": "^22.20.0",

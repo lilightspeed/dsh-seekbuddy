@@ -1,5 +1,9 @@
-import type { HostDescription } from '@deepseek-ai/dsh-client-connection/client'
-import type { PetApi, PetEvent, PetOpResult } from '../../shared/pet-event.ts'
+import { createActor } from 'xstate'
+import type { PetApi, PetEvent } from '../../shared/pet-event.ts'
+import { petMachine, type PetState } from './fsm/pet-machine.ts'
+import type { PetAnimator } from './pet/animator.ts'
+import { createSpriteAnimator } from './pet/sprite-animator.ts'
+import { createStage } from './pet/stage.ts'
 
 declare global {
   interface Window {
@@ -8,80 +12,123 @@ declare global {
 }
 
 const api = window.petApi
-const connEl = document.querySelector<HTMLDivElement>('#conn')
-const describeEl = document.querySelector<HTMLPreElement>('#describe')
-const opsEl = document.querySelector<HTMLDivElement>('#ops')
-const framesEl = document.querySelector<HTMLUListElement>('#frames')
+const statusEl = document.querySelector<HTMLDivElement>('#status')
+const bubbleEl = document.querySelector<HTMLDivElement>('#bubble')
+const inputEl = document.querySelector<HTMLInputElement>('#msg-input')
+const sendBtn = document.querySelector<HTMLButtonElement>('#btn-send')
+const stageHost = document.querySelector<HTMLDivElement>('#stage')
 
-const FRAME_LIMIT = 12
+let bubbleTimer: ReturnType<typeof setTimeout> | undefined
+let connText = 'connecting'
+let petText = ''
 
-function setConn(text: string): void {
-  console.log('[pet] state:', text)
-  if (connEl) connEl.textContent = text
+function renderStatus(): void {
+  if (statusEl) statusEl.textContent = `${connText}${petText ? ` · pet: ${petText}` : ''}`
 }
 
-function showDescribe(description: HostDescription): void {
-  console.log('[pet] describe:', description)
-  if (describeEl) describeEl.textContent = JSON.stringify(description, null, 2)
+/** 气泡:显示 text,visibleMs 后自动隐藏。 */
+function showBubble(text: string, visibleMs = 3000): void {
+  if (!bubbleEl) return
+  bubbleEl.textContent = text
+  bubbleEl.classList.add('visible')
+  if (bubbleTimer) clearTimeout(bubbleTimer)
+  bubbleTimer = setTimeout(() => bubbleEl?.classList.remove('visible'), visibleMs)
 }
 
-function showOp(result: PetOpResult): void {
-  console.log(`[pet] op ${result.ok ? 'ok' : 'fail'}:`, result.summary)
-  if (!opsEl) return
-  const line = document.createElement('div')
-  line.textContent = `${result.ok ? '✓' : '✗'} ${result.label}: ${result.summary}`
-  opsEl.prepend(line)
-}
-
-function logFrame(frameType: string, stream: 'mux' | 'host'): void {
-  if (!framesEl) return
-  const li = document.createElement('li')
-  li.textContent = `[${stream}] ${frameType}`
-  framesEl.prepend(li)
-  while (framesEl.children.length > FRAME_LIMIT) {
-    framesEl.lastChild?.remove()
+async function boot(): Promise<void> {
+  if (!api) {
+    connText = 'preload 未注入 window.petApi'
+    renderStatus()
+    return
   }
-}
 
-if (!api) {
-  setConn('preload 未注入 window.petApi(检查 preload 路径)')
-} else {
-  let listedOnce = false
+  // 舞台 + 动画后端(占位球宠) + 状态机
+  const stage = await createStage()
+  const animator: PetAnimator = createSpriteAnimator(stage)
+  const actor = createActor(petMachine)
+  actor.subscribe((snapshot) => {
+    petText = snapshot.value as PetState
+    renderStatus()
+    animator.play(snapshot.value as PetState)
+  })
+  actor.start()
 
+  // 每帧驱动动画
+  stage.app.ticker.add(() => animator.tick(stage.app.ticker.deltaMS / 1000))
+
+  // DSH 事件 → 状态机事件 + 气泡
   api.onPetEvent((event: PetEvent) => {
     switch (event.type) {
       case 'dsh:connected':
-        setConn('connected')
-        showDescribe(event.description)
-        // 连接就绪后自动跑一次真实操作,证明上行可用(阶段 1 验收项)
-        if (!listedOnce) {
-          listedOnce = true
-          void api.listSessions().then(showOp)
-        }
+        connText = 'connected'
+        renderStatus()
         break
       case 'dsh:state':
-        setConn(event.state)
+        connText = event.state
+        renderStatus()
         break
-      case 'dsh:frame':
-        logFrame(event.frameType, event.stream)
+      case 'dsh:turn-start':
+        actor.send({ type: 'DSH_WORKING' })
+        break
+      case 'dsh:turn-end':
+        actor.send({ type: 'DSH_DONE' })
+        showBubble('✓ 完成', 2500)
         break
       case 'op:result':
-        showOp(event)
+        if (event.ok) {
+          actor.send({ type: 'TALK' })
+          showBubble(`发送:${event.summary}`, 2200)
+        } else {
+          actor.send({ type: 'DSH_ERROR' })
+          showBubble(`✗ ${event.summary}`, 3500)
+        }
+        break
+      default:
         break
     }
   })
 
-  // 若连接在订阅前已完成,补读当前状态(首次 connected 存在竞态,以 getState 兜底)
+  // 若连接在订阅前已完成,补读当前状态
   void api.getState().then((state) => {
-    if (state.connection) setConn(state.connection)
-    if (state.description) showDescribe(state.description)
+    if (state.connection) {
+      connText = state.connection
+      renderStatus()
+    }
   })
 
-  document.querySelector<HTMLButtonElement>('#btn-list')?.addEventListener('click', () => {
-    void api.listSessions().then(showOp)
+  // 拖拽:按住宠物区域拖动窗口
+  let dragging = false
+  stageHost?.addEventListener('pointerdown', (e) => {
+    dragging = true
+    api.dragStart(e.screenX, e.screenY)
   })
-  document.querySelector<HTMLButtonElement>('#btn-reconnect')?.addEventListener('click', () => {
-    setConn('reconnecting(手动触发)…')
-    void api.debugReconnect()
+  window.addEventListener('pointermove', (e) => {
+    if (dragging) api.dragMove(e.screenX, e.screenY)
+  })
+  window.addEventListener('pointerup', () => {
+    if (dragging) {
+      dragging = false
+      api.dragEnd()
+    }
+  })
+
+  // 气泡输入 → 发消息
+  const send = (): void => {
+    const text = inputEl?.value.trim()
+    if (!text) return
+    if (inputEl) inputEl.value = ''
+    void api.sendMessage(text).then((result) => {
+      if (!result.ok) {
+        actor.send({ type: 'DSH_ERROR' })
+        showBubble(`✗ ${result.summary}`, 3500)
+      }
+      // ok 时等待 turn-end 事件提示完成;op:result 事件本身不再重复弹
+    })
+  }
+  sendBtn?.addEventListener('click', send)
+  inputEl?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') send()
   })
 }
+
+void boot()

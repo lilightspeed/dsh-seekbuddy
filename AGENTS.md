@@ -5,9 +5,9 @@ DSH 桌面宠物 —— DeepSeek Harness 的**第二个、常驻、对等客户�
 ## Repository layout
 
 ```
-src/main/       主进程:窗口、托盘(阶段2+)、DSH 连接、PetEvent 总线、MCP server(阶段4)
+src/main/       主进程:窗口、托盘、DSH 连接、PetEvent 总线、MCP server(阶段4)
 src/preload/    contextBridge 白名单(renderer 与主进程的唯一通道)
-src/renderer/   表现层:React/Zustand/XState/PixiJS(阶段2+)
+src/renderer/   表现层:PixiJS 角色 + XState 状态机 + vanilla DOM 气泡/输入(React/Zustand/Tailwind 待复杂 UI 再引入)
 doc/            技术指导文档(01 架构 … 07 TS 学习路线)+ changes/ 改动档案
 ```
 
@@ -49,3 +49,5 @@ DSH 运行实例默认在 `http://127.0.0.1:3080`(loopback 受信,宠物权限�
 - `@deepseek-ai/dsh-client-connection/client` 是**纯浏览器包**(引用 `window`,Node 加载即崩);主进程载体用 `@deepseek-ai/dsh-host-apiproxy/client` 的 `AbstractApiClient`(Node-safe)。
 - `"type": "module"` 下 electron-vite 把 preload 输出为 `out/preload/index.mjs`,主进程引用它且 `webPreferences.sandbox: false`。
 - `apps/pet` 的 tsconfig 继承仓库 base 但**清空 `paths`**:workspace 依赖走 `node_modules` 里已构建的 `lib/types/*.d.ts`;若类型报"找不到模块",先确认对应包构建产物存在(根仓库 `pnpm run build:lib`)。
+- **动画可插拔**:状态机只输出语义状态(`idle/thinking/happy/sad/talking`),`PetAnimator` 接口(`src/renderer/src/pet/animator.ts`)是唯一懂动画后端的层——换 Lottie/Live2D 只加实现类,状态机/事件/UI 零改动。占位实现是 PixiJS 几何"球宠";素材规则见 `assets/pet/README.md`。
+- **PixiJS v8 要求 CSP 允许 `unsafe-eval`**(WebGL 着色器生成),renderer 的 CSP 已为此放开;代价是 Electron dev 期的安全警告(打包后消失)。
