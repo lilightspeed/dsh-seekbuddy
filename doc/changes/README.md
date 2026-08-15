@@ -46,3 +46,4 @@ NNNN-<简短英文slug>.md
 | [0008-mcp-reverse-link.md](./0008-mcp-reverse-link.md) | 阶段 4:MCP 反向链路(Agent → 宠物 speak/setExpression/notify) | 已验证 |
 | [0009-stage5-packaging-persistence.md](./0009-stage5-packaging-persistence.md) | 阶段 5:NSIS/portable 打包 + 单实例 + 开机自启 + 配置持久化 | 已验证 |
 | [0010-scale-slider-oscillation.md](./0010-scale-slider-oscillation.md) | 修复:缩放滑块拖拽反馈回路(来回跳 10% / 窗口不断缩放)→ 松手应用 | 已验证 |
+| [0011-packaged-mcp-verify.md](./0011-packaged-mcp-verify.md) | A1 收尾:打包版 MCP 反向链路实机验证(DSH → 打包 mcp-server → 宠物) | 已验证 |
