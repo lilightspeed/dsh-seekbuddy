@@ -45,3 +45,4 @@ NNNN-<简短英文slug>.md
 | [0007-session-panel-ux.md](./0007-session-panel-ux.md) | 修复:会话面板 UX —— 发送目标横幅 + 点击只设目标不跳转 | 已验证 |
 | [0008-mcp-reverse-link.md](./0008-mcp-reverse-link.md) | 阶段 4:MCP 反向链路(Agent → 宠物 speak/setExpression/notify) | 已验证 |
 | [0009-stage5-packaging-persistence.md](./0009-stage5-packaging-persistence.md) | 阶段 5:NSIS/portable 打包 + 单实例 + 开机自启 + 配置持久化 | 已验证 |
+| [0010-scale-slider-oscillation.md](./0010-scale-slider-oscillation.md) | 修复:缩放滑块拖拽反馈回路(来回跳 10% / 窗口不断缩放)→ 松手应用 | 已验证 |

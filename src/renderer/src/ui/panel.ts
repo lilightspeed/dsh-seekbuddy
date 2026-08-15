@@ -1,5 +1,4 @@
 import type { PetApi, PetHistoryEntry, PetSessionSummary } from '../../../shared/pet-event.ts'
-import type { PetConfigUpdate } from '../../../shared/pet-config.ts'
 import type { PendingApproval } from './approvals.ts'
 
 export interface PanelHooks {
@@ -332,23 +331,23 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     } catch {
       return
     }
+    // 输入框/滑块正在交互时不回填,避免打断用户输入
     if (urlInput && document.activeElement !== urlInput) urlInput.value = cfg.dsh.baseUrl
-    if (opacitySlider) opacitySlider.value = String(Math.round(cfg.appearance.opacity * 100))
+    if (opacitySlider && document.activeElement !== opacitySlider) opacitySlider.value = String(Math.round(cfg.appearance.opacity * 100))
     if (opacityVal) opacityVal.textContent = `${Math.round(cfg.appearance.opacity * 100)}%`
-    if (scaleSlider) scaleSlider.value = String(Math.round(cfg.appearance.scale * 100))
+    if (scaleSlider && document.activeElement !== scaleSlider) scaleSlider.value = String(Math.round(cfg.appearance.scale * 100))
     if (scaleVal) scaleVal.textContent = `${Math.round(cfg.appearance.scale * 100)}%`
     if (autostartCheck) autostartCheck.checked = cfg.launchAtLogin
     if (voiceCheck) voiceCheck.checked = cfg.voice.enabled
   }
 
-  // 滑块防抖:拖动停顿 120ms 才落盘一次,避免频繁 IPC + 磁盘写
-  let sliderTimer: ReturnType<typeof setTimeout> | undefined
-  function debounceSetConfig(patch: PetConfigUpdate): void {
-    if (sliderTimer) clearTimeout(sliderTimer)
-    sliderTimer = setTimeout(() => {
-      void api.setConfig(patch).then((cfg) => {
+  // opacity 滑块:实时预览,拖动停顿 120ms 才落盘一次(透明度不改窗口尺寸,无反馈回路)
+  let opacityTimer: ReturnType<typeof setTimeout> | undefined
+  function debounceOpacity(value: number): void {
+    if (opacityTimer) clearTimeout(opacityTimer)
+    opacityTimer = setTimeout(() => {
+      void api.setConfig({ opacity: value }).then((cfg) => {
         if (opacityVal) opacityVal.textContent = `${Math.round(cfg.appearance.opacity * 100)}%`
-        if (scaleVal) scaleVal.textContent = `${Math.round(cfg.appearance.scale * 100)}%`
       })
     }, 120)
   }
@@ -364,12 +363,24 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
   opacitySlider?.addEventListener('input', () => {
     if (!opacitySlider) return
     if (opacityVal) opacityVal.textContent = `${opacitySlider.value}%`
-    debounceSetConfig({ opacity: Number(opacitySlider.value) / 100 })
+    debounceOpacity(Number(opacitySlider.value) / 100)
   })
+  // 缩放滑块:拖拽中**只更新数值标签**,松手(change)才应用。
+  // 若拖拽中实时 setBounds,滑块元素宽度随窗口变化,Chromium 会把静止的指针
+  // 位置按新宽度重算 value → 又触发 setConfig → 窗口再缩放 —— 来回跳 10% 的
+  // 反馈回路(0010 修复)。松手应用后窗口尺寸不再在拖拽期间变化,回路被切断。
   scaleSlider?.addEventListener('input', () => {
     if (!scaleSlider) return
     if (scaleVal) scaleVal.textContent = `${scaleSlider.value}%`
-    debounceSetConfig({ scale: Number(scaleSlider.value) / 100 })
+  })
+  scaleSlider?.addEventListener('change', () => {
+    if (!scaleSlider) return
+    void api.setConfig({ scale: Number(scaleSlider.value) / 100 }).then((cfg) => {
+      const applied = Math.round(cfg.appearance.scale * 100)
+      if (scaleVal) scaleVal.textContent = `${applied}%`
+      // 回填实际生效值(与配置一致;理论上滑块范围 60–150 已含 clamp)
+      if (scaleSlider) scaleSlider.value = String(applied)
+    })
   })
   autostartCheck?.addEventListener('change', () => {
     if (!autostartCheck) return
