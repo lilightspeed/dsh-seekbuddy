@@ -19,6 +19,10 @@ export async function createStage(): Promise<PetStage> {
 
   const layer = new Container()
   layer.position.set(window.innerWidth / 2, window.innerHeight * 0.44)
+  // 阶段 5 窗口缩放:resizeTo 只缩放渲染器,角色层锚点需手动跟随窗口尺寸
+  window.addEventListener('resize', () => {
+    layer.position.set(window.innerWidth / 2, window.innerHeight * 0.44)
+  })
   app.stage.addChild(layer)
   return { app, layer }
 }

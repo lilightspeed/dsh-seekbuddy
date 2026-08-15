@@ -4,8 +4,6 @@ import { serverRequestSchema } from '@deepseek-ai/dsh-host-apiproxy/api/rpc.sche
 import type { HostFrame, MuxFrame, RpcRequest } from '@deepseek-ai/dsh-host-apiproxy/api'
 import WebSocket from 'ws'
 
-/** DSH 运行实例基址(loopback 受信,权限与 Web GUI 同级;不要改到非 loopback)。 */
-export const DSH_BASE_URL = 'http://127.0.0.1:3080'
 /** 下行事件流路径(与 packages/client/connection/src/api-path.ts 一致)。 */
 export const MUX_EVENTS_PATH = '/api/events.mux'
 export const HOST_EVENTS_PATH = '/api/events.host'
@@ -19,15 +17,19 @@ type Parser<F> = { parse(value: unknown): F }
  * - 上行:doFetch → 全局 fetch,POST /api/<method>(Node 侧无 CORS)。
  * - 下行:服务端事件流只接受 WebSocket(SSE GET 返回 426 Upgrade Required),
  *   这里用 ws 包实现 WS 读取,帧解析与浏览器 WebApiClient 同一套 schema。
- * - 基址默认取浏览器同源(无 location 时是占位 internal),必须覆写指向运行中的 DSH。
+ * - 基址:阶段 5 起由调用方注入 getter(读持久化配置),支持运行时改 DSH 地址。
  */
 export class DshApiClient extends AbstractApiClient {
+  constructor(private readonly getBaseUrl: () => string) {
+    super()
+  }
+
   protected override doFetch(input: URL, init?: RequestInit): Promise<Response> {
     return globalThis.fetch(input, init)
   }
 
   protected override resolveBase(): string {
-    return DSH_BASE_URL
+    return this.getBaseUrl()
   }
 
   protected override openMux(

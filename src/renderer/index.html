@@ -279,6 +279,74 @@
         border-color: #ffaa55;
         color: #ff9933;
       }
+      /* 设置 tab(阶段 5) */
+      .setting-group {
+        padding: 8px 10px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+      }
+      .setting-label {
+        font-size: 12px;
+        color: #666;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      .setting-val {
+        color: #ff9933;
+        font-weight: 600;
+      }
+      .setting-row {
+        display: flex;
+        gap: 6px;
+      }
+      .setting-row input[type='text'] {
+        flex: 1;
+        min-width: 0;
+        border: 1px solid rgba(0, 0, 0, 0.15);
+        border-radius: 8px;
+        padding: 6px 8px;
+        font-size: 12px;
+        outline: none;
+        background: #fff;
+        color: #333;
+      }
+      .setting-row input[type='text']:focus {
+        border-color: #ffaa55;
+      }
+      .setting-apply {
+        border: none;
+        border-radius: 8px;
+        background: #ffaa55;
+        color: #fff;
+        font-size: 12px;
+        padding: 6px 12px;
+        cursor: pointer;
+        flex: none;
+      }
+      .setting-apply:hover {
+        background: #ff9933;
+      }
+      .setting-group input[type='range'] {
+        width: 100%;
+        accent-color: #ffaa55;
+      }
+      .setting-check {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: #555;
+        padding: 4px 0;
+        cursor: pointer;
+      }
+      .setting-check input {
+        accent-color: #ffaa55;
+      }
+      .setting-hint {
+        font-size: 10px;
+        color: #999;
+        padding: 6px 10px 10px;
+        line-height: 1.5;
+      }
       /* 历史行 */
       .history-title {
         padding: 6px 8px;
@@ -400,11 +468,35 @@
         <button data-tab="sessions" class="active">会话</button>
         <button data-tab="history">历史</button>
         <button data-tab="approvals">审批<span id="approval-badge" class="badge hidden">0</span></button>
+        <button data-tab="settings">设置</button>
       </div>
       <div class="panel-body">
         <div id="tab-sessions" class="tab active"></div>
         <div id="tab-history" class="tab"></div>
         <div id="tab-approvals" class="tab"></div>
+        <div id="tab-settings" class="tab">
+          <div class="setting-group">
+            <div class="setting-label">DSH 地址</div>
+            <div class="setting-row">
+              <input id="set-dsh-url" type="text" placeholder="http://127.0.0.1:3080" spellcheck="false" />
+              <button id="set-dsh-apply" class="setting-apply">应用</button>
+            </div>
+            <div class="setting-hint">改地址会立即重连 DSH;仅支持本机 loopback 地址。</div>
+          </div>
+          <div class="setting-group">
+            <div class="setting-label">窗口透明度 <span id="set-opacity-val" class="setting-val">100%</span></div>
+            <input id="set-opacity" type="range" min="40" max="100" step="5" />
+          </div>
+          <div class="setting-group">
+            <div class="setting-label">窗口缩放 <span id="set-scale-val" class="setting-val">100%</span></div>
+            <input id="set-scale" type="range" min="60" max="150" step="10" />
+          </div>
+          <div class="setting-group">
+            <label class="setting-check"><input id="set-autostart" type="checkbox" /> 开机自启</label>
+            <label class="setting-check"><input id="set-voice" type="checkbox" /> 语音提示(TTS,阶段 6 生效)</label>
+          </div>
+          <div class="setting-hint">配置保存在用户数据目录 config.json(DSH 宠物)。</div>
+        </div>
       </div>
     </div>
     <div id="approval-card" class="hidden">

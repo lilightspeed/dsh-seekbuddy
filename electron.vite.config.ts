@@ -4,13 +4,13 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
     build: {
-      // 多入口:默认主进程 index + 阶段 4 的独立 MCP stdio server(被 DSH spawn)
+      // 多入口:默认主进程 index + 阶段 4 的独立 MCP stdio server(被 DSH spawn)。
+      // 阶段 5:不再 externalize 依赖(@deepseek-ai/dsh-host-apiproxy 的 workspace 闭包
+      // 有 30+ 包,打包时拖 node_modules 既脆弱又臃肿)—— 改为全量打包成自包含
+      // bundle(只 external electron 与 node 内置模块),打包产物零 node_modules 依赖,
+      // mcp-server.js 也因此能被 DSH 用裸 node 直接 spawn(配合 asarUnpack)。
       rollupOptions: {
-        // 显式 external electron 与 node 内置模块:多入口配置下不能依赖
-        // electron-vite preset 的默认 external 被合并覆盖(否则 electron 包
-        // 会被内联,其 getElectronPath 会在 out/main 下找 dist 而失败)。
         external: ['electron', /^electron\/.+/, ...builtinModules.flatMap((m) => [m, `node:${m}`])],
         input: {
           index: resolve(import.meta.dirname, 'src/main/index.ts'),

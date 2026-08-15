@@ -2,11 +2,16 @@ import { join } from 'node:path'
 import { app, BrowserWindow, ipcMain } from 'electron'
 import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
 import type { PetConnectionState, PetEvent, PetOpResult, PetApprovalRequest } from '../shared/pet-event.ts'
+import type { PetConfig, PetConfigUpdate } from '../shared/pet-config.ts'
+import { PetConfigStore, type PetConfigPatch } from './config.ts'
 import { createConnection, type ConnectionHandle } from './dsh/connection.ts'
 import { createPetOps, type PetOps } from './dsh/ops.ts'
 import { createBridge, bridgeActionToEvent, type BridgeHandle } from './mcp/bridge.ts'
 import { createNotifier } from './notify.ts'
 import { createTray } from './tray.ts'
+
+/** 窗口基准尺寸(外观缩放以此为 1.0)。 */
+const WINDOW_SIZE = { width: 420, height: 560 }
 
 // 全局兜底:注册后 Electron 不再弹默认错误对话框,完整错误打到终端
 // (默认对话框只显示截断堆栈,无法定位是哪条 IPC 消息、哪个参数)。
@@ -14,181 +19,268 @@ process.on('uncaughtException', (error) => {
   console.error('[pet] uncaughtException in main:', error)
 })
 
-let connection: ConnectionHandle | undefined
-let mainWindow: BrowserWindow | undefined
-let bridge: BridgeHandle | undefined
-
-/** 目标会话:用户显式选择的会话(发消息的落点);null = 回退最近会话。 */
-let targetSessionId: string | null = null
-let petOps: PetOps | undefined
-let notifier: ReturnType<typeof createNotifier> | undefined
-
-function createWindow(): BrowserWindow {
-  const win = new BrowserWindow({
-    width: 420,
-    height: 560,
-    title: 'DSH Pet',
-    // 桌面宠物壳:无边框 + 透明 + 置顶 + 不入任务栏(靠托盘管理)
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    resizable: false,
-    skipTaskbar: true,
-    hasShadow: false,
-    backgroundColor: '#00000000',
-    webPreferences: {
-      // type:module 下 electron-vite 把 preload 输出为 .mjs,sandbox 必须关闭
-      preload: join(import.meta.dirname, '../preload/index.mjs'),
-      sandbox: false,
-    },
-  })
-
-  win.on('ready-to-show', () => win.show())
-
-  // 开发:加载 electron-vite 的开发服务器;生产:加载 out/renderer/index.html
-  const devUrl = process.env['ELECTRON_RENDERER_URL']
-  if (devUrl) {
-    void win.loadURL(devUrl)
-  } else {
-    void win.loadFile(join(import.meta.dirname, '../renderer/index.html'))
-  }
-  return win
+// 阶段 5 单实例锁:第二个实例直接退出,已运行实例经 second-instance 唤起。
+// 必须在 whenReady 之前请求(Windows 命名互斥量);没拿到锁的实例什么都不做。
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  void bootstrap()
 }
 
-/**
- * 把所有 PetEvent 转发给当前主窗口的 renderer(经 preload 白名单)。
- * 阶段 3:帧风暴保护 —— dsh:frame 不再逐帧推给 renderer(renderer 不消费),
- * 只推语义事件(状态/turn/审批/错误);主进程侧仍可经 dsh:frame 调试。
- */
-function sendPetEvent(event: PetEvent): void {
-  if (event.type === 'dsh:frame') return
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('pet:event', event)
-  }
-}
+async function bootstrap(): Promise<void> {
+  // 统一应用名:dev(electron-vite)与打包版(Nsis productName)的 userData
+  // 都落在 %APPDATA%/DSH Pet,配置文件天然共用一份。
+  app.setName('DSH Pet')
 
-/** 统一事件出口:通知 + 转发 renderer。pet:* 是 MCP 反向动作,同样推给 renderer。 */
-function onPetEvent(event: PetEvent): void {
-  notifier?.onEvent(event)
-  sendPetEvent(event)
-}
+  let connection: ConnectionHandle | undefined
+  let mainWindow: BrowserWindow | undefined
+  let bridge: BridgeHandle | undefined
+  let petOps: PetOps | undefined
+  let notifier: ReturnType<typeof createNotifier> | undefined
+  let config: PetConfigStore | undefined
 
-function handleGetState(): PetConnectionState {
-  return { ...(connection?.state() ?? { connection: null, description: null }), targetSessionId }
-}
+  /** 目标会话:用户显式选择的会话(发消息的落点);null = 回退最近会话。 */
+  let targetSessionId: string | null = null
 
-/** 目标会话:显式选择优先;否则最近更新的非空会话;没有则新建。 */
-async function ensureTargetSession(): Promise<SessionId | null> {
-  if (!connection) return null
-  const listResponse = await connection.api.sessions.list({})
-  const list = listResponse.result
-  if (!list.ok) return null
-  const items = list.value.items
-  if (targetSessionId) {
-    const chosen = items.find((item) => String(item.sessionId) === targetSessionId)
-    if (chosen) return chosen.sessionId
-  }
-  const first = items.find((item) => !item.blank) ?? items[0]
-  if (first) return first.sessionId
-  const createResponse = await connection.api.sessions.create({})
-  const created = createResponse.result
-  return created.ok ? created.value.sessionId : null
-}
-
-async function handleSendMessage(text: string): Promise<PetOpResult> {
-  if (!connection) return { label: 'session.prompt', ok: false, summary: 'connection not ready' }
-  if (typeof text !== 'string' || text.trim() === '') {
-    return { label: 'session.prompt', ok: false, summary: 'empty message' }
-  }
-  try {
-    const sessionId = await ensureTargetSession()
-    if (!sessionId) return { label: 'session.prompt', ok: false, summary: 'no target session' }
-    const response = await connection.api.sessions.prompt({
-      sessionId,
-      mode: 'queue',
-      content: [{ type: 'text', text: text.trim() }],
-    })
-    const result = response.result
-    if (!result.ok) {
-      return { label: 'session.prompt', ok: false, summary: `rpc error: ${JSON.stringify(result.error)}` }
-    }
-    return { label: 'session.prompt', ok: true, summary: `accepted → session ${sessionId}` }
-  } catch (error) {
-    return { label: 'session.prompt', ok: false, summary: String(error) }
-  }
-}
-
-/** 窗口拖拽:由 renderer 的 -webkit-app-region: drag 原生处理,无 IPC。 */
-
-app.whenReady().then(() => {
-  // Windows 通知需要 appUserModelId(否则部分系统不显示)。
-  if (process.platform === 'win32') app.setAppUserModelId('com.deepseek-ai.dsh-pet')
-
-  petOps = createPetOps(
-    () => connection,
-    () => targetSessionId,
-    (id) => {
-      targetSessionId = id
-    },
-  )
-
-  notifier = createNotifier({
-    isWindowVisible: () => Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()),
-    isTargetSession: (sessionId) => sessionId !== null && sessionId === targetSessionId,
-  })
-
-  ipcMain.handle('pet:get-state', () => handleGetState())
-  ipcMain.handle('pet:send-message', (_event, text: string) => handleSendMessage(text))
-  ipcMain.handle('pet:list-sessions', () => petOps?.listSessions() ?? { ok: false, summary: 'ops not ready', targetSessionId: null, items: [] })
-  ipcMain.handle('pet:get-history', (_event, sessionId: string, beforeSeq: number | null, maxMessages: number | null) =>
-    petOps?.getHistory(sessionId, beforeSeq, maxMessages) ?? { ok: false, summary: 'ops not ready', sessionId, hasMore: false, entries: [] },
-  )
-  ipcMain.handle('pet:select-session', (_event, sessionId: string | null) => petOps?.selectSession(sessionId) ?? { label: 'session.select', ok: false, summary: 'ops not ready' })
-  ipcMain.handle('pet:create-session', () => petOps?.createSession() ?? { ok: false, summary: 'ops not ready' })
-  ipcMain.handle('pet:respond-approval', (_event, request: PetApprovalRequest) =>
-    petOps?.respondApproval(request) ?? { label: 'approval.respond', ok: false, summary: 'ops not ready' },
-  )
-
-  mainWindow = createWindow()
-  connection = createConnection(onPetEvent)
-  connection.start()
-
-  // 阶段 4 反向链路:loopback bridge,MCP server(被 DSH spawn)经它驱动宠物。
-  // 端口约定固定值(环境变量 PET_BRIDGE_PORT 可覆盖),见 mcp/bridge.ts。
-  createBridge((action) => {
-    console.error(`[pet] bridge action: ${action.kind}`)
-    onPetEvent(bridgeActionToEvent(action))
-  })
-    .then((handle) => {
-      bridge = handle
-      console.error(`[pet] mcp bridge listening on 127.0.0.1:${handle.port}`)
-    })
-    .catch((error) => {
-      console.error('[pet] mcp bridge failed to start:', error)
+  function createWindow(): BrowserWindow {
+    const cfg = config?.get()
+    const scale = cfg?.appearance.scale ?? 1
+    const win = new BrowserWindow({
+      width: Math.round(WINDOW_SIZE.width * scale),
+      height: Math.round(WINDOW_SIZE.height * scale),
+      title: 'DSH Pet',
+      // 桌面宠物壳:无边框 + 透明 + 置顶 + 不入任务栏(靠托盘管理)
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      resizable: false,
+      skipTaskbar: true,
+      hasShadow: false,
+      backgroundColor: '#00000000',
+      webPreferences: {
+        // type:module 下 electron-vite 把 preload 输出为 .mjs,sandbox 必须关闭
+        preload: join(import.meta.dirname, '../preload/index.mjs'),
+        sandbox: false,
+      },
     })
 
-  const tray = createTray(() => {
-    if (!mainWindow || mainWindow.isDestroyed()) return
-    if (mainWindow.isVisible()) {
-      mainWindow.hide()
+    if (cfg) win.setOpacity(cfg.appearance.opacity)
+    win.on('ready-to-show', () => win.show())
+
+    // 开发:加载 electron-vite 的开发服务器;生产:加载 out/renderer/index.html
+    const devUrl = process.env['ELECTRON_RENDERER_URL']
+    if (devUrl) {
+      void win.loadURL(devUrl)
     } else {
+      void win.loadFile(join(import.meta.dirname, '../renderer/index.html'))
+    }
+    return win
+  }
+
+  /**
+   * 把所有 PetEvent 转发给当前主窗口的 renderer(经 preload 白名单)。
+   * 阶段 3:帧风暴保护 —— dsh:frame 不再逐帧推给 renderer(renderer 不消费),
+   * 只推语义事件(状态/turn/审批/错误);主进程侧仍可经 dsh:frame 调试。
+   */
+  function sendPetEvent(event: PetEvent): void {
+    if (event.type === 'dsh:frame') return
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('pet:event', event)
+    }
+  }
+
+  /** 统一事件出口:通知 + 转发 renderer。pet:* 是 MCP 反向动作,同样推给 renderer。 */
+  function onPetEvent(event: PetEvent): void {
+    notifier?.onEvent(event)
+    sendPetEvent(event)
+  }
+
+  function handleGetState(): PetConnectionState {
+    return { ...(connection?.state() ?? { connection: null, description: null }), targetSessionId }
+  }
+
+  /** 目标会话:显式选择优先;否则最近更新的非空会话;没有则新建。 */
+  async function ensureTargetSession(): Promise<SessionId | null> {
+    if (!connection) return null
+    const listResponse = await connection.api.sessions.list({})
+    const list = listResponse.result
+    if (!list.ok) return null
+    const items = list.value.items
+    if (targetSessionId) {
+      const chosen = items.find((item) => String(item.sessionId) === targetSessionId)
+      if (chosen) return chosen.sessionId
+    }
+    const first = items.find((item) => !item.blank) ?? items[0]
+    if (first) return first.sessionId
+    const createResponse = await connection.api.sessions.create({})
+    const created = createResponse.result
+    return created.ok ? created.value.sessionId : null
+  }
+
+  async function handleSendMessage(text: string): Promise<PetOpResult> {
+    if (!connection) return { label: 'session.prompt', ok: false, summary: 'connection not ready' }
+    if (typeof text !== 'string' || text.trim() === '') {
+      return { label: 'session.prompt', ok: false, summary: 'empty message' }
+    }
+    try {
+      const sessionId = await ensureTargetSession()
+      if (!sessionId) return { label: 'session.prompt', ok: false, summary: 'no target session' }
+      const response = await connection.api.sessions.prompt({
+        sessionId,
+        mode: 'queue',
+        content: [{ type: 'text', text: text.trim() }],
+      })
+      const result = response.result
+      if (!result.ok) {
+        return { label: 'session.prompt', ok: false, summary: `rpc error: ${JSON.stringify(result.error)}` }
+      }
+      return { label: 'session.prompt', ok: true, summary: `accepted → session ${sessionId}` }
+    } catch (error) {
+      return { label: 'session.prompt', ok: false, summary: String(error) }
+    }
+  }
+
+  /** 重建 DSH 连接(改基址后调用;旧连接 stop,新连接立即起)。 */
+  function restartConnection(): void {
+    if (!config) return
+    connection?.stop()
+    connection = createConnection(onPetEvent, () => config!.get().dsh.baseUrl)
+    connection.start()
+  }
+
+  /** 应用外观(透明度/缩放)到当前窗口。 */
+  function applyAppearance(cfg: PetConfig): void {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    mainWindow.setOpacity(cfg.appearance.opacity)
+    const width = Math.round(WINDOW_SIZE.width * cfg.appearance.scale)
+    const height = Math.round(WINDOW_SIZE.height * cfg.appearance.scale)
+    const [x, y] = mainWindow.getPosition()
+    mainWindow.setBounds({ x: x ?? 0, y: y ?? 0, width, height })
+  }
+
+  /** 开机自启(Windows LoginItem);非 Windows 平台静默忽略。 */
+  function applyLaunchAtLogin(enabled: boolean): void {
+    if (process.platform !== 'win32') return
+    try {
+      app.setLoginItemSettings({ openAtLogin: enabled })
+    } catch (error) {
+      console.error('[pet] setLoginItemSettings failed:', error)
+    }
+  }
+
+  /** IPC 侧配置补丁:只放行白名单字段(renderer 改不了 targetSessionId)。 */
+  function sanitizeConfigUpdate(patch: PetConfigUpdate | undefined): PetConfigPatch {
+    const out: PetConfigPatch = {}
+    if (patch?.dshBaseUrl !== undefined) out.dshBaseUrl = String(patch.dshBaseUrl ?? '')
+    if (typeof patch?.opacity === 'number' && Number.isFinite(patch.opacity)) out.opacity = patch.opacity
+    if (typeof patch?.scale === 'number' && Number.isFinite(patch.scale)) out.scale = patch.scale
+    if (typeof patch?.voiceEnabled === 'boolean') out.voiceEnabled = patch.voiceEnabled
+    if (typeof patch?.launchAtLogin === 'boolean') out.launchAtLogin = patch.launchAtLogin
+    return out
+  }
+
+  app.whenReady().then(() => {
+    // Windows 通知需要 appUserModelId(否则部分系统不显示)。
+    if (process.platform === 'win32') app.setAppUserModelId('com.deepseek-ai.dsh-pet')
+
+    config = new PetConfigStore()
+    // 启动即应用持久化配置:目标会话记忆、外观、开机自启
+    targetSessionId = config.get().targetSessionId
+    applyLaunchAtLogin(config.get().launchAtLogin)
+
+    petOps = createPetOps(
+      () => connection,
+      () => targetSessionId,
+      (id) => {
+        targetSessionId = id
+        // 阶段 5:目标会话记忆 —— 每次切换/清除都落盘,重启后恢复
+        if (config && config.get().targetSessionId !== id) {
+          void config.update({ targetSessionId: id })
+        }
+      },
+    )
+
+    notifier = createNotifier({
+      isWindowVisible: () => Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()),
+      isTargetSession: (sessionId) => sessionId !== null && sessionId === targetSessionId,
+    })
+
+    ipcMain.handle('pet:get-state', () => handleGetState())
+    ipcMain.handle('pet:send-message', (_event, text: string) => handleSendMessage(text))
+    ipcMain.handle('pet:list-sessions', () => petOps?.listSessions() ?? { ok: false, summary: 'ops not ready', targetSessionId: null, items: [] })
+    ipcMain.handle('pet:get-history', (_event, sessionId: string, beforeSeq: number | null, maxMessages: number | null) =>
+      petOps?.getHistory(sessionId, beforeSeq, maxMessages) ?? { ok: false, summary: 'ops not ready', sessionId, hasMore: false, entries: [] },
+    )
+    ipcMain.handle('pet:select-session', (_event, sessionId: string | null) => petOps?.selectSession(sessionId) ?? { label: 'session.select', ok: false, summary: 'ops not ready' })
+    ipcMain.handle('pet:create-session', () => petOps?.createSession() ?? { ok: false, summary: 'ops not ready' })
+    ipcMain.handle('pet:respond-approval', (_event, request: PetApprovalRequest) =>
+      petOps?.respondApproval(request) ?? { label: 'approval.respond', ok: false, summary: 'ops not ready' },
+    )
+
+    // 阶段 5 配置读写:get 返回完整配置;set 应用扁平补丁并按变更执行副作用
+    // (DSH 地址变更 → 重建连接;外观 → 窗口;自启 → LoginItem)。
+    ipcMain.handle('pet:get-config', () => config?.get() ?? null)
+    ipcMain.handle('pet:set-config', (_event, patch: PetConfigUpdate | undefined) => {
+      if (!config) return null
+      const prev = config.get()
+      const next = config.update(sanitizeConfigUpdate(patch))
+      if (next.dsh.baseUrl !== prev.dsh.baseUrl) restartConnection()
+      if (next.appearance.opacity !== prev.appearance.opacity || next.appearance.scale !== prev.appearance.scale) {
+        applyAppearance(next)
+      }
+      if (next.launchAtLogin !== prev.launchAtLogin) applyLaunchAtLogin(next.launchAtLogin)
+      return next
+    })
+
+    mainWindow = createWindow()
+    restartConnection()
+
+    // 阶段 4 反向链路:loopback bridge,MCP server(被 DSH spawn)经它驱动宠物。
+    // 端口约定固定值(环境变量 PET_BRIDGE_PORT 可覆盖),见 mcp/bridge.ts。
+    createBridge((action) => {
+      console.error(`[pet] bridge action: ${action.kind}`)
+      onPetEvent(bridgeActionToEvent(action))
+    })
+      .then((handle) => {
+        bridge = handle
+        console.error(`[pet] mcp bridge listening on 127.0.0.1:${handle.port}`)
+      })
+      .catch((error) => {
+        console.error('[pet] mcp bridge failed to start:', error)
+      })
+
+    const tray = createTray(() => {
+      if (!mainWindow || mainWindow.isDestroyed()) return
+      if (mainWindow.isVisible()) {
+        mainWindow.hide()
+      } else {
+        mainWindow.show()
+      }
+    })
+    void tray
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        mainWindow = createWindow()
+      }
+    })
+  })
+
+  // 阶段 5:第二个实例(或再次启动 exe)→ 唤起已运行实例的窗口。
+  app.on('second-instance', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.show()
+      mainWindow.focus()
     }
   })
-  void tray
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      mainWindow = createWindow()
-    }
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit()
   })
-})
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
-})
-
-app.on('will-quit', () => {
-  connection?.stop()
-  bridge?.close()
-})
+  app.on('will-quit', () => {
+    connection?.stop()
+    bridge?.close()
+  })
+}

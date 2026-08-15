@@ -24,7 +24,13 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview",
+    "dist": "electron-vite build && node scripts/package.mjs",
+    "dist:dir": "electron-vite build && node scripts/package.mjs --dir",
     "typecheck": "tsc --noEmit -p tsconfig.node.json --composite false && tsc --noEmit -p tsconfig.web.json --composite false"
+  },
+  "author": {
+    "name": "DeepSeek AI",
+    "email": "dev@deepseek.com"
   },
   "license": "MIT",
   "dependencies": {
@@ -40,6 +46,7 @@
     "@types/node": "^22.20.0",
     "@types/ws": "^8.18.1",
     "electron": "^43.4.0",
+    "electron-builder": "^26.0.0",
     "electron-vite": "^5.0.0",
     "typescript": "^6.0.3"
   }

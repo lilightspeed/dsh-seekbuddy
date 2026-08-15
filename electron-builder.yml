@@ -1,0 +1,44 @@
+# 阶段 5:electron-builder 打包配置(NSIS 安装包 + portable 免安装版)。
+# 国内镜像:electron 二进制与 builder 工具链走根 .npmrc(electron_mirror /
+# electron_builder_binaries_mirror),electronDownload.mirror 兜底显式声明。
+appId: com.deepseek-ai.dsh-pet
+productName: DSH Pet
+# 与 devDependencies 的 electron 版本保持一致;精确版本(打包要下载对应二进制)。
+electronVersion: 43.4.0
+directories:
+  output: dist
+  buildResources: build
+# main/preload/renderer 已由 electron-vite 全量打包进 out/;assets 供托盘图标。
+# node_modules 的 production deps 会自动并入(冗余但无害 —— 主进程 bundle 自包含)。
+files:
+  - out/**
+  - assets/**
+# MCP server 必须解出 asar:DSH 用裸 node spawn 它(node 读不了 asar 内文件)。
+# 解包后真实路径:<install>/resources/app.asar.unpacked/out/main/mcp-server.js
+# (该文件已自包含打包,spawn 时无需 node_modules)。
+# 注意:index 与 mcp-server 共享的 chunk(out/main/chunks/*)也要一起解出,
+# 否则 node 解析不到 mcp-server.js 的相对 import。
+asarUnpack:
+  - out/main/mcp-server.js
+  - out/main/chunks/*
+win:
+  executableName: dsh-pet
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: DSH Pet
+  artifactName: ${productName}-Setup-${version}.${ext}
+portable:
+  artifactName: ${productName}-Portable-${version}.${ext}
+electronDownload:
+  mirror: https://npmmirror.com/mirrors/electron/
+# 无原生模块(ws 纯 JS),跳过 rebuild,避免引入编译工具链
+npmRebuild: false

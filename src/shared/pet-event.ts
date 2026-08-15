@@ -1,4 +1,5 @@
 import type { ResponseValue } from '@deepseek-ai/dsh-host-apiproxy/api'
+import type { PetConfig, PetConfigUpdate } from './pet-config.ts'
 
 /** host.describe 的成功值(握手后拿到的主机描述)。 */
 export type HostDescription = ResponseValue<'host.describe'>
@@ -117,6 +118,10 @@ export interface PetApi {
   createSession(): Promise<PetCreateResult>
   /** 回包审批(echo rpcId,允许/拒绝)。 */
   respondApproval(request: PetApprovalRequest): Promise<PetOpResult>
+  /** 阶段 5:读完整配置(DSH 地址/外观/语音/自启/目标会话)。 */
+  getConfig(): Promise<PetConfig>
+  /** 阶段 5:应用扁平配置补丁;主进程执行副作用(重连/窗口/自启)后返回新配置。 */
+  setConfig(patch: PetConfigUpdate): Promise<PetConfig>
 }
 
 export type PetConnectionState = {

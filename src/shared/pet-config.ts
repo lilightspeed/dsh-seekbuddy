@@ -1,0 +1,47 @@
+/**
+ * 阶段 5:宠物配置 —— 纯类型 + 默认值(持久化于主进程 userData/config.json)。
+ *
+ * 本文件同时被 node tsconfig(main/preload)与 web tsconfig(renderer)编译,
+ * 只能写纯 JS/TS,不许引用 Node 或 DOM 类型。读写逻辑在主进程 config.ts,
+ * renderer 经 preload 白名单(getConfig / setConfig)访问。
+ */
+
+/** 外观设置:窗口透明度与缩放。 */
+export interface PetAppearanceConfig {
+  /** 窗口透明度 0.3–1(1 = 不透明)。 */
+  opacity: number
+  /** 窗口缩放倍率 0.6–1.6(1 = 默认 420×560)。 */
+  scale: number
+}
+
+export interface PetConfig {
+  /** DSH 运行实例基址(loopback 受信;默认 127.0.0.1:3080)。 */
+  dsh: { baseUrl: string }
+  appearance: PetAppearanceConfig
+  /** 语音(TTS)总开关 —— 阶段 6 语音接入后生效,现在只持久化。 */
+  voice: { enabled: boolean }
+  /** 开机自启(Windows LoginItem)。 */
+  launchAtLogin: boolean
+  /** 目标会话记忆(发消息的落点;重启后恢复,可被 selectSession 清空)。 */
+  targetSessionId: string | null
+}
+
+export const DEFAULT_PET_CONFIG: PetConfig = {
+  dsh: { baseUrl: 'http://127.0.0.1:3080' },
+  appearance: { opacity: 1, scale: 1 },
+  voice: { enabled: true },
+  launchAtLogin: false,
+  targetSessionId: null,
+}
+
+/**
+ * renderer → 主进程的**扁平**配置更新(0004 纪律:IPC 参数必须是可序列化标量,
+ * 不用嵌套对象;preload 边界已做类型收敛,主进程再校验一遍)。
+ */
+export interface PetConfigUpdate {
+  dshBaseUrl?: string
+  opacity?: number
+  scale?: number
+  voiceEnabled?: boolean
+  launchAtLogin?: boolean
+}

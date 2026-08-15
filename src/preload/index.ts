@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { PetApi, PetApprovalRequest, PetEvent } from '../shared/pet-event.ts'
+import type { PetConfigUpdate } from '../shared/pet-config.ts'
 
 /**
  * IPC 参数收敛(0004 纪律):undefined/NaN 过 IPC 会触发主进程
@@ -18,6 +19,17 @@ function sanitizeApproval(request: PetApprovalRequest | undefined): PetApprovalR
     approvalId: String(request?.approvalId ?? ''),
     outcome: request?.outcome === 'rejected' ? 'rejected' : 'allowed-once',
   }
+}
+
+/** 阶段 5:配置补丁收敛 —— 只放行白名单字段,标量全部 String/toFinite/Boolean。 */
+function sanitizeConfigUpdate(patch: PetConfigUpdate | undefined): PetConfigUpdate {
+  const out: PetConfigUpdate = {}
+  if (patch?.dshBaseUrl !== undefined) out.dshBaseUrl = String(patch.dshBaseUrl ?? '')
+  if (patch?.opacity !== undefined) out.opacity = toFinite(patch.opacity)
+  if (patch?.scale !== undefined) out.scale = toFinite(patch.scale)
+  if (patch?.voiceEnabled !== undefined) out.voiceEnabled = Boolean(patch.voiceEnabled)
+  if (patch?.launchAtLogin !== undefined) out.launchAtLogin = Boolean(patch.launchAtLogin)
+  return out
 }
 
 // contextBridge 白名单:renderer 只能看到这里暴露的最小能力,
@@ -45,6 +57,8 @@ const petApi: PetApi = {
   selectSession: (sessionId) => ipcRenderer.invoke('pet:select-session', sessionId == null ? null : String(sessionId)),
   createSession: () => ipcRenderer.invoke('pet:create-session'),
   respondApproval: (request) => ipcRenderer.invoke('pet:respond-approval', sanitizeApproval(request)),
+  getConfig: () => ipcRenderer.invoke('pet:get-config'),
+  setConfig: (patch) => ipcRenderer.invoke('pet:set-config', sanitizeConfigUpdate(patch)),
 }
 
 contextBridge.exposeInMainWorld('petApi', petApi)

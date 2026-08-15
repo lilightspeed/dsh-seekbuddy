@@ -1,4 +1,5 @@
 import type { PetApi, PetHistoryEntry, PetSessionSummary } from '../../../shared/pet-event.ts'
+import type { PetConfigUpdate } from '../../../shared/pet-config.ts'
 import type { PendingApproval } from './approvals.ts'
 
 export interface PanelHooks {
@@ -38,6 +39,7 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
   const sessionsEl = document.querySelector<HTMLDivElement>('#tab-sessions')
   const historyEl = document.querySelector<HTMLDivElement>('#tab-history')
   const approvalsEl = document.querySelector<HTMLDivElement>('#tab-approvals')
+  const settingsEl = document.querySelector<HTMLDivElement>('#tab-settings')
   const badgeEl = document.querySelector<HTMLSpanElement>('#approval-badge')
 
   let targetSessionId: string | null = null
@@ -48,13 +50,14 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
   let historyHasMore = false
   let historyLoading = false
 
-  function switchTab(name: 'sessions' | 'history' | 'approvals'): void {
+  function switchTab(name: 'sessions' | 'history' | 'approvals' | 'settings'): void {
     document.querySelectorAll<HTMLButtonElement>('#panel .panel-tabs button').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset['tab'] === name)
     })
     sessionsEl?.classList.toggle('active', name === 'sessions')
     historyEl?.classList.toggle('active', name === 'history')
     approvalsEl?.classList.toggle('active', name === 'approvals')
+    settingsEl?.classList.toggle('active', name === 'settings')
     if (name === 'history') {
       if (!historySessionId) {
         // 尚未选择会话:提示去会话页选一个
@@ -70,6 +73,7 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
       }
     }
     if (name === 'approvals') renderApprovals()
+    if (name === 'settings') void refreshSettings()
   }
 
   function toggle(): void {
@@ -79,6 +83,7 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     if (show) {
       void refreshSessions()
       renderApprovals()
+      if (settingsEl?.classList.contains('active')) void refreshSettings()
     }
   }
 
@@ -308,6 +313,77 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     }
   }
 
+  // ---- 设置 tab(阶段 5:DSH 地址 / 外观 / 自启 / 语音开关)----
+  const urlInput = document.querySelector<HTMLInputElement>('#set-dsh-url')
+  const urlApplyBtn = document.querySelector<HTMLButtonElement>('#set-dsh-apply')
+  const opacitySlider = document.querySelector<HTMLInputElement>('#set-opacity')
+  const opacityVal = document.querySelector<HTMLSpanElement>('#set-opacity-val')
+  const scaleSlider = document.querySelector<HTMLInputElement>('#set-scale')
+  const scaleVal = document.querySelector<HTMLSpanElement>('#set-scale-val')
+  const autostartCheck = document.querySelector<HTMLInputElement>('#set-autostart')
+  const voiceCheck = document.querySelector<HTMLInputElement>('#set-voice')
+
+  /** 从主进程拉最新配置并回填控件(输入框正在编辑时跳过,避免打断输入)。 */
+  async function refreshSettings(): Promise<void> {
+    if (!settingsEl) return
+    let cfg: Awaited<ReturnType<PetApi['getConfig']>>
+    try {
+      cfg = await api.getConfig()
+    } catch {
+      return
+    }
+    if (urlInput && document.activeElement !== urlInput) urlInput.value = cfg.dsh.baseUrl
+    if (opacitySlider) opacitySlider.value = String(Math.round(cfg.appearance.opacity * 100))
+    if (opacityVal) opacityVal.textContent = `${Math.round(cfg.appearance.opacity * 100)}%`
+    if (scaleSlider) scaleSlider.value = String(Math.round(cfg.appearance.scale * 100))
+    if (scaleVal) scaleVal.textContent = `${Math.round(cfg.appearance.scale * 100)}%`
+    if (autostartCheck) autostartCheck.checked = cfg.launchAtLogin
+    if (voiceCheck) voiceCheck.checked = cfg.voice.enabled
+  }
+
+  // 滑块防抖:拖动停顿 120ms 才落盘一次,避免频繁 IPC + 磁盘写
+  let sliderTimer: ReturnType<typeof setTimeout> | undefined
+  function debounceSetConfig(patch: PetConfigUpdate): void {
+    if (sliderTimer) clearTimeout(sliderTimer)
+    sliderTimer = setTimeout(() => {
+      void api.setConfig(patch).then((cfg) => {
+        if (opacityVal) opacityVal.textContent = `${Math.round(cfg.appearance.opacity * 100)}%`
+        if (scaleVal) scaleVal.textContent = `${Math.round(cfg.appearance.scale * 100)}%`
+      })
+    }, 120)
+  }
+
+  urlApplyBtn?.addEventListener('click', () => {
+    const value = urlInput?.value.trim() ?? ''
+    if (!value) return
+    void api.setConfig({ dshBaseUrl: value }).then((cfg) => {
+      hooks.onFlash(`✅ DSH 地址 → ${cfg.dsh.baseUrl}`, true)
+      if (urlInput) urlInput.value = cfg.dsh.baseUrl
+    })
+  })
+  opacitySlider?.addEventListener('input', () => {
+    if (!opacitySlider) return
+    if (opacityVal) opacityVal.textContent = `${opacitySlider.value}%`
+    debounceSetConfig({ opacity: Number(opacitySlider.value) / 100 })
+  })
+  scaleSlider?.addEventListener('input', () => {
+    if (!scaleSlider) return
+    if (scaleVal) scaleVal.textContent = `${scaleSlider.value}%`
+    debounceSetConfig({ scale: Number(scaleSlider.value) / 100 })
+  })
+  autostartCheck?.addEventListener('change', () => {
+    if (!autostartCheck) return
+    void api.setConfig({ launchAtLogin: autostartCheck.checked }).then((cfg) => {
+      hooks.onFlash(cfg.launchAtLogin ? '🚀 已开启开机自启' : '已关闭开机自启', true)
+    })
+  })
+  voiceCheck?.addEventListener('change', () => {
+    if (!voiceCheck) return
+    void api.setConfig({ voiceEnabled: voiceCheck.checked }).then((cfg) => {
+      hooks.onFlash(cfg.voice.enabled ? '🔊 语音已开启(阶段 6 生效)' : '🔇 语音已关闭', true)
+    })
+  })
+
   // 审批角标
   hooks.approvals.subscribe((list) => {
     if (!badgeEl) return
@@ -318,7 +394,7 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
 
   btnEl?.addEventListener('click', toggle)
   document.querySelectorAll<HTMLButtonElement>('#panel .panel-tabs button').forEach((btn) => {
-    btn.addEventListener('click', () => switchTab(btn.dataset['tab'] as 'sessions' | 'history' | 'approvals'))
+    btn.addEventListener('click', () => switchTab(btn.dataset['tab'] as 'sessions' | 'history' | 'approvals' | 'settings'))
   })
 
   return { toggle, refreshSessions }

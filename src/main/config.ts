@@ -1,0 +1,125 @@
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { app } from 'electron'
+import {
+  DEFAULT_PET_CONFIG,
+  type PetConfig,
+  type PetConfigUpdate,
+} from '../shared/pet-config.ts'
+
+/**
+ * 主进程内部补丁(比 renderer 的 PetConfigUpdate 多一个 targetSessionId,
+ * 该字段只能由主进程自己写 —— selectSession 时持久化,renderer 改不了)。
+ */
+export interface PetConfigPatch extends PetConfigUpdate {
+  targetSessionId?: string | null
+}
+
+/**
+ * 阶段 5:极简 JSON 配置持久化(electron-store 的"等价"实现,零依赖):
+ * - 文件:userData/config.json(dev 与 prod 的 userData 各自独立,互不污染)。
+ * - 读:构造时读一次,与默认值合并;文件不存在/损坏 → 保持默认,不崩溃。
+ * - 写:原子写(先写 .tmp 再 rename,同盘 rename 原子),避免写一半损坏配置。
+ * 设置项少、写频率低,不需要 schema 库;baseUrl 合法性在此收敛。
+ */
+export class PetConfigStore {
+  private readonly file: string
+  private value: PetConfig
+
+  constructor() {
+    this.file = join(app.getPath('userData'), 'config.json')
+    this.value = cloneDefault()
+    this.load()
+  }
+
+  get(): PetConfig {
+    return this.value
+  }
+
+  /** 应用补丁并落盘;返回更新后的完整配置(主进程据此做副作用:重连/外观/自启)。 */
+  update(patch: PetConfigPatch): PetConfig {
+    const next: PetConfig = {
+      ...this.value,
+      dsh: { ...this.value.dsh },
+      appearance: { ...this.value.appearance },
+      voice: { ...this.value.voice },
+    }
+    if (patch.dshBaseUrl !== undefined) {
+      const normalized = normalizeBaseUrl(patch.dshBaseUrl)
+      if (normalized !== null) next.dsh.baseUrl = normalized
+    }
+    if (patch.opacity !== undefined) next.appearance.opacity = clamp(patch.opacity, 0.3, 1)
+    if (patch.scale !== undefined) next.appearance.scale = clamp(patch.scale, 0.6, 1.6)
+    if (patch.voiceEnabled !== undefined) next.voice.enabled = Boolean(patch.voiceEnabled)
+    if (patch.launchAtLogin !== undefined) next.launchAtLogin = Boolean(patch.launchAtLogin)
+    if (patch.targetSessionId !== undefined) {
+      next.targetSessionId = patch.targetSessionId === null ? null : String(patch.targetSessionId)
+    }
+    this.value = next
+    this.save()
+    return this.value
+  }
+
+  private save(): void {
+    try {
+      const dir = dirname(this.file)
+      mkdirSync(dir, { recursive: true })
+      const tmp = `${this.file}.tmp`
+      writeFileSync(tmp, JSON.stringify(this.value, null, 2), 'utf8')
+      renameSync(tmp, this.file)
+    } catch (error) {
+      console.error('[pet] config save failed:', error)
+    }
+  }
+
+  private load(): void {
+    try {
+      const raw = JSON.parse(readFileSync(this.file, 'utf8')) as Partial<PetConfig>
+      if (raw && typeof raw === 'object') {
+        const next: PetConfig = {
+          ...this.value,
+          dsh: { ...this.value.dsh },
+          appearance: { ...this.value.appearance },
+          voice: { ...this.value.voice },
+        }
+        if (typeof raw.dsh?.baseUrl === 'string') {
+          const normalized = normalizeBaseUrl(raw.dsh.baseUrl)
+          if (normalized !== null) next.dsh.baseUrl = normalized
+        }
+        if (typeof raw.appearance?.opacity === 'number') next.appearance.opacity = clamp(raw.appearance.opacity, 0.3, 1)
+        if (typeof raw.appearance?.scale === 'number') next.appearance.scale = clamp(raw.appearance.scale, 0.6, 1.6)
+        if (typeof raw.voice?.enabled === 'boolean') next.voice.enabled = raw.voice.enabled
+        if (typeof raw.launchAtLogin === 'boolean') next.launchAtLogin = raw.launchAtLogin
+        if (raw.targetSessionId === null || typeof raw.targetSessionId === 'string') {
+          next.targetSessionId = raw.targetSessionId
+        }
+        this.value = next
+      }
+    } catch {
+      // 文件不存在或损坏:保持默认值,首次保存时重建
+    }
+  }
+}
+
+function cloneDefault(): PetConfig {
+  return {
+    ...DEFAULT_PET_CONFIG,
+    dsh: { ...DEFAULT_PET_CONFIG.dsh },
+    appearance: { ...DEFAULT_PET_CONFIG.appearance },
+    voice: { ...DEFAULT_PET_CONFIG.voice },
+  }
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : min
+}
+
+/**
+ * 归一化 DSH 基址:只接受 http(s)://host[:port](去尾斜杠);
+ * 带路径/非法输入返回 null(调用方保持原值)。DSH 基址必须是根路径。
+ */
+function normalizeBaseUrl(url: string): string | null {
+  const trimmed = String(url).trim().replace(/\/+$/, '')
+  if (!/^https?:\/\/[^/]+$/.test(trimmed)) return null
+  return trimmed
+}

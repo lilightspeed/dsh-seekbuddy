@@ -17,9 +17,13 @@ const BACKOFF_MAX_MS = 30_000
  * 宠物自己的连接循环(生命周期胶水,协议仍由 AbstractApiClient 承担):
  * 每代 = host.describe 握手 → 起 mux/host 两条 WS 流 → 泵帧到 onEvent;
  * 任一流结束/出错 → reconnecting → 指数退避(带抖动)重试。
+ * getBaseUrl:阶段 5 起注入配置读取器,改 DSH 地址后由调用方重建连接。
  */
-export function createConnection(onEvent: (event: PetEvent) => void): ConnectionHandle {
-  const api = new DshApiClient()
+export function createConnection(
+  onEvent: (event: PetEvent) => void,
+  getBaseUrl: () => string,
+): ConnectionHandle {
+  const api = new DshApiClient(getBaseUrl)
   let running = false
   let currentState: ConnectionState | null = null
   let description: HostDescription | null = null
