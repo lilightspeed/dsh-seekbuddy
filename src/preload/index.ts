@@ -59,6 +59,7 @@ const petApi: PetApi = {
   respondApproval: (request) => ipcRenderer.invoke('pet:respond-approval', sanitizeApproval(request)),
   getConfig: () => ipcRenderer.invoke('pet:get-config'),
   setConfig: (patch) => ipcRenderer.invoke('pet:set-config', sanitizeConfigUpdate(patch)),
+  listPlugins: () => ipcRenderer.invoke('pet:list-plugins'),
 }
 
 contextBridge.exposeInMainWorld('petApi', petApi)

@@ -48,3 +48,4 @@ NNNN-<简短英文slug>.md
 | [0010-scale-slider-oscillation.md](./0010-scale-slider-oscillation.md) | 修复:缩放滑块拖拽反馈回路(来回跳 10% / 窗口不断缩放)→ 松手应用 | 已验证 |
 | [0011-packaged-mcp-verify.md](./0011-packaged-mcp-verify.md) | A1 收尾:打包版 MCP 反向链路实机验证(DSH → 打包 mcp-server → 宠物) | 已验证 |
 | [0012-session-radar-merge.md](./0012-session-radar-merge.md) | B2 多会话雷达(并入会话页:实时状态列 + 运行中角标) | 已验证 |
+| [0013-plugin-monitor-readonly.md](./0013-plugin-monitor-readonly.md) | B3(只读)插件监控:agent 中介读取 DSH 动态插件清单 | 已验证 |

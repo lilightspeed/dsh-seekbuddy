@@ -225,6 +225,95 @@
         color: #35c759;
         font-weight: 600;
       }
+      /* B3 只读插件监控 */
+      .plugin-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+      }
+      .plugin-hint {
+        font-size: 10px;
+        color: #999;
+        flex: 1;
+        line-height: 1.4;
+      }
+      .plugin-status {
+        padding: 2px 10px 6px;
+        font-size: 11px;
+        color: #888;
+      }
+      .plugin-error {
+        padding: 6px 10px;
+        font-size: 12px;
+        color: #c0392b;
+        background: rgba(229, 72, 77, 0.1);
+        border-radius: 8px;
+        margin: 4px 8px;
+      }
+      .plugin-card {
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 10px;
+        padding: 8px 10px;
+        margin: 6px 8px;
+        background: rgba(255, 255, 255, 0.6);
+      }
+      .plugin-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .plugin-id {
+        font-family: ui-monospace, monospace;
+        font-size: 12px;
+        font-weight: 600;
+        color: #333;
+      }
+      .plugin-state {
+        font-size: 10px;
+        padding: 2px 8px;
+        border-radius: 10px;
+        flex: none;
+        background: #ddd;
+        color: #555;
+      }
+      .plugin-state.running {
+        background: rgba(53, 199, 89, 0.2);
+        color: #1e7a3e;
+      }
+      .plugin-state.failed {
+        background: rgba(229, 72, 77, 0.15);
+        color: #c0392b;
+      }
+      .plugin-state.awaiting-approval,
+      .plugin-state.client-pending {
+        background: rgba(255, 170, 85, 0.25);
+        color: #9a5b00;
+      }
+      .plugin-name {
+        font-size: 12px;
+        color: #666;
+        margin-top: 2px;
+      }
+      .plugin-meta {
+        font-size: 10px;
+        color: #999;
+        margin-top: 4px;
+      }
+      .plugin-raw {
+        margin-top: 6px;
+        font-size: 10px;
+      }
+      .plugin-raw pre {
+        max-height: 120px;
+        overflow: auto;
+        background: rgba(0, 0, 0, 0.04);
+        border-radius: 6px;
+        padding: 6px;
+        font-size: 10px;
+        margin: 4px 0 0;
+      }
       .session-row .title {
         flex: 1;
         color: #333;
@@ -486,12 +575,14 @@
         <button data-tab="sessions" class="active">会话<span id="session-running-badge" class="badge hidden">0</span></button>
         <button data-tab="history">历史</button>
         <button data-tab="approvals">审批<span id="approval-badge" class="badge hidden">0</span></button>
+        <button data-tab="plugins">插件</button>
         <button data-tab="settings">设置</button>
       </div>
       <div class="panel-body">
         <div id="tab-sessions" class="tab active"></div>
         <div id="tab-history" class="tab"></div>
         <div id="tab-approvals" class="tab"></div>
+        <div id="tab-plugins" class="tab"></div>
         <div id="tab-settings" class="tab">
           <div class="setting-group">
             <div class="setting-label">DSH 地址</div>

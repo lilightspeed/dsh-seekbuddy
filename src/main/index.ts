@@ -6,6 +6,7 @@ import type { PetConfig, PetConfigUpdate } from '../shared/pet-config.ts'
 import { PetConfigStore, type PetConfigPatch } from './config.ts'
 import { createConnection, type ConnectionHandle } from './dsh/connection.ts'
 import { createPetOps, type PetOps } from './dsh/ops.ts'
+import { createPluginOps, type PluginOps } from './dsh/plugin-ops.ts'
 import { createBridge, bridgeActionToEvent, type BridgeHandle } from './mcp/bridge.ts'
 import { createNotifier } from './notify.ts'
 import { createTray } from './tray.ts'
@@ -36,6 +37,7 @@ async function bootstrap(): Promise<void> {
   let mainWindow: BrowserWindow | undefined
   let bridge: BridgeHandle | undefined
   let petOps: PetOps | undefined
+  let pluginOps: PluginOps | undefined
   let notifier: ReturnType<typeof createNotifier> | undefined
   let config: PetConfigStore | undefined
 
@@ -215,6 +217,15 @@ async function bootstrap(): Promise<void> {
     ipcMain.handle('pet:create-session', () => petOps?.createSession() ?? { ok: false, summary: 'ops not ready' })
     ipcMain.handle('pet:respond-approval', (_event, request: PetApprovalRequest) =>
       petOps?.respondApproval(request) ?? { label: 'approval.respond', ok: false, summary: 'ops not ready' },
+    )
+
+    // B3(只读)插件监控:agent 中介读取目标会话插件清单
+    pluginOps = createPluginOps({
+      getConnection: () => connection,
+      getTargetSession: () => ensureTargetSession(),
+    })
+    ipcMain.handle('pet:list-plugins', () =>
+      pluginOps?.listPlugins() ?? { ok: false, summary: 'ops not ready', refreshedAt: 0, plugins: [] },
     )
 
     // 阶段 5 配置读写:get 返回完整配置;set 应用扁平补丁并按变更执行副作用
