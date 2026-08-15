@@ -1,4 +1,4 @@
-import type { PetApi, PetHistoryEntry, PetSessionSummary } from '../../../shared/pet-event.ts'
+import type { PetActivityEntry, PetApi, PetHistoryEntry, PetSessionSummary } from '../../../shared/pet-event.ts'
 import type { PendingApproval } from './approvals.ts'
 
 export interface PanelHooks {
@@ -7,6 +7,11 @@ export interface PanelHooks {
     list(): PendingApproval[]
     subscribe(listener: (list: PendingApproval[]) => void): () => void
     respond(item: PendingApproval, outcome: 'allowed-once' | 'rejected'): Promise<void>
+  }
+  /** B2 雷达:会话活动表(主进程事件增量累积)。 */
+  activity: {
+    list(): PetActivityEntry[]
+    subscribe(listener: (list: PetActivityEntry[]) => void): () => void
   }
   onFlash(text: string, ok: boolean): void
 }
@@ -29,7 +34,7 @@ function shortTitle(session: PetSessionSummary): string {
 }
 
 /**
- * 会话面板:会话列表(切换目标)+ 历史查看 + 审批 tab。
+ * 会话面板:会话列表(切换目标)+ 雷达 + 历史 + 审批 + 设置 tab。
  * vanilla DOM(React/Zustand 待复杂 UI 再引入)。
  */
 export function createPanel(api: PetApi, hooks: PanelHooks) {
@@ -40,8 +45,12 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
   const approvalsEl = document.querySelector<HTMLDivElement>('#tab-approvals')
   const settingsEl = document.querySelector<HTMLDivElement>('#tab-settings')
   const badgeEl = document.querySelector<HTMLSpanElement>('#approval-badge')
+  /** 会话页运行中角标(B2 雷达并入会话页)。 */
+  const runningBadgeEl = document.querySelector<HTMLSpanElement>('#session-running-badge')
 
   let targetSessionId: string | null = null
+  /** 最近一次会话列表(雷达行基线:标题/running/updatedAt)。 */
+  let sessionItems: PetSessionSummary[] = []
   /** 历史查看的会话 + 已加载锚点。 */
   let historySessionId: string | null = null
   let historySessionTitle: string | null = null
@@ -93,7 +102,9 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
       return null
     }
     targetSessionId = result.targetSessionId
+    sessionItems = result.items
     renderSessions(result.items)
+    updateRunningBadge()
     // 会话列表刷新后,历史锚点失效,重置为尾部
     historySessionId = null
     historyBeforeSeq = null
@@ -131,11 +142,13 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     await refreshSessions()
   }
 
-  /** 会话页:顶部"发送目标"横幅(明确指出发消息落点)+ 会话列表。 */
+  /** 会话页:顶部"发送目标"横幅(明确指出发消息落点)+ 会话列表(含实时状态)。 */
   function renderSessions(items: PetSessionSummary[]): void {
     if (!sessionsEl) return
     sessionsEl.textContent = ''
     const target = resolveTarget(items)
+    // B2 实时状态:活动表(回合增量)叠加在列表基线上
+    const activity = new Map(hooks.activity.list().map((e) => [e.sessionId, e]))
 
     // 顶部横幅:说明当前发消息会到哪个会话
     const banner = document.createElement('div')
@@ -163,15 +176,26 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
       row.className = 'session-row'
       if (item.sessionId === target?.id) row.classList.add('selected')
       const dot = document.createElement('span')
-      dot.className = `dot${item.running ? ' running' : ''}`
+      // 实时状态(活动表)与列表基线取并集:任一 running 即脉冲绿点
+      const act = activity.get(item.sessionId)
+      const isRunning = item.running || act?.running === true
+      dot.className = `dot${isRunning ? ' running' : ''}`
       const title = document.createElement('span')
       title.className = 'title'
       title.textContent = shortTitle(item)
       title.title = item.sessionId
-      const time = document.createElement('span')
-      time.className = 'time'
-      time.textContent = relativeTime(item.updatedAt)
-      row.append(dot, title, time)
+      // 状态列:运行中 > 最近回合结果(带时间)> 基线更新时间
+      const status = document.createElement('span')
+      status.className = 'session-status'
+      if (isRunning) {
+        status.textContent = '● 运行中'
+        status.classList.add('running')
+      } else if (act?.reason) {
+        status.textContent = `${reasonText(act.reason)} · ${relativeTime(act.time)}`
+      } else {
+        status.textContent = relativeTime(item.updatedAt)
+      }
+      row.append(dot, title, status)
       if (item.sessionId === target?.id) {
         const tag = document.createElement('span')
         tag.className = 'target-tag'
@@ -393,6 +417,49 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     void api.setConfig({ voiceEnabled: voiceCheck.checked }).then((cfg) => {
       hooks.onFlash(cfg.voice.enabled ? '🔊 语音已开启(阶段 6 生效)' : '🔇 语音已关闭', true)
     })
+  })
+
+  // ---- B2 雷达 tab:全会话活动(运行中/完成/出错),点击设目标 ----
+
+  /** turn reason → 展示文本。 */
+  function reasonText(reason: string): string {
+    switch (reason) {
+      case 'completed':
+        return '✓ 完成'
+      case 'error':
+        return '✗ 出错'
+      case 'max-tokens':
+        return '✗ 超长'
+      case 'aborted':
+        return '■ 中断'
+      case 'blocked':
+        return '⛔ 阻塞'
+      default:
+        return reason
+    }
+  }
+
+  /** 运行中会话数 = 活动表 running ∪ 会话列表 running;驱动会话页角标。 */
+  function runningCount(): number {
+    const activityRunning = new Set(hooks.activity.list().filter((e) => e.running).map((e) => e.sessionId))
+    for (const s of sessionItems) {
+      if (s.running) activityRunning.add(s.sessionId)
+    }
+    return activityRunning.size
+  }
+
+  /** 会话 tab 角标:同时在跑的会话数。 */
+  function updateRunningBadge(): void {
+    if (!runningBadgeEl) return
+    const n = runningCount()
+    runningBadgeEl.textContent = String(n)
+    runningBadgeEl.classList.toggle('hidden', n === 0)
+  }
+
+  // 活动增量(B2 雷达并入会话页):角标实时更新;会话页开着时整页重渲染(实时状态列)
+  hooks.activity.subscribe(() => {
+    updateRunningBadge()
+    if (sessionsEl?.classList.contains('active') && sessionItems.length > 0) renderSessions(sessionItems)
   })
 
   // 审批角标

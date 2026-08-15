@@ -1,5 +1,5 @@
 import { createActor } from 'xstate'
-import type { PetApi, PetEvent } from '../../shared/pet-event.ts'
+import type { PetActivityEntry, PetApi, PetEvent } from '../../shared/pet-event.ts'
 import { petMachine, type PetState } from './fsm/pet-machine.ts'
 import type { PetAnimator } from './pet/animator.ts'
 import { createSpriteAnimator } from './pet/sprite-animator.ts'
@@ -57,6 +57,39 @@ function renderApprovalCard(list: PendingApproval[]): void {
   approvalCardEl.classList.remove('hidden')
 }
 
+/** B2 多会话雷达:内存活动表,由 dsh:session-update 增量累积;订阅者拿快照。 */
+type ActivityListener = (list: PetActivityEntry[]) => void
+function createActivityStore(): {
+  update(entry: PetActivityEntry): void
+  clear(): void
+  list(): PetActivityEntry[]
+  subscribe(listener: ActivityListener): () => void
+} {
+  const map = new Map<string, PetActivityEntry>()
+  const listeners = new Set<ActivityListener>()
+  function emit(): void {
+    const list = [...map.values()]
+    for (const listener of listeners) listener(list)
+  }
+  return {
+    update(entry: PetActivityEntry): void {
+      const prev = map.get(entry.sessionId)
+      if (prev && prev.running === entry.running && prev.reason === entry.reason && prev.time === entry.time) return
+      map.set(entry.sessionId, entry)
+      emit()
+    },
+    clear(): void {
+      map.clear()
+      emit()
+    },
+    list: () => [...map.values()],
+    subscribe(listener: ActivityListener): () => void {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+  }
+}
+
 async function boot(): Promise<void> {
   if (!api) {
     connText = 'preload 未注入 window.petApi'
@@ -95,12 +128,19 @@ async function boot(): Promise<void> {
   })
   approvals.subscribe(renderApprovalCard)
 
-  // 会话面板(会话列表/切换 + 历史 + 审批 tab)
+  // B2 多会话雷达:活动表 + 面板订阅
+  const activity = createActivityStore()
+
+  // 会话面板(会话列表/切换 + 历史 + 审批 + 雷达 + 设置 tab)
   const panel = createPanel(api, {
     approvals: {
       list: () => approvals.list(),
       subscribe: (listener) => approvals.subscribe(listener),
       respond: (item, outcome) => approvals.respond(item, outcome),
+    },
+    activity: {
+      list: () => activity.list(),
+      subscribe: (listener) => activity.subscribe(listener),
     },
     onFlash: (text, ok) => {
       if (ok) {
@@ -128,7 +168,8 @@ async function boot(): Promise<void> {
       case 'dsh:connected':
         connText = 'connected'
         renderStatus()
-        // 重连后会话列表可能变化,刷新面板
+        // 重连后会话列表可能变化,刷新面板;雷达活动表清空重建(旧代事件已过期)
+        activity.clear()
         void panel.refreshSessions()
         break
       case 'dsh:state':
@@ -165,6 +206,10 @@ async function boot(): Promise<void> {
       case 'agent:error':
         actor.send({ type: 'DSH_ERROR' })
         showBubble(`✗ DSH 报错:${event.message}`, 4000)
+        break
+      case 'dsh:session-update':
+        // B2 雷达:增量进活动表,雷达 tab 订阅后自行渲染
+        activity.update(event)
         break
       case 'pet:speak':
         actor.send({ type: 'TALK' })

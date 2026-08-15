@@ -47,6 +47,17 @@ export type PetEvent =
     }
   /** host 级 agent 失败(无 turn 位置的错误)。 */
   | { type: 'agent:error'; sessionId: string; message: string }
+  /** B2 多会话雷达:单个会话的 turn 活动增量(雷达 tab 消费,不推帧风暴)。 */
+  | {
+      type: 'dsh:session-update'
+      sessionId: string
+      /** 该会话是否有回合在跑。 */
+      running: boolean
+      /** 最后一次 turn 的 reason.kind(completed/error/aborted/max-tokens/blocked…);running 时 null。 */
+      reason: string | null
+      /** 事件时间戳(ms,服务端事件时间)。 */
+      time: number
+    }
   /** 阶段 4 反向链路:MCP 工具驱动宠物开口。 */
   | { type: 'pet:speak'; text: string }
   /** 阶段 4 反向链路:MCP 工具切换表情状态。 */
@@ -71,6 +82,16 @@ export interface PetSessionListResult {
   /** 当前目标会话(主进程持有)。 */
   targetSessionId: string | null
   items: PetSessionSummary[]
+}
+
+/** B2 雷达:单个会话的最新活动状态(由 dsh:session-update 增量累积)。 */
+export interface PetActivityEntry {
+  sessionId: string
+  running: boolean
+  /** 最后一次 turn 的 reason.kind;running 时为 null。 */
+  reason: string | null
+  /** 事件时间戳(ms)。 */
+  time: number
 }
 
 /** 历史里的一行:主进程已把 SessionEvent 摊平成展示文本。 */

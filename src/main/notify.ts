@@ -11,7 +11,7 @@ export function createNotifier(options: {
   isTargetSession: (sessionId: string | null) => boolean
 }): {
   notify(title: string, body: string): void
-  onEvent(event: { type: string; sessionId?: string | null; message?: string; toolName?: string; reason?: string }): void
+  onEvent(event: { type: string; sessionId?: string | null; message?: string; toolName?: string; reason?: string | null }): void
 } {
   function notify(title: string, body: string): void {
     if (!Notification.isSupported()) return
@@ -22,7 +22,7 @@ export function createNotifier(options: {
     }
   }
 
-  function onEvent(event: { type: string; sessionId?: string | null; message?: string; toolName?: string; reason?: string; title?: string; body?: string }): void {
+  function onEvent(event: { type: string; sessionId?: string | null; message?: string; toolName?: string; reason?: string | null; title?: string; body?: string }): void {
     switch (event.type) {
       case 'approval:pending':
         notify('🔐 DSH 需要审批', `${event.toolName ?? '工具'}${event.reason ? ` — ${event.reason}` : ''}`)

@@ -45,15 +45,20 @@ export function createConnection(
     }
   }
 
-  /** mux 帧 → 语义事件(阶段 2:turn 生命周期;阶段 3:审批)。 */
+  /** mux 帧 → 语义事件(阶段 2:turn 生命周期;阶段 3:审批;B2:会话活动增量)。 */
   function pumpMuxFrame(frame: MuxFrame, rpcId: string): void {
     switch (frame.type) {
       case 'session/event': {
         const event = frame.event
-        if (event.type === 'turn/start') onEvent({ type: 'dsh:turn-start', sessionId: String(frame.sessionId) })
+        if (event.type === 'turn/start') {
+          onEvent({ type: 'dsh:turn-start', sessionId: String(frame.sessionId) })
+          // B2 雷达:turn/start → running,带服务端事件时间
+          onEvent({ type: 'dsh:session-update', sessionId: String(frame.sessionId), running: true, reason: null, time: event.time })
+        }
         if (event.type === 'turn/end') {
           const reason = event.data.reason.kind
           onEvent({ type: 'dsh:turn-end', reason, sessionId: String(frame.sessionId) })
+          onEvent({ type: 'dsh:session-update', sessionId: String(frame.sessionId), running: false, reason, time: event.time })
         }
         break
       }
