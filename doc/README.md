@@ -15,6 +15,7 @@
 | [05-scaffolding.md](./05-scaffolding.md) | `apps/pet` 工程脚手架、目录结构、Electron 配置 | ★★ |
 | [06-roadmap.md](./06-roadmap.md) | 分阶段开发路线图(MVP → 完整版) | ★ |
 | [07-typescript-learning-path.md](./07-typescript-learning-path.md) | TypeScript 学习路线(从零到能开工) | ★★ |
+| [08-live2d-integration.md](./08-live2d-integration.md) | Live2D 角色接入:Cubism 工程 → runtime 包、兼容矩阵、本项目接入点 | ★★ |
 
 > **项目改动档案**:[changes/](./changes/) 按"一次改动一篇文档"记录实际开发过程(改动清单、决策、踩坑、验证),约定见 [changes/README.md](./changes/README.md)。
 
