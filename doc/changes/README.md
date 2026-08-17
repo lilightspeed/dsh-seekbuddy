@@ -54,3 +54,4 @@ NNNN-<简短英文slug>.md
 | [0016-cursor-follow-fix.md](./0016-cursor-follow-fix.md) | 修复:视角跟随不动 —— 拖拽区域吞鼠标事件,光标改由主进程轮询推送 | 已验证 |
 | [0017-pet-settings-tune.md](./0017-pet-settings-tune.md) | 视角跟随调优(Y 反转/幅度/窗外距离)+ 设置面板宠物参数(位置/大小/手感,持久化) | 已验证 |
 | [0018-blink-breath.md](./0018-blink-breath.md) | 实现自动眨眼(显式注入眨眼参数 ID)+ 确认自动呼吸;解释 ParamAngleZ 未用与身体幅度无效果的原因 | 已验证 |
+| [0019-breath-clamp-fix.md](./0019-breath-clamp-fix.md) | 修复:自动呼吸不可见 —— 加算型更新器的 load/save 节奏 + 呼吸 offset 校正(参数波形实测) | 已验证 |

@@ -143,6 +143,7 @@ class CubismRuntime implements Live2dRuntime {
   private breath: CubismBreath | null = null
   private eyeBlink: CubismEyeBlink | null = null
   private autoBlink = true
+  private pendingLook: ViewLook | null = null
   private ready = false
   private disposed = false
   private viewMatrix = new CubismViewMatrix()
@@ -233,11 +234,12 @@ class CubismRuntime implements Live2dRuntime {
     }
 
     // 呼吸:只驱动模型自带的 ParamBreath(不碰头部角度,避免与视角跟随打架)。
-    // 公式 value = offset + peak·sin(2π·t/cycle),cycle 为周期秒 —— 0.5±0.5,周期 ~3.2s,
-    // 让 ParamBreath 在 0..1 满幅摆动(可见性取决于模型里该参数是否绑了可见变形)。
+    // CubismBreath 用 addParameterValueById = 当前值 + (offset + peak·sin(2πt/cycle)),
+    // 当前值(基准)是模型默认值 0.5 —— 所以 offset 必须为 0,最终才得到 0.5±0.5 = 0..1 的干净摆动
+    // (若 offset=0.5 会变成 1.0+0.5·sin,上半截被 clamp 削顶,表现为"一直涨满偶尔泄气")。
     this.breath = CubismBreath.create()
     this.breath.setParameters([
-      new BreathParameterData(CubismFramework.getIdManager().getId(PARAM_MANUAL.breath), 0.5, 0.5, 3.2, 1),
+      new BreathParameterData(CubismFramework.getIdManager().getId(PARAM_MANUAL.breath), 0, 0.5, 3.2, 1),
     ])
     this.scheduler.addUpdatableList(new CubismBreathUpdater(this.breath))
 
@@ -306,9 +308,12 @@ class CubismRuntime implements Live2dRuntime {
   }
 
   setViewLook(look: ViewLook): void {
-    if (!this.ready || this.disposed) return
-    const model = this.userModel?.getModel()
-    if (!model) return
+    if (this.disposed) return
+    // 只暂存,由 update() 在 loadParameters 之后、saveParameters 之前写入(0019 呼吸修复)。
+    this.pendingLook = { ...look }
+  }
+
+  private applyViewLook(model: CubismModel, look: ViewLook): void {
     this.setParam(model, this.paramIndex.headX, look.headX)
     this.setParam(model, this.paramIndex.headY, look.headY)
     this.setParam(model, this.paramIndex.headZ, look.headZ)
@@ -324,7 +329,14 @@ class CubismRuntime implements Live2dRuntime {
     if (!userModel || !model) return
     if (this.gl.isContextLost()) return
 
-    // 调度器:物理(后发随头部角度摆动)+ 呼吸
+    // 官方示例的 load/save 节奏(0019):呼吸等"加算型"更新器(CubismBreath 用
+    // addParameterValueById = current + value)若跨帧累加,会被参数 clamp 钉死在极值。
+    // 每帧先恢复基准、写入跟随参数、再保存基准,调度器效果只生效一帧、下帧重算。
+    model.loadParameters()
+    if (this.pendingLook) this.applyViewLook(model, this.pendingLook)
+    model.saveParameters()
+
+    // 调度器:物理(后发随头部角度摆动)+ 眨眼 + 呼吸(在基准上一次性加算)
     this.scheduler?.onLateUpdate(model, deltaSeconds)
     // 核心更新:参数 → 网格
     model.update()
