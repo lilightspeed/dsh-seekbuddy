@@ -161,6 +161,8 @@ function createLive2dAnimatorWithRuntime(
       pupilMax: clamp01(settings.pupilMax),
       dragStrength: clamp01(settings.dragStrength),
     }
+    // 外层独立变量供 onCursor 闭包读取(增益计算):必须同步更新,否则滑块调了不生效(0035)
+    dragStrength = petSettings.dragStrength
     // follower 闭包持有同一个 config 对象,就地覆盖即可实时生效
     Object.assign(followerConfig, toFollowerConfig(petSettings))
     runtime.setAppearance({ positionX: petSettings.positionX, positionY: petSettings.positionY, scale: petSettings.scale })
