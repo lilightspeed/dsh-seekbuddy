@@ -69,6 +69,9 @@ async function bootstrap(): Promise<void> {
     if (cfg) win.setOpacity(cfg.appearance.opacity)
     win.on('ready-to-show', () => win.show())
 
+    // 窗口重建(如 mac activate)后拖动采样从零开始,避免旧窗口位置算出虚假位移(0032)
+    prevWindowPos = null
+
     // 开发:加载 electron-vite 的开发服务器;生产:加载 out/renderer/index.html
     const devUrl = process.env['ELECTRON_RENDERER_URL']
     if (devUrl) {
@@ -101,19 +104,42 @@ async function bootstrap(): Promise<void> {
    * 光标轮询(0016):拖拽区域(`-webkit-app-region: drag`)会吞掉 renderer 的鼠标事件,
    * 视角跟随改由主进程全局读光标(screen.getCursorScreenPoint)转局部坐标后推送。
    * 光标在窗口外也照常推送(renderer 按窗口边缘夹取,宠物始终朝向光标方向)。
+   * 0032:同一轮询采样窗口位置增量 —— 用户拖拽窗口时连续非零,作为"拖动宠物"的
+   * 物理反馈输入随 pet:cursor 推给 renderer(映射 ParamDragX/Y)。
    */
   let cursorTimer: NodeJS.Timeout | undefined
+  /** 上次采样到的窗口位置(拖动检测用,0032);窗口隐藏/重建时重置避免虚假位移。 */
+  let prevWindowPos: { x: number; y: number } | null = null
   function startCursorPolling(): void {
     if (cursorTimer) return
     cursorTimer = setInterval(() => {
       const win = mainWindow
-      if (!win || win.isDestroyed() || !win.isVisible()) return
+      if (!win || win.isDestroyed() || !win.isVisible()) {
+        // 不可见时不采样:拖动状态丢失,恢复可见后从零开始(否则旧位置算出一次性大位移)
+        prevWindowPos = null
+        return
+      }
       const cursor = screen.getCursorScreenPoint()
       const bounds = win.getBounds()
       const x = cursor.x - bounds.x
       const y = cursor.y - bounds.y
       const inside = x >= 0 && y >= 0 && x <= bounds.width && y <= bounds.height
-      win.webContents.send('pet:cursor', { x, y, inside })
+
+      // 窗口位置增量(px,33ms 采样):拖动中连续非零、静止为 0。
+      // 位移 < 1px 视为 0:避免慢速拖动时 ±1px 抖动产生高频微小反馈。
+      let dragDx = 0
+      let dragDy = 0
+      const pos = win.getPosition()
+      const posX = pos[0] ?? 0
+      const posY = pos[1] ?? 0
+      if (prevWindowPos) {
+        const dx = posX - prevWindowPos.x
+        const dy = posY - prevWindowPos.y
+        if (Math.abs(dx) >= 1) dragDx = dx
+        if (Math.abs(dy) >= 1) dragDy = dy
+      }
+      prevWindowPos = { x: posX, y: posY }
+      win.webContents.send('pet:cursor', { x, y, inside, dragDx, dragDy })
     }, 33)
   }
 
@@ -225,6 +251,8 @@ async function bootstrap(): Promise<void> {
     // 瞳孔收缩(0029/0030):灵敏度 px/s 收敛 200..2000,幅度 0..1
     if (typeof patch?.petPupilSensitivity === 'number' && Number.isFinite(patch.petPupilSensitivity)) out.petPupilSensitivity = Math.min(2000, Math.max(200, patch.petPupilSensitivity))
     if (typeof patch?.petPupilMax === 'number' && Number.isFinite(patch.petPupilMax)) out.petPupilMax = Math.min(1, Math.max(0, patch.petPupilMax))
+    // 拖动反馈强度(0033):0..1
+    if (typeof patch?.petDragStrength === 'number' && Number.isFinite(patch.petDragStrength)) out.petDragStrength = Math.min(1, Math.max(0, patch.petDragStrength))
     return out
   }
 

@@ -33,6 +33,12 @@
 |---|---|
 | `ParamBackHairUp` / `ParamBackHairDown` / `ParamBackHairSwing` | 后发上 / 下 / 上下摆动 |
 
+### 拖动反馈(运行时输入,物理演算输出 —— 0032)
+| ID | 含义 |
+|---|---|
+| `ParamDragX` | 左右拖动宠物 —— 运行时按窗口水平位移写入,PhysicsSetting6 输入 |
+| `ParamDragY` | 上下拖动宠物 —— 运行时按窗口垂直位移写入,PhysicsSetting5 输入 |
+
 ### 手动 / 程序驱动
 | ID | 含义 |
 |---|---|
@@ -67,6 +73,10 @@
 6. **`CombinedParameters` 只是编辑器 UX**(头部 XY 联动),运行时忽略。
 7. **参数改名后必须整包重导(Model 导出)**:编辑器会自动同步 physics3.json 等所有引用,无需手改
    JSON——本次 8 个参数 + 1 个部件改名已按此流程完成并验证(`Param6/7/8` → `ParamBackHair*` 等)。
+8. **拖动接线(0032)**:`PhysicsSetting5 上下拖动` ← `ParamDragY`,`PhysicsSetting6 左右拖动` ←
+   `ParamDragX`。主进程在光标轮询(33ms)中采样窗口位置增量,renderer 归一化(-1..1)后写入
+   这两个参数,物理系统输出尾巴(`ParamTailRoot/Tip`)、前发(`ParamHairSwayX/Y`)、后发
+   (`ParamBackHairUp/Down/Swing`)的惯性摆动;停止拖动参数回中,摆动经 delay/mobility 自然衰减。
 
 ## 4. 后续里程碑的导出清单
 

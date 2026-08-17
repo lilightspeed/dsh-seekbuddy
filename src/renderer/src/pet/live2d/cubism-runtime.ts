@@ -13,7 +13,7 @@ import { CubismPhysicsUpdater } from '@live2d/framework/motion/cubismphysicsupda
 import { CubismUpdateScheduler } from '@live2d/framework/motion/cubismupdatescheduler'
 import { CubismPhysics } from '@live2d/framework/physics/cubismphysics'
 import { CubismWebGLOffscreenManager } from '@live2d/framework/rendering/cubismoffscreenmanager'
-import { PARAM_HEAD, PARAM_EYE, PARAM_BODY, PARAM_MANUAL, PARAM_EXPRESSION, type ViewLook } from './parameters.ts'
+import { PARAM_HEAD, PARAM_EYE, PARAM_BODY, PARAM_MANUAL, PARAM_EXPRESSION, PARAM_DRAG, type ViewLook } from './parameters.ts'
 import type { Live2dAppearance, Live2dRuntime } from './runtime.ts'
 
 /**
@@ -66,6 +66,9 @@ interface ParamIndexSet {
   bodyX: number
   /** 瞳孔收缩(0..1,0029)。 */
   pupil: number
+  /** 拖动物理反馈:左右 / 上下拖动宠物(0032,physics3.json 的输入)。 */
+  dragX: number
+  dragY: number
 }
 
 export interface CubismRuntimeOptions {
@@ -146,10 +149,22 @@ class CubismRuntime implements Live2dRuntime {
   private eyeBlink: CubismEyeBlink | null = null
   private autoBlink = true
   private pendingLook: ViewLook | null = null
+  /** 拖动物理反馈输入(0032):由 setDrag 暂存,update() 在 load/save 之间写入。 */
+  private pendingDrag: { x: number; y: number } | null = null
   private ready = false
   private disposed = false
   private viewMatrix = new CubismViewMatrix()
-  private paramIndex: ParamIndexSet = { headX: -1, headY: -1, headZ: -1, eyeX: -1, eyeY: -1, bodyX: -1, pupil: -1 }
+  private paramIndex: ParamIndexSet = {
+    headX: -1,
+    headY: -1,
+    headZ: -1,
+    eyeX: -1,
+    eyeY: -1,
+    bodyX: -1,
+    pupil: -1,
+    dragX: -1,
+    dragY: -1,
+  }
 
   private readonly onResize = (): void => this.resize()
 
@@ -284,6 +299,8 @@ class CubismRuntime implements Live2dRuntime {
       eyeY: model.getParameterIndex(this.id(PARAM_EYE.y)),
       bodyX: model.getParameterIndex(this.id(PARAM_BODY.x)),
       pupil: model.getParameterIndex(this.id(PARAM_MANUAL.pupilSize)),
+      dragX: model.getParameterIndex(this.id(PARAM_DRAG.x)),
+      dragY: model.getParameterIndex(this.id(PARAM_DRAG.y)),
     }
 
     this.ready = true
@@ -316,6 +333,18 @@ class CubismRuntime implements Live2dRuntime {
     this.pendingLook = { ...look }
   }
 
+  setDrag(drag: { x: number; y: number }): void {
+    if (this.disposed) return
+    // 与 setViewLook 同节奏:物理演算(调度器)在 saveParameters 之后读取输入参数,
+    // 这里暂存、update() 在 load/save 之间写入,保证每帧读到的是本帧的拖动值。
+    this.pendingDrag = { x: drag.x, y: drag.y }
+  }
+
+  private applyDrag(model: CubismModel, drag: { x: number; y: number }): void {
+    this.setParam(model, this.paramIndex.dragX, drag.x)
+    this.setParam(model, this.paramIndex.dragY, drag.y)
+  }
+
   private applyViewLook(model: CubismModel, look: ViewLook): void {
     this.setParam(model, this.paramIndex.headX, look.headX)
     this.setParam(model, this.paramIndex.headY, look.headY)
@@ -340,6 +369,8 @@ class CubismRuntime implements Live2dRuntime {
     // 每帧先恢复基准、写入跟随参数、再保存基准,调度器效果只生效一帧、下帧重算。
     model.loadParameters()
     if (this.pendingLook) this.applyViewLook(model, this.pendingLook)
+    // 拖动物理反馈输入(0032):物理演算读参数当前值做归一化,先写再 save,每帧生效
+    if (this.pendingDrag) this.applyDrag(model, this.pendingDrag)
     model.saveParameters()
 
     // 调度器:物理(后发随头部角度摆动)+ 眨眼 + 呼吸(在基准上一次性加算)

@@ -32,6 +32,16 @@ export const PARAM_BACK_HAIR = {
   swing: 'ParamBackHairSwing',
 } as const
 
+/**
+ * 拖动物理反馈(0032):PhysicsSetting5/6 的输入 —— 上下/左右拖动宠物。
+ * 运行时按窗口拖动位移写入这两个参数,SDK 物理演算(Particle 延迟/惯性)自动输出
+ * 尾巴、前发、后发等的摆动;停止拖动后参数回中,摆动经阻尼自然衰减。
+ */
+export const PARAM_DRAG = {
+  x: 'ParamDragX',
+  y: 'ParamDragY',
+} as const
+
 /** 手动 / 程序驱动参数。 */
 export const PARAM_MANUAL = {
   tailSwing: 'ParamTailSwing',

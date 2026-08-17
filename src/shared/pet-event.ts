@@ -155,6 +155,14 @@ export interface PetCursorPosition {
   y: number
   /** 光标是否在窗口矩形内。 */
   inside: boolean
+  /**
+   * 窗口位置增量 X(px,主进程 33ms 采样;0032):
+   * 用户拖拽窗口时连续非零(右为正),静止/停止为 0 —— "左右拖动宠物"的物理反馈输入,
+   * renderer 映射到 Live2D `ParamDragX`。
+   */
+  dragDx: number
+  /** 窗口位置增量 Y(px;下为正),映射到 Live2D `ParamDragY`("上下拖动宠物")。 */
+  dragDy: number
 }
 
 /** preload 暴露给 renderer 的 window.petApi 白名单(阶段 3)。 */
@@ -164,6 +172,7 @@ export interface PetApi {
    * 主进程光标轮询(视角跟随用)。
    * 拖拽区域(`-webkit-app-region: drag`)会吞掉 renderer 的鼠标事件,故光标由主进程
    * 全局读取后推送(0016),光标在窗口外也照常推送。
+   * 同事件携带窗口位置增量(dragDx/dragDy):拖动窗口时的位移 → 宠物拖动物理反馈(0032)。
    */
   onCursor(handler: (position: PetCursorPosition) => void): () => void
   getState(): Promise<PetConnectionState>

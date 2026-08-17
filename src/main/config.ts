@@ -61,6 +61,7 @@ export class PetConfigStore {
     if (patch.petResponse !== undefined) next.pet.response = clamp(patch.petResponse, 0.2, 5)
     if (patch.petPupilSensitivity !== undefined) next.pet.pupilSensitivity = clamp(patch.petPupilSensitivity, 200, 2000)
     if (patch.petPupilMax !== undefined) next.pet.pupilMax = clamp(patch.petPupilMax, 0, 1)
+    if (patch.petDragStrength !== undefined) next.pet.dragStrength = clamp(patch.petDragStrength, 0, 1)
     if (patch.voiceEnabled !== undefined) next.voice.enabled = Boolean(patch.voiceEnabled)
     if (patch.launchAtLogin !== undefined) next.launchAtLogin = Boolean(patch.launchAtLogin)
     if (patch.targetSessionId !== undefined) {
@@ -111,6 +112,7 @@ export class PetConfigStore {
           if (typeof raw.pet.response === 'number') next.pet.response = clamp(raw.pet.response, 0.2, 5)
           if (typeof raw.pet.pupilSensitivity === 'number') next.pet.pupilSensitivity = clamp(raw.pet.pupilSensitivity, 200, 2000)
           if (typeof raw.pet.pupilMax === 'number') next.pet.pupilMax = clamp(raw.pet.pupilMax, 0, 1)
+          if (typeof raw.pet.dragStrength === 'number') next.pet.dragStrength = clamp(raw.pet.dragStrength, 0, 1)
         }
         if (typeof raw.voice?.enabled === 'boolean') next.voice.enabled = raw.voice.enabled
         if (typeof raw.launchAtLogin === 'boolean') next.launchAtLogin = raw.launchAtLogin

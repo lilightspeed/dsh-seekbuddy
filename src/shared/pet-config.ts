@@ -36,6 +36,12 @@ export interface PetPetSettings {
   pupilSensitivity: number
   /** 瞳孔收缩最大幅度(0..1;1 = 参数满行程,即"缩到最小")。 */
   pupilMax: number
+  /**
+   * 拖动反馈强度(0..1,0033/0034):线性映射到增益 1..DRAG_MAX_MULTIPLIER ——
+   * 0 = 基础灵敏度(0032 原效果,起点),1 = 增益上限(接近 Live2D 编辑器满行程反馈)。
+   * 默认 1:升级后默认即为增强效果。
+   */
+  dragStrength: number
 }
 
 export interface PetConfig {
@@ -66,6 +72,7 @@ export const DEFAULT_PET_CONFIG: PetConfig = {
     response: 1,
     pupilSensitivity: 600,
     pupilMax: 1,
+    dragStrength: 1,
   },
   voice: { enabled: true },
   launchAtLogin: false,
@@ -93,4 +100,6 @@ export interface PetConfigUpdate {
   petResponse?: number
   petPupilSensitivity?: number
   petPupilMax?: number
+  /** 拖动反馈强度(0..1,0033)。 */
+  petDragStrength?: number
 }

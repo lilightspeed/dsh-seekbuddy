@@ -395,6 +395,7 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     if (petDeadZone && document.activeElement !== petDeadZone) petDeadZone.value = String(Math.round(p.deadZone))
     if (petDistance && document.activeElement !== petDistance) petDistance.value = String(Math.round(p.distance))
     if (petResponse && document.activeElement !== petResponse) petResponse.value = String(Math.round(p.response * 100))
+    if (petDrag && document.activeElement !== petDrag) petDrag.value = String(Math.round(p.dragStrength * 100))
     refreshPetLabels()
   }
 
@@ -473,9 +474,11 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
   const petDistanceVal = document.querySelector<HTMLSpanElement>('#pet-distance-val')
   const petResponse = document.querySelector<HTMLInputElement>('#pet-response')
   const petResponseVal = document.querySelector<HTMLSpanElement>('#pet-response-val')
-  const petSliders: Array<HTMLInputElement | null> = [petX, petY, petScale, petHead, petEye, petPupilSensitivity, petPupilMax, petDeadZone, petDistance, petResponse]
+  const petDrag = document.querySelector<HTMLInputElement>('#pet-drag')
+  const petDragVal = document.querySelector<HTMLSpanElement>('#pet-drag-val')
+  const petSliders: Array<HTMLInputElement | null> = [petX, petY, petScale, petHead, petEye, petPupilSensitivity, petPupilMax, petDeadZone, petDistance, petResponse, petDrag]
 
-  /** 从滑块值构造宠物设置补丁(扁平 pet* 键,全量 10 项)。 */
+  /** 从滑块值构造宠物设置补丁(扁平 pet* 键,全量 11 项)。 */
   function petPatchFromSliders(): PetConfigUpdate {
     const num = (el: HTMLInputElement | null): number => (el ? Number(el.value) : 0)
     return {
@@ -489,6 +492,7 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
       petDeadZone: num(petDeadZone),
       petDistance: num(petDistance),
       petResponse: num(petResponse) / 100,
+      petDragStrength: num(petDrag) / 100,
     }
   }
 
@@ -503,6 +507,7 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     if (petDeadZoneVal) petDeadZoneVal.textContent = `${petDeadZone?.value ?? '0'}px`
     if (petDistanceVal) petDistanceVal.textContent = `${petDistance?.value ?? '0'}px`
     if (petResponseVal) petResponseVal.textContent = `${petResponse?.value ?? '0'}%`
+    if (petDragVal) petDragVal.textContent = `${petDrag?.value ?? '0'}%`
   }
 
   let petTimer: ReturnType<typeof setTimeout> | undefined

@@ -40,6 +40,7 @@ function sanitizeConfigUpdate(patch: PetConfigUpdate | undefined): PetConfigUpda
   if (patch?.petResponse !== undefined) out.petResponse = toFinite(patch.petResponse)
   if (patch?.petPupilSensitivity !== undefined) out.petPupilSensitivity = toFinite(patch.petPupilSensitivity)
   if (patch?.petPupilMax !== undefined) out.petPupilMax = toFinite(patch.petPupilMax)
+  if (patch?.petDragStrength !== undefined) out.petDragStrength = toFinite(patch.petDragStrength)
   return out
 }
 
@@ -61,6 +62,8 @@ const petApi: PetApi = {
         x: toFinite(payload?.x),
         y: toFinite(payload?.y),
         inside: Boolean(payload?.inside),
+        dragDx: toFinite(payload?.dragDx),
+        dragDy: toFinite(payload?.dragDy),
       })
     }
     ipcRenderer.on('pet:cursor', listener)
