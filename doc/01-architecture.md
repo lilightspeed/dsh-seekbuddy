@@ -17,9 +17,10 @@ DSH 的运行时由两部分组成:
 │                                                                │
 │  ┌─────────────────────────────────────────────────────────┐  │
 │  │ 表现层 (renderer)                                        │  │
-│  │  · 角色渲染: PixiJS + Lottie / Live2D / Spine           │  │
-│  │  · 状态机: XState (idle/talking/thinking/working/...)   │  │
-│  │  · UI: React + Zustand + Tailwind(设置面板/气泡)        │  │
+│  │  · 角色渲染: Live2D(官方 Cubism SDK,独立 canvas)+      │  │
+│  │            PixiJS 占位球宠(回落)                        │  │
+│  │  · 状态机: XState (idle/thinking/happy/sad/talking)     │  │
+│  │  · UI: vanilla DOM(气泡/输入条/面板;React 未引入)       │  │
 │  └─────────────────────────────────────────────────────────┘  │
 │  ┌─────────────────────────────────────────────────────────┐  │
 │  │ 控制层 (main)                                            │  │
@@ -53,8 +54,8 @@ DSH 的运行时由两部分组成:
 
 宠物订阅后把事件翻译成表现:`agent 忙碌 → 思考动作`、`需要审批 → 敲门冒泡`、`报错 → 变脸`、`完成 → 提示音`。
 
-### ④ 反向:Agent 驱动宠物(可选,强烈建议加)
-宠物内跑一个 MCP server,暴露 `pet.speak / pet.setExpression / pet.playAnimation / pet.notify` 等工具。DSH 的 `mcp-client` 插件连接它,把工具注册成 `mcp__<serverName>__<toolName>`。于是 Agent 在回答过程中能反过来让宠物"开口/做动作/弹提醒",形成三方互动闭环。
+### ④ 反向:Agent 驱动宠物(已落地)
+宠物内跑一个 MCP server,暴露 `pet.speak / pet.setExpression / pet.notify` 等工具(经主进程 loopback bridge,见 04 篇)。DSH 的 `mcp-client` 插件连接它,把工具注册成 `mcp__<serverName>__<toolName>`。于是 Agent 在回答过程中能反过来让宠物"开口/做动作/弹提醒",形成三方互动闭环。
 
 ## 4. 信任边界(为什么宠物能拿到 Web GUI 同级权限)
 
@@ -77,7 +78,7 @@ DSH 的运行时由两部分组成:
 
 | 组件 | 职责 | 属于哪一半 |
 |---|---|---|
-| DSH 客户端层 | 握手、重连、调用 `/api`、订阅事件、序列化/反序列化 | 主进程(或 renderer,见 03) |
+| DSH 客户端层 | 握手、重连、调用 `/api`、订阅事件、序列化/反序列化 | **主进程**(`dsh/connection.ts`,Node 载体;renderer 不直连 DSH) |
 | 事件总线 | 把 DSH 帧/事件归一化成内部 `PetEvent`,推给状态机和 UI | 主进程 → renderer(经 contextBridge) |
 | 状态机 (XState) | 定义宠物状态与迁移,事件 → 动作 | renderer |
 | 表现层 | 角色渲染、气泡、面板 | renderer |

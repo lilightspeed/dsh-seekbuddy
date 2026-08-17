@@ -1,16 +1,14 @@
-# 08 · Live2D 角色接入 —— Cubism 工程 → 项目可用文件(技术咨询整理)
+# 08 · Live2D 角色接入 —— Cubism 工程 → 项目可用文件(已落地)
 
 > 主题:如何把 **Live2D Cubism Editor** 里编辑的工程文件转换为本项目可用的运行时资源;
-> 哪些角色元素可兼容、哪些不可兼容;以及在本项目(DSH 桌面宠物)里的接入点与风险。
+> 本项目(Live2D 视角跟随里程碑)的接入方式与落地记录。
 >
-> 本文是 2026-08-15 会话中的技术咨询整理稿(暂无代码落地,属设计/研究文档),实现时以实际
-> 选定的 Cubism SDK 版本与 Editor 版本为准。
-
----
+> 本文最初是 2026-08-15 的设计稿,现已**完整落地**(0014–0019)。文件转换与兼容矩阵仍有效;
+> 实际代码结构以 `src/renderer/src/pet/live2d/` 与 `vendor/live2d/README.md` 为准。
 
 ## 1. 一句话结论
 
-**Cubism Editor 的工程文件(.cubismproj / .can3 / 源 PSD)运行时用不了,必须用 Editor 导出成"嵌入用(runtime)包"**。导出后,角色的核心能力(网格变形、物理、表情、动画、口型)几乎**全部可兼容**;不兼容的只有编辑器内部工程与预览级特效。真正的难点在**运行时集成**(本项目是 Pixi v8,经典 Live2D 插件不兼容,见 §4)。
+**Cubism Editor 的工程文件(.cubismproj / .can3 / 源 PSD)运行时用不了,必须用 Editor 导出成"嵌入用(runtime)包"**。导出后,角色的核心能力(网格变形、物理、表情、动画、口型)几乎**全部可兼容**;不兼容的只有编辑器内部工程与预览级特效。本项目运行时走**官方 Cubism SDK for Web + 独立 canvas 自绘**(Pixi v8 不兼容经典插件,见 §4)。
 
 ## 2. 转换流程:Editor 工程 → 项目可用文件
 
@@ -20,54 +18,52 @@
 |---|---|---|
 | 整个模型(网格 + 纹理 + 参数 + 变形器) | `.moc3` + 纹理 `.png` + `.model3.json`(清单) | `assets/pet/live2d/<model>/` |
 | 物理(头发/衣物摆动,Physics 窗口) | `.physics3.json` | 同上 |
-| 预设姿势(Pose 窗口) | `.pose3.json` | 同上 |
-| 表情(Expression 窗口) | `*.exp3.json` | 同上 |
-| 动画(Animation 时间轴,每段单独导出) | `*.motion3.json` | 同上 |
-| 可点区域(Hit Area) | 写入 `.model3.json` 的 `HitAreas` | 同上 |
+| 预设姿势(Pose 窗口) | `.pose3.json` | 同上(未制作) |
+| 表情(Expression 窗口) | `*.exp3.json` | 同上(未制作) |
+| 动画(Animation 时间轴,每段单独导出) | `*.motion3.json` | 同上(未制作) |
+| 可点区域(Hit Area) | 写入 `.model3.json` 的 `HitAreas` | 同上(未制作) |
 
-导出一个干净目录后,整个目录放进 `assets/pet/live2d/`;electron-vite 的 publicDir 会把它拷进
-`out/renderer`,打包时 `assets/**` 已纳入 asar(阶段 5 无需额外配置)。
+导出一个干净目录后放进 `assets/pet/live2d/`;electron-vite 的 publicDir(`assets`)会把它拷进 `out/renderer`。
 
-> **没有 Cubism Editor 也能起步**:Live2D 官网免费示例模型都是现成的 runtime 包
-> (moc3 + model3.json),可先下载调通管线,再换自己的角色。
-
-## 3. 兼容矩阵
+## 3. 兼容矩阵(本项目实测)
 
 | 角色元素 | 兼容性 | 说明 |
 |---|---|---|
-| 网格 / 权重 / 变形器 / 参数(Live2D 核心价值) | ✅ 完全兼容 | 全部打进 `.moc3`,SDK 原生驱动 |
-| 纹理(PSD/PSB 分层) | ✅ 兼容 | 导出时按材质合并成带透明通道的 PNG |
-| 物理(头发/裙摆/胸部摆动) | ✅ 兼容 | `.physics3.json`,SDK 自动模拟,零代码 |
-| 姿态 / 预设姿势 | ✅ 兼容 | `.pose3.json`,SDK 支持 |
-| 表情 | ✅ 兼容 | `.exp3.json`,可映射语义状态(如 happy → exp_happy) |
-| 动画 | ✅ 兼容 | `.motion3.json`,可映射语义状态(idle → 循环待机) |
-| 自动眨眼 / 呼吸 / 口型参数(ParamEyeLOpen / ParamMouthOpenY…) | ✅ 兼容 | SDK 有 auto-blink / auto-breath;口型可外部驱动(如 TTS 音量 → 嘴张) |
-| 混合模式(普通/正片叠底/加算) | ✅ 基本兼容 | SDK 支持常见 blend,极端材质可能效果有差 |
-| Hit Area 点击热区 | ⚠️ 兼容但需接线 | 数据会导出,但点击检测要自己在运行时写 |
-| 编辑器内后期特效(阴影/模糊/后处理/特殊渲染) | ❌ 不导出 | 只是 Editor 预览,运行时没有 |
-| 编辑器工程文件(.cubismproj / .can3 / 源 PSD) | ❌ 运行时用不到 | 必须导出,别把工程目录当资源 |
-| 逻辑类联动(Editor 里"按条件切换表情"等) | ❌ 编辑器无脚本 | 逻辑必须写在运行时 TS(本项目状态机已承担) |
+| 网格 / 权重 / 变形器 / 参数 | ✅ | 全部打进 `.moc3`,SDK 原生驱动 |
+| 纹理(PSD/PSB 分层) | ✅ | 导出时合并成带透明通道的 PNG(本项目单张 1024²) |
+| 物理(头发摆动) | ✅ | `.physics3.json`,SDK 自动模拟 —— 头部角度变化即触发后发摆动(实测) |
+| 自动眨眼 | ✅ | model3.json EyeBlink 组为空,运行时显式注入 `ParamEyeLOpen/ROpen` 绕过(0018) |
+| 自动呼吸 | ✅ | `ParamBreath` 由 `CubismBreathUpdater` 驱动(0018/0019,注意 load/save 帧节奏) |
+| 姿态 / 预设姿势 | ⏳ 未制作 | `.pose3.json`,SDK 支持 |
+| 表情 | ⏳ 未制作 | `.exp3.json`,可映射语义状态 |
+| 动画 | ⏳ 未制作 | `.motion3.json`,可映射语义状态 |
+| 口型(`ParamMouthOpenY`) | ⏳ 模型无嘴部参数 | talking/TTS 里程碑需回编辑器补 |
+| Hit Area 点击热区 | ⏳ 未制作 | 数据会导出,点击检测运行时自写 |
+| 混合模式 | ✅ 基本兼容 | SDK 支持常见 blend |
+| 编辑器内后期特效 | ❌ 不导出 | 只是 Editor 预览 |
+| 编辑器工程文件(.cmo3 / 源 PSD) | ❌ 运行时用不到 | 保留在 `assets/pet/live2d/project file/`(勿被运行时加载) |
 
-**难点是运行时集成,不是文件转换** —— 见下。
+## 4. 本项目接入点(实际落地)
 
-## 4. 本项目接入点(改哪几处)
+架构留好的路(AGENTS.md"换 Live2D 只加实现类,状态机/事件/UI 零改动")已兑现:
 
-架构早为此留好路(AGENTS.md 明示"换 Lottie/Live2D 只加实现类,状态机/事件/UI 零改动"):
+1. **`PetAnimator` 接口**(`src/renderer/src/pet/animator.ts`)不变;新增 `createLive2dAnimator(stage)`
+   工厂(0014),`play(state)` 切状态 + 启停眨眼,`tick(delta)` 驱动跟随/呼吸/物理;另有可选
+   `applyPetSettings?`(设置面板实时调位置/大小/手感,0017)。占位球宠(`sprite-animator.ts`)
+   在 WebGL2 不可用时回落。
+2. **运行时**:`pet/live2d/cubism-runtime.ts` —— 独立 WebGL2 canvas 挂 `#stage`(不依赖 Pixi 渲染),
+   官方 SDK 5-r.5 自绘;每帧 `loadParameters → 写跟随参数 → saveParameters → 调度器(物理/眨眼/呼吸)→
+   model.update → 渲染`(0019 修复加算型更新器累加)。`view-follower.ts` 是纯计算跟随逻辑
+   (指数距离曲线 + Y 取反 + 分通道平滑),与 SDK 解耦。
+3. **SDK vendor**:`vendor/live2d/` —— 官方 **Cubism SDK for Web 5-r.5**(Core 06.00.0001),
+   Framework 编译为 ESM+d.ts(`@live2d/framework` 别名),Core 经 index.html script 标签引入全局,
+   着色器在 `assets/pet/live2d/shaders/`。许可与再构建步骤见 `vendor/live2d/README.md`。
+4. **视角跟随数据源**:主进程 33ms 轮询光标(`screen.getCursorScreenPoint` + 窗口 bounds)经
+   `pet:cursor` 推给 renderer(0016 修复拖拽区域吞鼠标事件;0017 去掉边缘夹取让窗外距离生效)。
+5. **设置面板**:宠物水平/垂直位置、显示大小、头部/眼珠/身体幅度、死区、跟随距离、跟手速度,
+   实时生效并持久化(0017,`PetConfig.pet`)。
 
-1. **`PetAnimator` 接口**(`src/renderer/src/pet/animator.ts`):新增 `createLive2dAnimator(stage)` 实现类,
-   `play('idle'|'thinking'|'happy'|'sad'|'talking')` 内:切 motion + 设 expression + 启停
-   auto-blink / auto-breath;`tick(delta)` 内喂口型参数(阶段 6 TTS 接入后)。
-   状态机 / 事件 / 面板**一行不改**。
-2. **`stage.ts`**:Live2D 需要独立 WebGL 渲染 —— 在 Pixi 舞台旁挂一个 Live2D canvas(或遮住 Pixi
-   占位球宠),resize / 居中逻辑照旧(0009 已加 resize 监听)。
-3. **运行时依赖**:官方 **Cubism SDK for Web**(框架为 TS 源码 + 单文件 `live2dcubismcore.min.js`,
-   官方以 zip 分发,需 vendor 进仓库并保留许可声明)。
-   ⚠️ 经典插件 `@pixi/live2d-display` 只支持 Pixi v6/v7 且已不维护,而本项目是 **Pixi v8** ——
-   Live2D 建议走**独立 canvas 自绘**,不依赖该插件,这是最稳的路线。
-4. **CSP**:renderer 已放行 `unsafe-eval`(Pixi 着色器),Live2D 大概率无需再放宽,实现时验证。
-5. **打包**:`assets/**` 已进 asar,零改动;纹理建议单张 ≤4096,运动数量克制,避免撑爆安装包。
-
-### 语义状态 ↔ Live2D 素材建议映射
+### 语义状态 ↔ Live2D 素材建议映射(表情/动画里程碑用)
 
 | 状态机语义 | 动作(motion3) | 表情(exp3) |
 |---|---|---|
@@ -77,16 +73,17 @@
 | sad | 难过动画 | 哭/低落 |
 | talking | 说话动画 | 口型联动(TTS 音量驱动 ParamMouthOpenY) |
 
-## 5. 风险与注意
+## 5. 风险与注意(已核实)
 
-- **版本匹配**:Editor 5.x 导出的 `.moc3` 需要较新的 Cubism Core;SDK/Core 与 Editor 版本不匹配会报
-  `moc3 unsupported`。选型时锁定 Editor 版本对应的 SDK 版本。
-- **许可**:Cubism SDK for Web 是 Live2D 专有许可(符合条款可免费使用);角色素材版权另算 ——
-  `assets/pet/README.md` 的 License 表需补 Live2D 条目。
-- **体积/性能**:moc3 + 纹理 + 运动集是主要增量;粒子、多张高分辨率纹理需克制。
+- **版本匹配**:本项目模型 moc3 格式版本 = 6(`MocVersion_53`,5.3.00+),由 Core **06.00.0001**
+  (SDK for Web **5-r.5**)支持 —— 已实测加载通过,无 `moc3 unsupported`。换旧 Core 会报错。
+- **许可**:Core 为 Live2D Proprietary Software License,Framework 为 Live2D Open Software License,
+  许可文件已随 `vendor/live2d/` 入库;角色素材版权另算(`assets/pet/README.md` License 表)。
+- **体积/性能**:moc3 + 纹理 + Core js 为主要增量;`project file/` 里的 .cmo3(编辑器工程)不应被打包。
 
-## 6. 后续建议(未实施,待模型/SDK 定版)
+## 6. 落地记录与剩余项
 
-1. `assets/pet/README.md` 补 `live2d/` 目录规则(命名、体积上限、license 占位)。
-2. 新增 `createLive2dAnimator` 骨架(先返回"未接入"降级实现 + 接入步骤注释),等定版后填实现。
-3. vendor Cubism SDK for Web 到仓库(vendor/live2d 或 assets 同级),记录许可与版本。
+- **落地**:0014(骨架+跟随逻辑)→ 0015(vendor + 独立 canvas 运行时)→ 0016(光标主进程轮询)→
+  0017(调优 + 设置面板)→ 0018(眨眼/呼吸)→ 0019(呼吸 load/save 节奏修复)。
+- **剩余**:表情/姿势/动画/HitAreas 素材与 `model3.json` 注册(导出清单见
+  `assets/pet/live2d/README.md` §4);嘴部参数;LipSync。

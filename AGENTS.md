@@ -5,10 +5,10 @@ DSH 桌面宠物 —— DeepSeek Harness 的**第二个、常驻、对等客户�
 ## Repository layout
 
 ```
-src/main/       主进程:窗口、托盘、DSH 连接、PetEvent 总线、MCP server(阶段4)
+src/main/       主进程:窗口、托盘、DSH 连接、PetEvent 总线、MCP server/bridge、光标轮询
 src/preload/    contextBridge 白名单(renderer 与主进程的唯一通道)
-src/renderer/   表现层:PixiJS 角色 + XState 状态机 + vanilla DOM 气泡/输入(React/Zustand/Tailwind 待复杂 UI 再引入)
-doc/            技术指导文档(01 架构 … 07 TS 学习路线)+ changes/ 改动档案
+src/renderer/   表现层:Live2D(官方 Cubism SDK 独立 canvas)+ PixiJS 占位 + XState 状态机 + vanilla DOM 气泡/输入
+doc/            技术指导文档(01 架构 … 08 Live2D)+ changes/ 改动档案
 ```
 
 ## Commands
@@ -49,7 +49,9 @@ DSH 运行实例默认在 `http://127.0.0.1:3080`(loopback 受信,宠物权限�
 - `@deepseek-ai/dsh-client-connection/client` 是**纯浏览器包**(引用 `window`,Node 加载即崩);主进程载体用 `@deepseek-ai/dsh-host-apiproxy/client` 的 `AbstractApiClient`(Node-safe)。
 - `"type": "module"` 下 electron-vite 把 preload 输出为 `out/preload/index.mjs`,主进程引用它且 `webPreferences.sandbox: false`。
 - `apps/pet` 的 tsconfig 继承仓库 base 但**清空 `paths`**:workspace 依赖走 `node_modules` 里已构建的 `lib/types/*.d.ts`;若类型报"找不到模块",先确认对应包构建产物存在(根仓库 `pnpm run build:lib`)。
-- **动画可插拔**:状态机只输出语义状态(`idle/thinking/happy/sad/talking`),`PetAnimator` 接口(`src/renderer/src/pet/animator.ts`)是唯一懂动画后端的层——换 Lottie/Live2D 只加实现类,状态机/事件/UI 零改动。占位实现是 PixiJS 几何"球宠";素材规则见 `assets/pet/README.md`。
+- **动画可插拔**:状态机只输出语义状态(`idle/thinking/happy/sad/talking`),`PetAnimator` 接口(`src/renderer/src/pet/animator.ts`)是唯一懂动画后端的层——换 Lottie/Live2D 只加实现类,状态机/事件/UI 零改动。**现役后端是 Live2D**(`createLive2dAnimator`,官方 Cubism SDK + 独立 canvas 自绘,见 `pet/live2d/` 与 `vendor/live2d/README.md`);占位实现是 PixiJS 几何"球宠",WebGL2 不可用时回落。
+- **Live2D 运行时事实**:SDK vendor 在 `vendor/live2d/`(Framework 编译产物走 `@live2d/framework` 别名,Core 全局经 index.html script 引入);着色器在 `assets/pet/live2d/shaders/`;每帧必须按 `loadParameters → 写跟随参数 → saveParameters → 调度器 → model.update` 节奏(加算型更新器如呼吸,缺了会跨帧累加被 clamp 钉死,0019)。
+- **视角跟随的光标来自主进程轮询**:`#stage` 整窗是 `-webkit-app-region: drag`,拖拽区域会吞掉 renderer 的鼠标事件(0016)→ 主进程 33ms 轮询 `screen.getCursorScreenPoint()` + 窗口 bounds,经 `pet:cursor` 推给 renderer;**不要**在 renderer 里依赖 pointermove 做跟随。
 - **PixiJS v8 要求 CSP 允许 `unsafe-eval`**(WebGL 着色器生成),renderer 的 CSP 已为此放开;代价是 Electron dev 期的安全警告(打包后消失)。
 - **IPC 参数必须可序列化**:`undefined`/`NaN` 过 IPC 会触发主进程 `Error processing argument at index N, conversion failure` 崩溃。参数合法性在 **preload 边界统一收敛**(`toFinite` / `String`),renderer 与主进程 handler 不要透传原始值。
 - **窗口拖拽用原生 `-webkit-app-region: drag`**(`#stage`),**不要**用 IPC 逐帧 `setPosition`(曾导致卡顿 + setPosition 参数转换崩溃)。可交互区域(输入条)必须标 `no-drag`;要点击宠物时在 `#stage` 上叠 `no-drag` 透明层。

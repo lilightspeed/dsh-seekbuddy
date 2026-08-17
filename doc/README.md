@@ -1,23 +1,22 @@
 # DSH 桌面宠物 —— 技术指导文档
 
-> 目标:开发一个与 DSH(DeepSeek Harness)深度链接的桌面宠物。宠物窗口独立于 DSH 窗口,既能通过宠物**主动操作 DSH 的绝大部分能力**,又能被 DSH 的 Agent **反驱动**(通过 MCP),同时叠加桌面宠物特有的表现能力(动画、语音、托盘、通知等)。
+> 目标:开发一个与 DSH(DeepSeek Harness)深度链接的桌面宠物。宠物窗口独立于 DSH 窗口,既能通过宠物**主动操作 DSH 的绝大部分能力**,又能被 DSH 的 Agent **反驱动**(通过 MCP),同时叠加桌面宠物特有的表现能力(Live2D、托盘、通知等)。
 
-本目录是这套应用的技术指导文档,按主题拆分。建议按顺序阅读。
+本目录是这套应用的技术指导文档,按主题拆分。建议按顺序阅读。**实际开发过程与踩坑见 [changes/](./changes/) 改动档案**(按改动时序,是最贴近现状的一手记录)。
 
 ## 文档索引
 
 | 文件 | 内容 | 阅读优先级 |
 |---|---|---|
 | [01-architecture.md](./01-architecture.md) | 整体架构、双向控制模型、与主流 MCP 宠物的区别 | ★★★ 先读 |
-| [02-tech-stack.md](./02-tech-stack.md) | 完整技术栈清单(含精确版本) | ★★★ |
+| [02-tech-stack.md](./02-tech-stack.md) | 技术栈清单(当前实际采用) | ★★★ |
 | [03-dsh-integration.md](./03-dsh-integration.md) | **核心**:如何消费 DSH 的 `/api` + WebSocket 客户端面 | ★★★ |
 | [04-mcp-integration.md](./04-mcp-integration.md) | 如何让宠物成为 MCP server,被 DSH Agent 调用 | ★★ |
-| [05-scaffolding.md](./05-scaffolding.md) | `apps/pet` 工程脚手架、目录结构、Electron 配置 | ★★ |
-| [06-roadmap.md](./06-roadmap.md) | 分阶段开发路线图(MVP → 完整版) | ★ |
-| [07-typescript-learning-path.md](./07-typescript-learning-path.md) | TypeScript 学习路线(从零到能开工) | ★★ |
-| [08-live2d-integration.md](./08-live2d-integration.md) | Live2D 角色接入:Cubism 工程 → runtime 包、兼容矩阵、本项目接入点 | ★★ |
+| [05-scaffolding.md](./05-scaffolding.md) | `apps/pet` 工程现状:目录结构、构建、preload 白名单 | ★★ |
+| [06-roadmap.md](./06-roadmap.md) | 分阶段开发路线图(阶段 0–5.5 已完成,阶段 6 进行中) | ★ |
+| [08-live2d-integration.md](./08-live2d-integration.md) | Live2D 角色接入:Cubism 工程 → runtime 包、兼容矩阵、落地记录 | ★★ |
 
-> **项目改动档案**:[changes/](./changes/) 按"一次改动一篇文档"记录实际开发过程(改动清单、决策、踩坑、验证),约定见 [changes/README.md](./changes/README.md)。
+> **项目改动档案**:[changes/](./changes/) 按"一次改动一篇文档"记录实际开发过程(改动清单、决策、踩坑、验证),约定见 [changes/README.md](./changes/README.md)。主题文档描述"当前应该是什么样",changes/ 记录"当时怎么走到这里的"。
 
 ## 一句话结论
 

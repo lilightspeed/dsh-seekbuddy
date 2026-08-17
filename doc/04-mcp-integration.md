@@ -112,6 +112,10 @@ server.registerTool(
 - stdio:宠物 MCP 子进程随 DSH 起停;进程崩溃 DSH `mcp-client` 有重连策略(`reconnect` 配置)。
 - streamable HTTP:宠物常驻;DSH 断开会重连。二选一即可;个人项目建议先 stdio(简单),要常驻交互再换 HTTP。
 
+> **本项目实际落地(0008/0011)**:pet 用 **loopback TCP bridge** 而非上面两种直连 —— 主进程在
+> `127.0.0.1:39761` 开桥(`mcp/bridge.ts`),打包后的 `out/main/mcp-server.js` 由 DSH 用
+> **裸 node stdio** spawn 连回该桥,再经 preload 事件驱动宠物表现。桥本身是进程内转发,不新增网络面。
+
 ## 8. 联动示例:一条完整双向闭环
 
 1. 你在宠物气泡里输入"帮我查下今天的天气"。
