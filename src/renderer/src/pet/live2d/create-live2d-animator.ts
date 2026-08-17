@@ -100,10 +100,10 @@ function createLive2dAnimatorWithRuntime(
    */
   const DRAG_FULL_TRAVEL = 0.5
   /**
-   * 100% 强度时的增益上限(倍):1 = 0032 原效果;5 = 快速拖动(≥ ~42px/采样)即
-   * 饱和到参数满行程(窗口半宽 210px / 5),反馈强度与编辑器一致。
+   * 100% 强度时的增益上限(倍):1 = 0032 原效果;10 = 中等速度拖动(≥ ~21px/采样,
+   * 约 640px/s)即饱和到参数满行程(窗口半宽 210px / 10),反馈强度达到编辑器最大效果。
    */
-  const DRAG_MAX_MULTIPLIER = 5
+  const DRAG_MAX_MULTIPLIER = 10
   /** 拖动目标平滑速度(1/s):越大越跟手;回中同速,配合物理 delay 留出惯性余韵。 */
   const DRAG_SMOOTHING = 10
   /** 拖动反馈强度(设置面板 0..1,0033/0034):0 = 基础效果(0032),1 = 增益到 DRAG_MAX_MULTIPLIER。 */
