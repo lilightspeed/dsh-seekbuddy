@@ -1,5 +1,8 @@
 # doc/changes —— 项目改动档案
 
+> **本目录已停用(2026-08-18 起)**:AGENTS.md 约定改为「每次改动都提交 git」,
+> 不再新增改动文档。以下为 0001–0034 的历史档案,仅供追溯,不再更新。
+
 > 本目录按"一次改动一篇文档"的方式,记录 `apps/pet` 开发过程中每一步的实际改动、决策与踩坑。
 > 它是**变更记录**(发生了什么、为什么、怎么验证),不是操作手册;操作步骤见 `doc/05-scaffolding.md` 等主题文档。
 
@@ -29,8 +32,7 @@ NNNN-<简短英文slug>.md
 
 ### 更新时机
 
-- **每完成一步**(阶段 0/1/2/… 或一次独立修复),写一篇新的 `NNNN` 文档。
-- 已写过的文档原则上**不改写历史**;错误修正或补充放在新文档里说明,保持档案的时序性。
+- **已停用**:改动记录改由 git 提交承担(见 AGENTS.md Conventions);本目录不再新增文档。
 
 ## 文档列表
 
@@ -67,3 +69,6 @@ NNNN-<简短英文slug>.md
 | [0029-pupil-contraction-reaction.md](./0029-pupil-contraction-reaction.md) | 瞳孔收缩反应:空闲时鼠标快速接近宠物 → ParamPupilSize 缩瞳,停驻后缓慢复原 | 草稿 |
 | [0030-settings-pupil-knobs.md](./0030-settings-pupil-knobs.md) | 设置面板:删除「身体幅度」滑块,新增瞳孔缩放(灵敏度 px/s + 收缩幅度),实时生效并持久化 | 草稿 |
 | [0031-settings-follow-collapse.md](./0031-settings-follow-collapse.md) | 设置面板:视线跟随相关 7 个滑块收进可展开合集「视线跟随鼠标时」(原生 details,默认收起) | 草稿 |
+| [0032-drag-physics-feedback.md](./0032-drag-physics-feedback.md) | 拖动物理反馈:应用 Live2D 导出参数 ParamDragX/Y(上下/左右拖动宠物),主进程采样窗口位移驱动物理演算 | 已验证 |
+| [0033-drag-strength-setting.md](./0033-drag-strength-setting.md) | 设置面板:「拖动反馈强度」滑块(0..1,0=关闭,1=默认满强度),实时生效并持久化 | 草稿 |
+| [0034-drag-strength-recalibrate.md](./0034-drag-strength-recalibrate.md) | 拖动反馈强度重标定:0% = 0032 原效果(起点),100% = 增益上限(接近编辑器满行程反馈);默认 100% 即增强 | 草稿 |

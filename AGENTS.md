@@ -1,6 +1,6 @@
 # AGENTS.md
 
-DSH 桌面宠物 —— DeepSeek Harness 的**第二个、常驻、对等客户端**:一个独立 Electron 窗口,既能通过 DSH 的 `/api` + WebSocket 主动操作/观察 DSH,又能作为 MCP server 被 DSH Agent 反驱动(Agent → 宠物)。设计见 [doc/01-architecture.md](./doc/01-architecture.md),按 [doc/06-roadmap.md](./doc/06-roadmap.md) 分阶段推进,每步改动记录在 [doc/changes/](./doc/changes/README.md)。
+DSH 桌面宠物 —— DeepSeek Harness 的**第二个、常驻、对等客户端**:一个独立 Electron 窗口,既能通过 DSH 的 `/api` + WebSocket 主动操作/观察 DSH,又能作为 MCP server 被 DSH Agent 反驱动(Agent → 宠物)。设计见 [doc/01-architecture.md](./doc/01-architecture.md),按 [doc/06-roadmap.md](./doc/06-roadmap.md) 分阶段推进,每步改动以 git 提交记录(见 Conventions;历史改动档案见 [doc/changes/](./doc/changes/README.md),已停用)。
 
 ## Repository layout
 
@@ -8,7 +8,7 @@ DSH 桌面宠物 —— DeepSeek Harness 的**第二个、常驻、对等客户�
 src/main/       主进程:窗口、托盘、DSH 连接、PetEvent 总线、MCP server/bridge、光标轮询
 src/preload/    contextBridge 白名单(renderer 与主进程的唯一通道)
 src/renderer/   表现层:Live2D(官方 Cubism SDK 独立 canvas)+ PixiJS 占位 + XState 状态机 + vanilla DOM 气泡/输入
-doc/            技术指导文档(01 架构 … 08 Live2D)+ changes/ 改动档案
+doc/            技术指导文档(01 架构 … 08 Live2D);changes/ 为历史改动档案(约定已停用,不再新增)
 ```
 
 ## Commands
@@ -26,8 +26,7 @@ DSH 运行实例默认在 `http://127.0.0.1:3080`(loopback 受信,宠物权限�
 ## Conventions
 
 - 全栈 TypeScript(strict)+ ESM;**DSH 调用面一律 import 仓库 client 类型,禁止手写接口类型**——方法签名以 `packages/**/lib/types/*.d.ts` 为准,`doc/03` 的示例代码可能有漂移,先核对再写。
-- 提交用 conventional commits(如 `feat(pet): …` / `chore(pet): …`)。
-- 每完成一步(阶段或独立修复),在 `doc/changes/` 写一篇 `NNNN-<slug>.md`(约定见其 README);**不改写历史文档**。
+- **每次改动都提交 git**:每完成一步(阶段或独立修复),用 conventional commits(如 `feat(pet): …` / `chore(pet): …`)立即提交,不攒多次改动;**不再写 `doc/changes/` 改动文档**(该目录为历史档案,约定已停用);**不改写历史文档**。
 - 本目录是**独立 git 仓库**(harness 根仓库通过 `.git/info/exclude` 排除了 `apps/pet/`);不要向根仓库提交 apps/pet 的内容。
 
 ## 网络环境(国内镜像)
