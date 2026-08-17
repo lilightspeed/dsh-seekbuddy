@@ -15,10 +15,9 @@
 | `ds-pet.cdi3.json` | 参数/部件 ID 与显示名表 | 运行时随 model3.json 加载,开发时查 ID 用 |
 | `core/live2dcubismcore.js` | **Cubism Core 运行时(全局 `Live2DCubismCore`)** | index.html 以 script 标签引入,须在模块脚本前;版本 06.00.0001(SDK 5-r.5) |
 | `shaders/*.vert\|.frag` | WebGL 着色器(12 个) | `cubism-runtime.ts` 按 `/pet/live2d/shaders/` 拉取 |
-| `project file/ds-pet.cmo3` | **Cubism Editor 工程文件(非运行时)** | 含备份 `ds-pet - 副本.cmo3`;不要被运行时加载 |
-
-> `project file/` 是编辑器工程与备份,当前因 `publicDir = assets/` 会被拷进 `out/renderer`;
-> 想省包体积时再移出 assets 或做打包排除,不影响功能。
+> **Cubism Editor 工程文件已移出 assets(0021)**:`ds-pet.cmo3` 与备份 `ds-pet - 副本.cmo3`
+> 现存放于仓库外 `C:\Users\wanyu\Desktop\projects\live2d\`,不再随 publicDir 拷进
+> `out/renderer` / 安装包。它们是编辑器工程(非运行时),不要放回 `assets/` 或被 model3.json 引用。
 
 ## 2. 参数 ID 总表(按用途分组)
 
@@ -84,5 +83,5 @@
 
 - [ ] 记录 **Cubism Editor** 版本(当前已知 SDK 5-r.5 / Core 06.00.0001,moc3 v6;编辑器版本未知)
 - [ ] `assets/pet/README.md` 的 License 表补 Live2D 条目
-- [ ] (可选)`project file/` 移出 assets,避免打进安装包
+- [x] `project file/` 移出 assets,避免打进安装包(0021;工程文件已移至仓库外 `C:\Users\wanyu\Desktop\projects\live2d\`)
 - [x] 视角跟随运行时已接入(0015):`src/renderer/src/pet/live2d/cubism-runtime.ts`
