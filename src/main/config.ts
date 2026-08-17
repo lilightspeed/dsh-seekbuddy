@@ -49,7 +49,7 @@ export class PetConfigStore {
       const normalized = normalizeBaseUrl(patch.dshBaseUrl)
       if (normalized !== null) next.dsh.baseUrl = normalized
     }
-    if (patch.opacity !== undefined) next.appearance.opacity = clamp(patch.opacity, 0.3, 1)
+    if (patch.opacity !== undefined) next.appearance.opacity = clamp(patch.opacity, 0, 1)
     if (patch.scale !== undefined) next.appearance.scale = clamp(patch.scale, 0.6, 1.6)
     if (patch.petPositionX !== undefined) next.pet.positionX = clamp(patch.petPositionX, 0, 1)
     if (patch.petPositionY !== undefined) next.pet.positionY = clamp(patch.petPositionY, 0, 1)
@@ -99,7 +99,7 @@ export class PetConfigStore {
           const normalized = normalizeBaseUrl(raw.dsh.baseUrl)
           if (normalized !== null) next.dsh.baseUrl = normalized
         }
-        if (typeof raw.appearance?.opacity === 'number') next.appearance.opacity = clamp(raw.appearance.opacity, 0.3, 1)
+        if (typeof raw.appearance?.opacity === 'number') next.appearance.opacity = clamp(raw.appearance.opacity, 0, 1)
         if (typeof raw.appearance?.scale === 'number') next.appearance.scale = clamp(raw.appearance.scale, 0.6, 1.6)
         if (raw.pet && typeof raw.pet === 'object') {
           if (typeof raw.pet.positionX === 'number') next.pet.positionX = clamp(raw.pet.positionX, 0, 1)

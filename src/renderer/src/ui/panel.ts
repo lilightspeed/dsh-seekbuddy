@@ -32,17 +32,17 @@ function relativeTime(ts: number): string {
 }
 
 /**
- * 应用"背景透明度"(CSS opacity,0.3..1)—— 只作用于背景卡片 #bg。
+ * 应用"背景透明度"(CSS opacity,0..1)—— 只作用于背景**基色画布** #bg-base。
  *
  * 不用 win.setOpacity:透明度 <100% 时 Electron 会把窗口切成分层窗口,
  * DWM 的 acrylic 毛玻璃材质被绕过,背后内容会清晰透出(实测);也不作用于
- * <html> 根元素(透明窗口下根元素 opacity 不生效)。#bg 是普通层,opacity
- * 稳定生效:调低背景透明度 → 淡蓝渐变卡片变透明 → 露出被 acrylic 模糊的
- * 桌面背景;宠物(canvas)与 UI(输入条/面板等)是独立层,保持清晰。
+ * <html> 根元素(透明窗口下根元素 opacity 不生效)。#bg-base 是普通层,
+ * opacity 稳定生效:调低背景透明度 → 淡蓝基色画布变透明 → 露出被 acrylic
+ * 模糊的桌面背景;蓝色装饰色块(.bg-blob)与宠物/UI 是独立层,保持原样。
  */
 function applyBackgroundOpacity(value: number): void {
-  const opacity = Math.min(1, Math.max(0.3, Number.isFinite(value) ? value : 1))
-  document.querySelector<HTMLElement>('#bg')?.style.setProperty('opacity', String(opacity))
+  const opacity = Math.min(1, Math.max(0, Number.isFinite(value) ? value : 1))
+  document.querySelector<HTMLElement>('#bg-base')?.style.setProperty('opacity', String(opacity))
 }
 
 /** 短标题:优先 projections 标题;空/blank 会话给占位。 */

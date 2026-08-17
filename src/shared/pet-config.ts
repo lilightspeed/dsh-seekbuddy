@@ -6,9 +6,9 @@
  * renderer 经 preload 白名单(getConfig / setConfig)访问。
  */
 
-/** 外观设置:窗口透明度与缩放。 */
+/** 外观设置:背景透明度与窗口缩放。 */
 export interface PetAppearanceConfig {
-  /** 窗口透明度 0.3–1(1 = 不透明)。 */
+  /** 背景透明度 0–1(0 = 背景画布完全透明,1 = 不透明)。 */
   opacity: number
   /** 窗口缩放倍率 0.6–1.6(1 = 默认 420×560)。 */
   scale: number

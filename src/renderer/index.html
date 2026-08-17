@@ -39,7 +39,9 @@
 
       /* ---- 背景:DeepSeek 淡蓝渐变卡片 + 高斯模糊色块 ----
          铺满整个窗口边缘(inset 0),四角圆角:窗口本身透明,
-         圆角外露出桌面,即"圆角卡片"观感。 */
+         圆角外露出桌面,即"圆角卡片"观感。
+         基色画布(#bg-base)与蓝色装饰色块(.bg-blob)分层:
+         "背景透明度"只作用于 #bg-base,blobs 保持原样。 */
       #bg {
         position: fixed;
         inset: 0;
@@ -47,9 +49,14 @@
         border-radius: 18px;
         overflow: hidden;
         pointer-events: none; /* 拖拽/点击全部交给 #stage */
-        background: linear-gradient(165deg, #eaf1ff 0%, #dee9ff 48%, #f2f6ff 100%);
         /* 只用内高光,不要外阴影:透明窗口下外阴影会溢出到窗口边缘,形成淡蓝色遮罩 */
         box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+      }
+      /* 基色"白色画布":淡蓝渐变,背景透明度只调节这一层 */
+      #bg-base {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(165deg, #eaf1ff 0%, #dee9ff 48%, #f2f6ff 100%);
       }
       /* 高斯模糊的柔光色块:blur 把品牌蓝揉进背景,形成"雾化"质感 */
       .bg-blob {
@@ -859,8 +866,9 @@
     </style>
   </head>
   <body>
-    <!-- 背景:DeepSeek 淡蓝渐变 + 高斯模糊色块(纯视觉层,不拦截事件) -->
+    <!-- 背景:基色画布(可调透明度)+ 蓝色装饰色块(不随透明度变化) -->
     <div id="bg">
+      <div id="bg-base"></div>
       <div class="bg-blob b1"></div>
       <div class="bg-blob b2"></div>
       <div class="bg-blob b3"></div>
@@ -892,7 +900,7 @@
           </div>
           <div class="setting-group">
             <div class="setting-label">背景透明度 <span id="set-opacity-val" class="setting-val">100%</span></div>
-            <input id="set-opacity" type="range" min="40" max="100" step="5" />
+            <input id="set-opacity" type="range" min="0" max="100" step="5" />
           </div>
           <div class="setting-group">
             <div class="setting-label">窗口缩放 <span id="set-scale-val" class="setting-val">100%</span></div>
