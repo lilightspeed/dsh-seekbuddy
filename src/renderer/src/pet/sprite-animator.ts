@@ -9,12 +9,14 @@ import type { PetStage } from './stage.ts'
  * (接口不变,外部零改动)。素材放置规则见 assets/pet/README.md。
  */
 
+// 状态色对齐 DeepSeek 主题蓝(design-platform deepseek scale):
+// 500 主色 / 400 明快 / 300 浅蓝(思考) / 450 说话
 const BODY_COLORS: Record<PetState, number> = {
-  idle: 0xffaa55,
-  thinking: 0x88ccff,
-  happy: 0xffcc33,
+  idle: 0x4176e6, // deepseek-500
+  thinking: 0xb7c8fe, // deepseek-300
+  happy: 0x679efe, // deepseek-400
   sad: 0x99aacc,
-  talking: 0xffaa88,
+  talking: 0x5686fe, // deepseek-450
 }
 
 const BODY_RADIUS = 46

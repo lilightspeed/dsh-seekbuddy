@@ -22,12 +22,14 @@ export interface PetOps {
   selectSession(sessionId: string | null): PetOpResult
   createSession(): Promise<PetCreateResult>
   respondApproval(request: PetApprovalRequest): Promise<PetOpResult>
+  stopTurn(): Promise<PetOpResult>
 }
 
 export function createPetOps(
   getConnection: () => ConnectionHandle | undefined,
   getTargetSessionId: () => string | null,
   setTargetSessionId: (id: string | null) => void,
+  resolveTargetSession: () => Promise<SessionId | null>,
 ): PetOps {
   /** tool/call 的 callId → 工具名,用于 tool/result 展示(跨页保留)。 */
   const toolNames = new Map<string, string>()
@@ -130,7 +132,24 @@ export function createPetOps(
     }
   }
 
-  return { listSessions, getHistory, selectSession, createSession, respondApproval }
+  async function stopTurn(): Promise<PetOpResult> {
+    const connection = getConnection()
+    if (!connection) return { label: 'session.cancel', ok: false, summary: 'connection not ready' }
+    try {
+      const sessionId = await resolveTargetSession()
+      if (!sessionId) return { label: 'session.cancel', ok: false, summary: 'no target session' }
+      const response = await connection.api.sessions.cancel({ sessionId })
+      const result = response.result
+      if (!result.ok) {
+        return { label: 'session.cancel', ok: false, summary: `rpc error: ${JSON.stringify(result.error)}` }
+      }
+      return { label: 'session.cancel', ok: true, summary: `stop → ${sessionId}` }
+    } catch (error) {
+      return { label: 'session.cancel', ok: false, summary: String(error) }
+    }
+  }
+
+  return { listSessions, getHistory, selectSession, createSession, respondApproval, stopTurn }
 }
 
 /** 会话标题:list 行的 projections.values.title(投影缓存;无则 null)。 */

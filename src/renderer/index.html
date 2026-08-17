@@ -52,39 +52,63 @@
       #bubble.visible {
         opacity: 1;
       }
-      /* 底部输入条 */
+      /* 底部输入条:通栏贴底(位置不变),四角圆角,底角圆角处自然留出空隙 */
       #inputbar {
         position: fixed;
-        left: 10px;
-        right: 10px;
-        bottom: 10px;
+        left: 0;
+        right: 0;
+        bottom: 0;
         display: flex;
         gap: 6px;
         background: rgba(255, 255, 255, 0.85);
         border-radius: 12px;
         padding: 6px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.15);
         -webkit-app-region: no-drag;
       }
-      #inputbar input {
+      /* 多行输入框:自动换行 + 自动增高;高度封顶后改为内部滚轮翻看
+         (max-height = 100vh - 52,即输入条顶边停在距窗顶 40px,接近右上角"菜单"按钮)
+         - align-self: center:单行/空态文本在输入条内上下等距(flex stretch 会把
+           textarea 拉高到按钮高度,文本顶部对齐、底部留空 → 不等距,且删除后
+           scrollHeight 被 clientHeight 钳制,空行不消失)
+         - word-break: break-all:每行精确填满才换行(拉丁词不再按词边界提前换行) */
+      #inputbar textarea {
         flex: 1;
+        min-width: 0;
         border: none;
         outline: none;
+        resize: none;
         background: transparent;
         font-size: 13px;
+        line-height: 1.4;
+        font-family: inherit;
         color: #333;
+        padding: 0;
+        align-self: center;
+        word-break: break-all;
+        max-height: calc(100vh - 52px);
+        overflow-y: auto;
+        scrollbar-width: thin;
       }
       #inputbar button {
         border: none;
         border-radius: 8px;
-        background: #ffaa55;
+        background: #4176e6;
         color: #fff;
         font-size: 13px;
         padding: 6px 12px;
         cursor: pointer;
+        align-self: flex-start;
       }
       #inputbar button:hover {
-        background: #ff9933;
+        background: #679efe;
+      }
+      /* 目标会话运行中:发送按钮变为红色"停止" */
+      #inputbar button.stop {
+        background: #e5484d;
+      }
+      #inputbar button.stop:hover {
+        background: #cf3f43;
       }
       /* 角落状态(开发期可见) */
       #status {
@@ -123,7 +147,7 @@
         top: 40px;
         left: 8px;
         right: 8px;
-        bottom: 64px;
+        bottom: 54px;
         display: flex;
         flex-direction: column;
         background: rgba(255, 255, 255, 0.95);
@@ -150,7 +174,7 @@
         cursor: pointer;
       }
       .panel-tabs button.active {
-        background: #ffaa55;
+        background: #4176e6;
         color: #fff;
       }
       .badge {
@@ -187,10 +211,10 @@
         font-size: 12px;
       }
       .session-row:hover {
-        background: rgba(255, 170, 85, 0.15);
+        background: rgba(65, 118, 230, 0.15);
       }
       .session-row.selected {
-        background: rgba(255, 170, 85, 0.3);
+        background: rgba(65, 118, 230, 0.3);
       }
       .session-row .dot {
         width: 8px;
@@ -288,8 +312,8 @@
       }
       .plugin-state.awaiting-approval,
       .plugin-state.client-pending {
-        background: rgba(255, 170, 85, 0.25);
-        color: #9a5b00;
+        background: rgba(65, 118, 230, 0.25);
+        color: #4868b2;
       }
       .plugin-name {
         font-size: 12px;
@@ -328,7 +352,7 @@
         line-height: 1;
         padding: 3px 6px;
         border-radius: 6px;
-        background: #ffaa55;
+        background: #4176e6;
         color: #fff;
       }
       /* 发送目标横幅:会话页顶部,明确告知发消息落点 */
@@ -339,10 +363,10 @@
         margin: 2px 2px 8px;
         padding: 8px 10px;
         border-radius: 8px;
-        background: rgba(255, 170, 85, 0.22);
-        border: 1px dashed #ffaa55;
+        background: rgba(65, 118, 230, 0.22);
+        border: 1px dashed #4176e6;
         font-size: 12px;
-        color: #7a4a00;
+        color: #2f4c8f;
       }
       .target-banner .target-label {
         flex: none;
@@ -358,14 +382,14 @@
         flex: none;
         border: none;
         background: transparent;
-        color: #b07000;
+        color: #5686fe;
         font-size: 11px;
         cursor: pointer;
         padding: 2px 4px;
         border-radius: 4px;
       }
       .target-banner .target-clear:hover {
-        background: rgba(255, 170, 85, 0.35);
+        background: rgba(65, 118, 230, 0.35);
       }
       .session-row .blank-tag {
         color: #999;
@@ -383,8 +407,8 @@
         cursor: pointer;
       }
       .panel-btn:hover {
-        border-color: #ffaa55;
-        color: #ff9933;
+        border-color: #4176e6;
+        color: #679efe;
       }
       /* 设置 tab(阶段 5) */
       .setting-group {
@@ -398,7 +422,7 @@
         margin-bottom: 6px;
       }
       .setting-val {
-        color: #ff9933;
+        color: #679efe;
         font-weight: 600;
       }
       .setting-row {
@@ -417,12 +441,12 @@
         color: #333;
       }
       .setting-row input[type='text']:focus {
-        border-color: #ffaa55;
+        border-color: #4176e6;
       }
       .setting-apply {
         border: none;
         border-radius: 8px;
-        background: #ffaa55;
+        background: #4176e6;
         color: #fff;
         font-size: 12px;
         padding: 6px 12px;
@@ -430,11 +454,11 @@
         flex: none;
       }
       .setting-apply:hover {
-        background: #ff9933;
+        background: #679efe;
       }
       .setting-group input[type='range'] {
         width: 100%;
-        accent-color: #ffaa55;
+        accent-color: #4176e6;
       }
       /* 宠物设置行:参数名 + 值 + 滑块 */
       .setting-pet-row {
@@ -450,7 +474,7 @@
       }
       .setting-pet-row input[type='range'] {
         width: 100%;
-        accent-color: #ffaa55;
+        accent-color: #4176e6;
       }
       .setting-check {
         display: flex;
@@ -462,7 +486,7 @@
         cursor: pointer;
       }
       .setting-check input {
-        accent-color: #ffaa55;
+        accent-color: #4176e6;
       }
       .setting-hint {
         font-size: 10px;
@@ -475,8 +499,8 @@
         padding: 6px 8px;
         font-size: 12px;
         font-weight: 600;
-        color: #7a4a00;
-        background: rgba(255, 170, 85, 0.15);
+        color: #2f4c8f;
+        background: rgba(65, 118, 230, 0.15);
         border-radius: 8px;
         margin-bottom: 4px;
         overflow: hidden;
@@ -500,8 +524,8 @@
         color: #1e7a3e;
       }
       .history-row.tool {
-        background: rgba(255, 170, 85, 0.14);
-        color: #9a5b00;
+        background: rgba(65, 118, 230, 0.14);
+        color: #4868b2;
         font-family: ui-monospace, monospace;
         font-size: 11px;
       }
@@ -520,9 +544,9 @@
         position: fixed;
         left: 10px;
         right: 10px;
-        bottom: 64px;
-        background: rgba(255, 248, 235, 0.97);
-        border: 1px solid #ffd9a0;
+        bottom: 54px;
+        background: rgba(237, 243, 254, 0.97);
+        border: 1px solid #d3e2ff;
         border-radius: 12px;
         padding: 10px 12px;
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
@@ -530,7 +554,7 @@
       }
       .approval-title {
         font-size: 12px;
-        color: #8a5a00;
+        color: #4868b2;
         font-weight: 600;
         margin-bottom: 4px;
       }
@@ -647,7 +671,7 @@
       </div>
     </div>
     <div id="inputbar">
-      <input id="msg-input" type="text" placeholder="对 DSH 说点什么…" />
+      <textarea id="msg-input" rows="1" placeholder="对 DSH 说点什么…" spellcheck="false"></textarea>
       <button id="btn-send">发送</button>
     </div>
     <div id="status">connecting…</div>

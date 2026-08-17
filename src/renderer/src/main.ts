@@ -16,7 +16,7 @@ declare global {
 const api = window.petApi
 const statusEl = document.querySelector<HTMLDivElement>('#status')
 const bubbleEl = document.querySelector<HTMLDivElement>('#bubble')
-const inputEl = document.querySelector<HTMLInputElement>('#msg-input')
+const inputEl = document.querySelector<HTMLTextAreaElement>('#msg-input')
 const sendBtn = document.querySelector<HTMLButtonElement>('#btn-send')
 // 浮动审批卡
 const approvalCardEl = document.querySelector<HTMLDivElement>('#approval-card')
@@ -30,6 +30,48 @@ let connText = 'connecting'
 let petText = ''
 /** 当前浮动卡显示的审批条目。 */
 let cardApproval: PendingApproval | null = null
+/** 当前有效发送目标(显式选择或自动回退;由面板回调同步)。 */
+let targetSessionId: string | null = null
+/** 运行中的会话集合(dsh:session-update 增量维护;列表快照播种)。 */
+const runningSessions = new Set<string>()
+
+/** 目标会话是否运行中:驱动"发送/停止"按钮。 */
+function isTargetRunning(): boolean {
+  return targetSessionId !== null && runningSessions.has(targetSessionId)
+}
+
+/** 发送按钮:目标会话运行中 → 红色"停止",否则蓝色"发送"。 */
+function renderSendButton(): void {
+  if (!sendBtn) return
+  const running = isTargetRunning()
+  sendBtn.textContent = running ? '停止' : '发送'
+  sendBtn.classList.toggle('stop', running)
+}
+
+/**
+ * 多行输入自动增高:先复位再按内容撑高;CSS max-height 封顶后转为内部滚动。
+ * 测量期间临时隐藏垂直滚动条:避免"滚动条出现 → 宽度变窄 → 文本多换一行 →
+ * scrollHeight 虚高 → 高度又被撑大"的循环,导致删除内容后空行不消失。
+ */
+function autoGrowInput(): void {
+  if (!inputEl) return
+  const prev = inputEl.style.overflowY
+  inputEl.style.overflowY = 'hidden'
+  inputEl.style.height = 'auto'
+  inputEl.style.height = `${inputEl.scrollHeight}px`
+  inputEl.style.overflowY = prev
+}
+
+/** 用会话列表的 running 快照补充运行中集合(覆盖"连接时回合已在跑"的情形)。 */
+function seedRunningSessions(): void {
+  void api?.listSessions().then((result) => {
+    if (!result.ok) return
+    for (const item of result.items) {
+      if (item.running) runningSessions.add(item.sessionId)
+    }
+    renderSendButton()
+  })
+}
 
 function renderStatus(): void {
   if (statusEl) statusEl.textContent = `${connText}${petText ? ` · pet: ${petText}` : ''}`
@@ -162,6 +204,11 @@ async function boot(): Promise<void> {
         animator.applyPetSettings?.(cfg.pet)
       })
     },
+    // 有效发送目标(显式或自动回退)变化 → 刷新"发送/停止"按钮
+    onTargetChange: (id) => {
+      targetSessionId = id
+      renderSendButton()
+    },
   })
   void panel
 
@@ -181,6 +228,9 @@ async function boot(): Promise<void> {
         renderStatus()
         // 重连后会话列表可能变化,刷新面板;雷达活动表清空重建(旧代事件已过期)
         activity.clear()
+        // 运行中集合同样进入新代:清空后用会话列表快照播种(覆盖"连接时已在跑"的回合)
+        runningSessions.clear()
+        seedRunningSessions()
         void panel.refreshSessions()
         break
       case 'dsh:state':
@@ -221,6 +271,10 @@ async function boot(): Promise<void> {
       case 'dsh:session-update':
         // B2 雷达:增量进活动表,雷达 tab 订阅后自行渲染
         activity.update(event)
+        // 运行中集合增量维护,驱动"发送/停止"按钮
+        if (event.running) runningSessions.add(event.sessionId)
+        else runningSessions.delete(event.sessionId)
+        renderSendButton()
         break
       case 'pet:speak':
         actor.send({ type: 'TALK' })
@@ -255,11 +309,14 @@ async function boot(): Promise<void> {
     }
   })
 
-  // 若连接在订阅前已完成,补读当前状态(阶段 1 坑 6:首个 connected 可能早于订阅)
+  // 若连接在订阅前已完成,补读当前状态(阶段 1 坑 6:首个 connected 可能早于订阅)。
+  // 目标会话不从这里赋值:面板 refreshSessions → onTargetChange 提供"有效目标"
+  // (含自动回退),避免显式 null 覆盖回退目标的竞态。
   void api.getState().then((state) => {
     if (state.connection) {
       connText = state.connection
       renderStatus()
+      seedRunningSessions()
       void panel.refreshSessions()
     }
   })
@@ -267,11 +324,12 @@ async function boot(): Promise<void> {
   // 窗口拖拽:由 #stage 的 -webkit-app-region: drag 原生处理(见 index.html),
   // 不再走 IPC 逐帧 setPosition(曾导致卡顿 + setPosition 参数转换崩溃)。
 
-  // 气泡输入 → 发消息
+  // 输入条:Enter 发送/停止(与按钮一致);Shift+Enter 换行;输入法组词回车不触发
   const send = (): void => {
     const text = inputEl?.value.trim()
     if (!text) return
     if (inputEl) inputEl.value = ''
+    autoGrowInput()
     void api.sendMessage(text).then((result) => {
       if (!result.ok) {
         actor.send({ type: 'DSH_ERROR' })
@@ -280,10 +338,35 @@ async function boot(): Promise<void> {
       // ok 时等待 turn-end 事件提示完成;op:result 事件本身不再重复弹
     })
   }
-  sendBtn?.addEventListener('click', send)
+
+  /** 停止当前目标会话的运行中回合(sessions.cancel,主进程解析目标)。 */
+  const stop = (): void => {
+    void api.stopTurn().then((result) => {
+      if (!result.ok) {
+        actor.send({ type: 'DSH_ERROR' })
+        showBubble(`✗ ${result.summary}`, 3500)
+      }
+    })
+  }
+
+  const onSendClick = (): void => {
+    if (isTargetRunning()) stop()
+    else send()
+  }
+  sendBtn?.addEventListener('click', onSendClick)
   inputEl?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') send()
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return
+    e.preventDefault()
+    onSendClick()
   })
+  // 自动增高:每次输入后按内容撑高,超过 CSS max-height 后转内部滚动。
+  // 输入法组词期间跳过(isComposing):拼音串被当作不可断的整体,响应它的
+  // input 事件会让输入框随拼音长度反复增高/换行;组词结束后再重算。
+  inputEl?.addEventListener('input', (e) => {
+    if (e.isComposing) return
+    autoGrowInput()
+  })
+  inputEl?.addEventListener('compositionend', () => autoGrowInput())
 }
 
 void boot()

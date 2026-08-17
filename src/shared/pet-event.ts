@@ -169,6 +169,8 @@ export interface PetApi {
   getState(): Promise<PetConnectionState>
   /** 向当前目标会话发送一条文本消息(session.prompt)。 */
   sendMessage(text: string): Promise<PetOpResult>
+  /** 停止当前目标会话的运行中回合(sessions.cancel);无显式目标时回退最近非空会话。 */
+  stopTurn(): Promise<PetOpResult>
   listSessions(): Promise<PetSessionListResult>
   /** 读会话历史;beforeSeq 为向上翻页锚点(省略 = 尾部页)。 */
   getHistory(sessionId: string, beforeSeq?: number, maxMessages?: number): Promise<PetHistoryResult>

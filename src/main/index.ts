@@ -139,6 +139,21 @@ async function bootstrap(): Promise<void> {
     return created.ok ? created.value.sessionId : null
   }
 
+  /** 停止用目标会话解析:显式目标优先;否则最近的非空会话;不新建(停止不该产生会话)。 */
+  async function resolveTargetSession(): Promise<SessionId | null> {
+    if (!connection) return null
+    const listResponse = await connection.api.sessions.list({})
+    const list = listResponse.result
+    if (!list.ok) return null
+    const items = list.value.items
+    if (targetSessionId) {
+      const chosen = items.find((item) => String(item.sessionId) === targetSessionId)
+      if (chosen) return chosen.sessionId
+    }
+    const first = items.find((item) => !item.blank)
+    return first ? first.sessionId : null
+  }
+
   async function handleSendMessage(text: string): Promise<PetOpResult> {
     if (!connection) return { label: 'session.prompt', ok: false, summary: 'connection not ready' }
     if (typeof text !== 'string' || text.trim() === '') {
@@ -230,6 +245,7 @@ async function bootstrap(): Promise<void> {
           void config.update({ targetSessionId: id })
         }
       },
+      () => resolveTargetSession(),
     )
 
     notifier = createNotifier({
@@ -239,6 +255,7 @@ async function bootstrap(): Promise<void> {
 
     ipcMain.handle('pet:get-state', () => handleGetState())
     ipcMain.handle('pet:send-message', (_event, text: string) => handleSendMessage(text))
+    ipcMain.handle('pet:stop-turn', () => petOps?.stopTurn() ?? { label: 'session.cancel', ok: false, summary: 'ops not ready' })
     ipcMain.handle('pet:list-sessions', () => petOps?.listSessions() ?? { ok: false, summary: 'ops not ready', targetSessionId: null, items: [] })
     ipcMain.handle('pet:get-history', (_event, sessionId: string, beforeSeq: number | null, maxMessages: number | null) =>
       petOps?.getHistory(sessionId, beforeSeq, maxMessages) ?? { ok: false, summary: 'ops not ready', sessionId, hasMore: false, entries: [] },

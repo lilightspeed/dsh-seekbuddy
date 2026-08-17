@@ -17,6 +17,8 @@ export interface PanelHooks {
   onFlash(text: string, ok: boolean): void
   /** 宠物(Live2D)外观/手感变更(0017):主进程负责落盘并应用到 animator。 */
   onPetSettingsChange?(patch: PetConfigUpdate): void
+  /** 有效发送目标(显式目标或自动回退)变化通知:驱动输入条"发送/停止"按钮状态。 */
+  onTargetChange?(sessionId: string | null): void
 }
 
 /** 相对时间("刚刚 / 5 分钟前 / 2 小时前 / 8月15日")。 */
@@ -53,6 +55,8 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
   const runningBadgeEl = document.querySelector<HTMLSpanElement>('#session-running-badge')
 
   let targetSessionId: string | null = null
+  /** 最近一次通知给外部(输入条)的有效目标;去重避免重复回调。 */
+  let notifiedTarget: string | null | undefined = undefined
   /** 最近一次会话列表(雷达行基线:标题/running/updatedAt)。 */
   let sessionItems: PetSessionSummary[] = []
   /** B3 插件监控:最近一次查询结果与状态文案。 */
@@ -157,6 +161,12 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     if (!sessionsEl) return
     sessionsEl.textContent = ''
     const target = resolveTarget(items)
+    // 有效目标(显式或自动回退)变化 → 通知输入条刷新"发送/停止"按钮
+    const effectiveId = target?.id ?? null
+    if (effectiveId !== notifiedTarget) {
+      notifiedTarget = effectiveId
+      hooks.onTargetChange?.(effectiveId)
+    }
     // B2 实时状态:活动表(回合增量)叠加在列表基线上
     const activity = new Map(hooks.activity.list().map((e) => [e.sessionId, e]))
 
