@@ -13,6 +13,8 @@
 | `ds-pet.1024/texture_00.png` | 纹理 | 1024×1024,8-bit RGBA,带透明通道 |
 | `ds-pet.physics3.json` | 物理(后发摆动) | 输入 `ParamAngleX/Y`,输出后发参数,SDK 自动模拟 |
 | `ds-pet.cdi3.json` | 参数/部件 ID 与显示名表 | 运行时随 model3.json 加载,开发时查 ID 用 |
+| `core/live2dcubismcore.js` | **Cubism Core 运行时(全局 `Live2DCubismCore`)** | index.html 以 script 标签引入,须在模块脚本前;版本 06.00.0001(SDK 5-r.5) |
+| `shaders/*.vert\|.frag` | WebGL 着色器(12 个) | `cubism-runtime.ts` 按 `/pet/live2d/shaders/` 拉取 |
 | `project file/ds-pet.cmo3` | **Cubism Editor 工程文件(非运行时)** | 含备份 `ds-pet - 副本.cmo3`;不要被运行时加载 |
 
 > `project file/` 是编辑器工程与备份,当前因 `publicDir = assets/` 会被拷进 `out/renderer`;
@@ -52,8 +54,9 @@
 
 ## 3. 已确认的兼容性事实(避免重复排查)
 
-1. **moc3 版本号 = 6**(文件头第 4~7 字节,小端)。需搭配匹配的 Cubism Core;若运行时报
-   `moc3 unsupported`,回编辑器用「选择目标版本」重导成 SDK 支持的版本。
+1. **moc3 版本号 = 6**(文件头第 4~7 字节,小端)= `MocVersion_53`(moc3 5.3.00+)。
+   已 vendor **Cubism SDK for Web 5-r.5**(Core 版本 **06.00.0001**,2026-01-08 起支持),
+   vendor 详情见 `vendor/live2d/README.md`;若换用更老的 Core 会报 `moc3 unsupported`。
 2. **Pixi v8 不兼容 `@pixi/live2d-display`**(插件锁 v6/v7 且已不维护)。运行时走
    **官方 Cubism SDK for Web + 独立 canvas 自绘**(见 doc/08 §4)。
 3. **物理接线**:`PhysicsSetting1 后发` ← `ParamAngleX`,`PhysicsSetting2 后发上下` ←
@@ -78,6 +81,7 @@
 
 ## 5. 待办 / 备忘
 
-- [ ] 记录 Cubism Editor 版本与所选 SDK/Core 版本,补进 §3.1(当前仅知 moc3 版本 = 6)
+- [ ] 记录 **Cubism Editor** 版本(当前已知 SDK 5-r.5 / Core 06.00.0001,moc3 v6;编辑器版本未知)
 - [ ] `assets/pet/README.md` 的 License 表补 Live2D 条目
 - [ ] (可选)`project file/` 移出 assets,避免打进安装包
+- [x] 视角跟随运行时已接入(0015):`src/renderer/src/pet/live2d/cubism-runtime.ts`

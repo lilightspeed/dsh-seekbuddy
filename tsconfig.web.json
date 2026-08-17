@@ -4,9 +4,17 @@
   "compilerOptions": {
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "types": [],
-    "paths": {},
+    // 仓库内 vendor 的 Cubism Framework 编译产物(ESM + d.ts)走本地别名,
+    // 避免第三方源码进入本配置的 strict typecheck(编译方式见 vendor/live2d/README.md)。
+    "paths": {
+      "@live2d/framework/*": ["./vendor/live2d/Framework/dist/src/*"]
+    },
     "outDir": "lib/types/web",
     "tsBuildInfoFile": "lib/types/web/tsconfig.tsbuildinfo"
   },
-  "include": ["src/renderer/**/*", "src/shared/**/*"]
+  "include": [
+    "src/renderer/**/*",
+    "src/shared/**/*",
+    "vendor/live2d/Core/live2dcubismcore.d.ts"
+  ]
 }

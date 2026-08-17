@@ -26,5 +26,11 @@ export default defineConfig({
     // 把 apps/pet/assets 作为 renderer 的静态根:dev 下 /pet/** 直接可访问,
     // build 时拷入 out/renderer(素材统一放 assets/pet/,见其 README 规则)。
     publicDir: resolve(import.meta.dirname, 'assets'),
+    resolve: {
+      alias: {
+        // Cubism Framework 编译产物(vendor/live2d/README.md 有再构建说明)。
+        '@live2d/framework': resolve(import.meta.dirname, 'vendor/live2d/Framework/dist/src'),
+      },
+    },
   },
 })

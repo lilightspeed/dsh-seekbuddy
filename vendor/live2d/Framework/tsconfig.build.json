@@ -1,0 +1,23 @@
+{
+  // Cubism Framework 的仓库内编译配置:把官方 TS 源码编成 ESM + d.ts 供 renderer 引用,
+  // 避免第三方源码进入本仓库 strict 的 typecheck 程序。
+  // 来源:Cubism SDK for Web 5-r.5(官方 zip),见 ../../README.md(license 与再构建说明)。
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "declaration": true,
+    "declarationMap": false,
+    "sourceMap": false,
+    "outDir": "dist",
+    "rootDir": ".",
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitAny": true,
+    "useUnknownInCatchVariables": true,
+    "strictNullChecks": false
+  },
+  "include": ["src/**/*.ts", "../Core/*.ts"],
+  "exclude": ["dist", "node_modules"]
+}
