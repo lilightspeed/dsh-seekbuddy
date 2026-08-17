@@ -32,7 +32,7 @@ export interface Live2dRuntime {
   loadModel(url: string): Promise<void>
   /** 每帧推进模型(SDK 物理演算在此执行)。 */
   update(deltaSeconds: number): void
-  /** 写视角跟随参数:归一化 -1..1,内部映射到参数实际 min/max 并 clamp。 */
+  /** 写视角跟随参数:视角通道归一化 -1..1、瞳孔通道 0..1,内部映射到参数实际 min/max 并 clamp。 */
   setViewLook(look: ViewLook): void
   /** 应用外观(位置/大小):重建视图矩阵,下一帧生效。 */
   setAppearance(appearance: Live2dAppearance): void

@@ -22,8 +22,8 @@ import type { Live2dAppearance, Live2dRuntime } from './runtime.ts'
  * 职责(全部在本类内,外部零 SDK 依赖):
  * - 自建 canvas 挂进宿主(#stage),随窗口 resize / devicePixelRatio 同步;
  * - 异步加载 model3.json → moc → physics → 纹理,构建 UpdateScheduler(物理 + 呼吸);
- * - 每帧:写视角跟随参数 → scheduler 跑物理(后发随头部角度自动摆动) → model.update → 渲染;
- * - 视角跟随参数用归一化 -1..1 输入,内部按参数实际 min/max/default 映射(见 setViewLook)。
+ * - 每帧:写视角跟随参数(含瞳孔收缩 0..1)→ scheduler 跑物理(后发随头部角度自动摆动)→ model.update → 渲染;
+ * - 视角跟随参数用归一化 -1..1 输入(瞳孔通道 0..1),内部按参数实际 min/max/default 映射(见 setViewLook)。
  *
  * 许可与版本见 vendor/live2d/README.md;接入流程见 runtime.ts 顶部注释。
  */
@@ -64,6 +64,8 @@ interface ParamIndexSet {
   eyeX: number
   eyeY: number
   bodyX: number
+  /** 瞳孔收缩(0..1,0029)。 */
+  pupil: number
 }
 
 export interface CubismRuntimeOptions {
@@ -147,7 +149,7 @@ class CubismRuntime implements Live2dRuntime {
   private ready = false
   private disposed = false
   private viewMatrix = new CubismViewMatrix()
-  private paramIndex: ParamIndexSet = { headX: -1, headY: -1, headZ: -1, eyeX: -1, eyeY: -1, bodyX: -1 }
+  private paramIndex: ParamIndexSet = { headX: -1, headY: -1, headZ: -1, eyeX: -1, eyeY: -1, bodyX: -1, pupil: -1 }
 
   private readonly onResize = (): void => this.resize()
 
@@ -281,6 +283,7 @@ class CubismRuntime implements Live2dRuntime {
       eyeX: model.getParameterIndex(this.id(PARAM_EYE.x)),
       eyeY: model.getParameterIndex(this.id(PARAM_EYE.y)),
       bodyX: model.getParameterIndex(this.id(PARAM_BODY.x)),
+      pupil: model.getParameterIndex(this.id(PARAM_MANUAL.pupilSize)),
     }
 
     this.ready = true
@@ -320,6 +323,9 @@ class CubismRuntime implements Live2dRuntime {
     this.setParam(model, this.paramIndex.eyeX, look.eyeX)
     this.setParam(model, this.paramIndex.eyeY, look.eyeY)
     this.setParam(model, this.paramIndex.bodyX, look.bodyX)
+    // 瞳孔收缩:ParamPupilSize 已从 moc3 核实 min=0 / default=0 / max=1(0029),
+    // 归一化 0..1 经 setParam 线性映射 → 0=正常,1=缩到最小;与视角方向无关,单独写
+    this.setParam(model, this.paramIndex.pupil, look.pupilContract)
   }
 
   update(deltaSeconds: number): void {

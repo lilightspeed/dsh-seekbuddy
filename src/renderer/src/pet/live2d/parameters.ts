@@ -71,4 +71,10 @@ export interface ViewLook {
   eyeY: number
   /** 身体旋转 X(左右,可选联动)。 */
   bodyX: number
+  /**
+   * 瞳孔收缩(0..1;0 = 正常,1 = 缩到最小)—— 本结构里唯一 0..1 通道,其余均为 -1..1。
+   * 由 follower 的"鼠标快速接近"检测驱动(0029):空闲(跟随启用)时鼠标快速靠近
+   * 宠物即收缩,接近停止后经 release 平滑回落。
+   */
+  pupilContract: number
 }

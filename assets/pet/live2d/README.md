@@ -38,7 +38,7 @@
 |---|---|
 | `ParamTailSwing` | 尾巴上下晃动 |
 | `ParamBreath` | 呼吸(与 SDK auto-breath 同名) |
-| `ParamPupilSize` | 瞳孔收缩 |
+| `ParamPupilSize` | 瞳孔收缩 —— **0 = 正常,1 = 缩到最小**(moc3 已核实 min=0/default=0/max=1)。运行时在空闲(视线跟随)时由"鼠标快速接近"驱动收缩、停驻后缓慢复原(0029) |
 | `ParamHairFront` / `ParamHairSide` | 前发 / 侧发摆动(可手动联动头部角度) |
 | `ParamCheek` | 脸颊泛红 |
 | `ParamBrowLAngle` / `ParamBrowRAngle` / `ParamBrowLY` / `ParamBrowRY` | 眉毛角度 / 上下 |
