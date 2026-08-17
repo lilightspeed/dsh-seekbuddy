@@ -345,9 +345,33 @@ class CubismRuntime implements Live2dRuntime {
     this.setParam(model, this.paramIndex.dragY, drag.y)
   }
 
+  /**
+   * 把鼠标跟随的 headY 增量叠加回 ParamAngleY。
+   *
+   * 素材 physics3.json 的 PhysicsSetting5 以 ParamDragY 为输入、ParamAngleY 为输出
+   * (Scale 30,Weight 100):物理演算在 saveParameters 之后按"直接赋值"覆盖 ParamAngleY,
+   * 会抹掉视角跟随刚写入的 headY(上下转头)。这里在物理演算之后再按 headY 的
+   * "相对默认值增量"加算回去 —— 拖动点头(物理)与鼠标上下转头(跟随)共存:
+   * 最终 ParamAngleY = 物理拖动输出 + headY 增量。
+   */
+  private addViewHeadYDelta(model: CubismModel, norm: number): void {
+    const index = this.paramIndex.headY
+    if (index < 0) return
+    const min = model.getParameterMinimumValue(index)
+    const max = model.getParameterMaximumValue(index)
+    const def = model.getParameterDefaultValue(index)
+    if (max <= min) return
+    // 与 setParam 同映射:norm>=0 → def + norm·(max-def),否则 def + norm·(def-min);
+    // 这里只取"相对默认值的增量",加在物理输出之上。
+    const delta = norm >= 0 ? norm * (max - def) : norm * (def - min)
+    model.addParameterValueByIndex(index, delta)
+  }
+
   private applyViewLook(model: CubismModel, look: ViewLook): void {
     this.setParam(model, this.paramIndex.headX, look.headX)
-    this.setParam(model, this.paramIndex.headY, look.headY)
+    // 注意:headY(上下转头)不在这里写 —— 素材 physics3.json 的 PhysicsSetting5
+    // 输出 ParamAngleY(拖动点头),物理演算在 saveParameters 之后绝对覆盖它;
+    // headY 增量改由 update() 在物理演算之后叠加(见 addViewHeadYDelta)。
     this.setParam(model, this.paramIndex.headZ, look.headZ)
     this.setParam(model, this.paramIndex.eyeX, look.eyeX)
     this.setParam(model, this.paramIndex.eyeY, look.eyeY)
@@ -375,6 +399,9 @@ class CubismRuntime implements Live2dRuntime {
 
     // 调度器:物理(后发随头部角度摆动)+ 眨眼 + 呼吸(在基准上一次性加算)
     this.scheduler?.onLateUpdate(model, deltaSeconds)
+    // 物理输出 ParamDragY→ParamAngleY 会覆盖视角跟随的 headY(上下转头),
+    // 这里把 headY 增量叠加回去:拖动点头(物理)与鼠标转头(跟随)共存。
+    if (this.pendingLook) this.addViewHeadYDelta(model, this.pendingLook.headY)
     // 核心更新:参数 → 网格
     model.update()
 
