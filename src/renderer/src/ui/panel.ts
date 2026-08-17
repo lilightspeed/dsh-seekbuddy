@@ -32,16 +32,17 @@ function relativeTime(ts: number): string {
 }
 
 /**
- * 应用窗口透明度(CSS opacity,0.3..1)。
+ * 应用"背景透明度"(CSS opacity,0.3..1)—— 只作用于背景卡片 #bg。
  *
  * 不用 win.setOpacity:透明度 <100% 时 Electron 会把窗口切成分层窗口,
- * DWM 的 acrylic 毛玻璃材质被绕过,背后内容会清晰透出(实测)。窗口本身
- * 始终保持不透明(acrylic 常驻),这里只让页面内容变透明 —— 调低透明度
- * 露出的是被 acrylic 模糊的背景,毛玻璃效果成立。
+ * DWM 的 acrylic 毛玻璃材质被绕过,背后内容会清晰透出(实测);也不作用于
+ * <html> 根元素(透明窗口下根元素 opacity 不生效)。#bg 是普通层,opacity
+ * 稳定生效:调低背景透明度 → 淡蓝渐变卡片变透明 → 露出被 acrylic 模糊的
+ * 桌面背景;宠物(canvas)与 UI(输入条/面板等)是独立层,保持清晰。
  */
-function applyWindowOpacity(value: number): void {
+function applyBackgroundOpacity(value: number): void {
   const opacity = Math.min(1, Math.max(0.3, Number.isFinite(value) ? value : 1))
-  document.documentElement.style.opacity = String(opacity)
+  document.querySelector<HTMLElement>('#bg')?.style.setProperty('opacity', String(opacity))
 }
 
 /** 短标题:优先 projections 标题;空/blank 会话给占位。 */
@@ -392,8 +393,8 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     if (urlInput && document.activeElement !== urlInput) urlInput.value = cfg.dsh.baseUrl
     if (opacitySlider && document.activeElement !== opacitySlider) opacitySlider.value = String(Math.round(cfg.appearance.opacity * 100))
     if (opacityVal) opacityVal.textContent = `${Math.round(cfg.appearance.opacity * 100)}%`
-    // 应用持久化的窗口透明度(CSS opacity;win.setOpacity 会破坏 acrylic 毛玻璃)
-    applyWindowOpacity(cfg.appearance.opacity)
+    // 应用持久化的背景透明度(CSS opacity 作用于 #bg;win.setOpacity 会破坏 acrylic 毛玻璃)
+    applyBackgroundOpacity(cfg.appearance.opacity)
     if (scaleSlider && document.activeElement !== scaleSlider) scaleSlider.value = String(Math.round(cfg.appearance.scale * 100))
     if (scaleVal) scaleVal.textContent = `${Math.round(cfg.appearance.scale * 100)}%`
     if (autostartCheck) autostartCheck.checked = cfg.launchAtLogin
@@ -414,8 +415,8 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     refreshPetLabels()
   }
 
-  // opacity 滑块:实时预览,拖动停顿 120ms 才落盘一次(透明度不改窗口尺寸,无反馈回路)。
-  // 透明度用 CSS opacity 实现(不用 win.setOpacity —— 那会破坏 acrylic 毛玻璃,见 main/index.ts)。
+  // 背景透明度滑块:实时预览,拖动停顿 120ms 才落盘一次(只动 #bg 的 CSS opacity,无反馈回路)。
+  // 不用 win.setOpacity —— 那会破坏 acrylic 毛玻璃,见 main/index.ts。
   let opacityTimer: ReturnType<typeof setTimeout> | undefined
   function debounceOpacity(value: number): void {
     if (opacityTimer) clearTimeout(opacityTimer)
@@ -437,7 +438,7 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
   opacitySlider?.addEventListener('input', () => {
     if (!opacitySlider) return
     if (opacityVal) opacityVal.textContent = `${opacitySlider.value}%`
-    applyWindowOpacity(Number(opacitySlider.value) / 100)
+    applyBackgroundOpacity(Number(opacitySlider.value) / 100)
     debounceOpacity(Number(opacitySlider.value) / 100)
   })
   // 缩放滑块:拖拽中**只更新数值标签**,松手(change)才应用。

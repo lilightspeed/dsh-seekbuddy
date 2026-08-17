@@ -143,11 +143,12 @@ async function boot(): Promise<void> {
   const stage = await createStage()
   const animator: PetAnimator = createLive2dAnimator(stage)
 
-  // 启动即应用持久化的宠物外观/手感(位置/大小/跟随)与窗口透明度
-  // (透明度用 CSS opacity,win.setOpacity 会破坏 acrylic 毛玻璃,见 main/index.ts)
+  // 启动即应用持久化的宠物外观/手感(位置/大小/跟随)与背景透明度
+  // (背景透明度用 CSS opacity 作用于 #bg 卡片;win.setOpacity 会破坏 acrylic 毛玻璃)
   void api.getConfig().then((cfg) => {
     animator.applyPetSettings?.(cfg.pet)
-    document.documentElement.style.opacity = String(Math.min(1, Math.max(0.3, cfg.appearance.opacity)))
+    const opacity = Math.min(1, Math.max(0.3, cfg.appearance.opacity))
+    document.querySelector<HTMLElement>('#bg')?.style.setProperty('opacity', String(opacity))
   })
   const actor = createActor(petMachine)
   actor.subscribe((snapshot) => {
