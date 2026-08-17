@@ -31,6 +31,19 @@ function relativeTime(ts: number): string {
   return `${d.getMonth() + 1}月${d.getDate()}日`
 }
 
+/**
+ * 应用窗口透明度(CSS opacity,0.3..1)。
+ *
+ * 不用 win.setOpacity:透明度 <100% 时 Electron 会把窗口切成分层窗口,
+ * DWM 的 acrylic 毛玻璃材质被绕过,背后内容会清晰透出(实测)。窗口本身
+ * 始终保持不透明(acrylic 常驻),这里只让页面内容变透明 —— 调低透明度
+ * 露出的是被 acrylic 模糊的背景,毛玻璃效果成立。
+ */
+function applyWindowOpacity(value: number): void {
+  const opacity = Math.min(1, Math.max(0.3, Number.isFinite(value) ? value : 1))
+  document.documentElement.style.opacity = String(opacity)
+}
+
 /** 短标题:优先 projections 标题;空/blank 会话给占位。 */
 function shortTitle(session: PetSessionSummary): string {
   if (session.title) return session.title
@@ -379,6 +392,8 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     if (urlInput && document.activeElement !== urlInput) urlInput.value = cfg.dsh.baseUrl
     if (opacitySlider && document.activeElement !== opacitySlider) opacitySlider.value = String(Math.round(cfg.appearance.opacity * 100))
     if (opacityVal) opacityVal.textContent = `${Math.round(cfg.appearance.opacity * 100)}%`
+    // 应用持久化的窗口透明度(CSS opacity;win.setOpacity 会破坏 acrylic 毛玻璃)
+    applyWindowOpacity(cfg.appearance.opacity)
     if (scaleSlider && document.activeElement !== scaleSlider) scaleSlider.value = String(Math.round(cfg.appearance.scale * 100))
     if (scaleVal) scaleVal.textContent = `${Math.round(cfg.appearance.scale * 100)}%`
     if (autostartCheck) autostartCheck.checked = cfg.launchAtLogin
@@ -399,7 +414,8 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     refreshPetLabels()
   }
 
-  // opacity 滑块:实时预览,拖动停顿 120ms 才落盘一次(透明度不改窗口尺寸,无反馈回路)
+  // opacity 滑块:实时预览,拖动停顿 120ms 才落盘一次(透明度不改窗口尺寸,无反馈回路)。
+  // 透明度用 CSS opacity 实现(不用 win.setOpacity —— 那会破坏 acrylic 毛玻璃,见 main/index.ts)。
   let opacityTimer: ReturnType<typeof setTimeout> | undefined
   function debounceOpacity(value: number): void {
     if (opacityTimer) clearTimeout(opacityTimer)
@@ -421,6 +437,7 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
   opacitySlider?.addEventListener('input', () => {
     if (!opacitySlider) return
     if (opacityVal) opacityVal.textContent = `${opacitySlider.value}%`
+    applyWindowOpacity(Number(opacitySlider.value) / 100)
     debounceOpacity(Number(opacitySlider.value) / 100)
   })
   // 缩放滑块:拖拽中**只更新数值标签**,松手(change)才应用。

@@ -66,7 +66,6 @@ async function bootstrap(): Promise<void> {
       },
     })
 
-    if (cfg) win.setOpacity(cfg.appearance.opacity)
     // 高斯模糊背景(Win11 22H2+):让窗口背后的桌面/其他应用被系统 DWM 模糊,
     // 配合半透明窗口形成毛玻璃效果。低版本系统抛错时静默忽略(保持纯透明)。
     try {
@@ -74,6 +73,10 @@ async function bootstrap(): Promise<void> {
     } catch (error) {
       console.warn('[pet] backgroundMaterial(acrylic) 不可用,保持纯透明窗口:', error)
     }
+    // 注意:窗口透明度**不用** win.setOpacity —— 透明度 <100% 时 Electron 会把窗口
+    // 切成分层窗口(WS_EX_LAYERED),DWM 的 acrylic 材质被绕过,背后内容会清晰透出,
+    // 毛玻璃失效(实测)。透明度改由 renderer 用 CSS opacity 实现(见 main.ts),
+    // 窗口本身始终保持不透明,acrylic 常驻,调低透明度露出的是被模糊的背景。
     win.on('ready-to-show', () => win.show())
 
     // 窗口重建(如 mac activate)后拖动采样从零开始,避免旧窗口位置算出虚假位移(0032)
@@ -218,10 +221,11 @@ async function bootstrap(): Promise<void> {
     connection.start()
   }
 
-  /** 应用外观(透明度/缩放)到当前窗口。 */
+  /** 应用外观(透明度/缩放)到当前窗口。
+   *  透明度不走 win.setOpacity(会破坏 acrylic 毛玻璃,见 createWindow 注释),
+   *  改由 renderer 消费 cfg.appearance.opacity 用 CSS opacity 实现。 */
   function applyAppearance(cfg: PetConfig): void {
     if (!mainWindow || mainWindow.isDestroyed()) return
-    mainWindow.setOpacity(cfg.appearance.opacity)
     const width = Math.round(WINDOW_SIZE.width * cfg.appearance.scale)
     const height = Math.round(WINDOW_SIZE.height * cfg.appearance.scale)
     const [x, y] = mainWindow.getPosition()
