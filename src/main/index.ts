@@ -10,6 +10,7 @@ import { createPluginOps, type PluginOps } from './dsh/plugin-ops.ts'
 import { createBridge, bridgeActionToEvent, type BridgeHandle } from './mcp/bridge.ts'
 import { createNotifier } from './notify.ts'
 import { createTray } from './tray.ts'
+import { applySystemRoundedCorners } from './rounded-window.ts'
 
 /** 窗口基准尺寸(外观缩放以此为 1.0)。 */
 const WINDOW_SIZE = { width: 420, height: 560 }
@@ -73,11 +74,20 @@ async function bootstrap(): Promise<void> {
     } catch (error) {
       console.warn('[pet] backgroundMaterial(acrylic) 不可用,保持纯透明窗口:', error)
     }
+    // 系统圆角(Win11 22H2+):DWM 把窗口本身裁成圆角,连 acrylic 高斯模糊一起裁圆
+    // —— 圆角外无模糊(SetWindowRgn 在 Electron 43 的 DComp 透明窗口上静默失效,
+    // 见 rounded-window.ts)。Electron 建窗时会设回 DONOTROUND,故此处必须重设。
+    void applySystemRoundedCorners(win)
     // 注意:窗口透明度**不用** win.setOpacity —— 透明度 <100% 时 Electron 会把窗口
     // 切成分层窗口(WS_EX_LAYERED),DWM 的 acrylic 材质被绕过,背后内容会清晰透出,
     // 毛玻璃失效(实测)。透明度改由 renderer 用 CSS opacity 实现(见 main.ts),
     // 窗口本身始终保持不透明,acrylic 常驻,调低透明度露出的是被模糊的背景。
-    win.on('ready-to-show', () => win.show())
+    win.on('ready-to-show', () => {
+      win.show()
+      // 窗口真正显示后 DWM 才完成 acrylic 绘制,此时再设置一次确保圆角生效
+      void applySystemRoundedCorners(win)
+    })
+    win.on('resize', () => void applySystemRoundedCorners(win))
 
     // 窗口重建(如 mac activate)后拖动采样从零开始,避免旧窗口位置算出虚假位移(0032)
     prevWindowPos = null
@@ -230,6 +240,8 @@ async function bootstrap(): Promise<void> {
     const height = Math.round(WINDOW_SIZE.height * cfg.appearance.scale)
     const [x, y] = mainWindow.getPosition()
     mainWindow.setBounds({ x: x ?? 0, y: y ?? 0, width, height })
+    // 窗口尺寸变化后重新确认系统圆角偏好(重建/缩放后可能被重置)
+    void applySystemRoundedCorners(mainWindow)
   }
 
   /** 开机自启(Windows LoginItem);非 Windows 平台静默忽略。 */

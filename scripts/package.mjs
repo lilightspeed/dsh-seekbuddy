@@ -24,7 +24,7 @@
  *
  * 产物直接输出到 apps/pet/dist/(electron-builder 的 directories.output 重定向)。
  */
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
@@ -50,6 +50,20 @@ cpSync(join(petRoot, 'out'), join(stageDir, 'out'), { recursive: true })
 cpSync(join(petRoot, 'assets'), join(stageDir, 'assets'), { recursive: true })
 cpSync(join(petRoot, 'build'), join(stageDir, 'build'), { recursive: true })
 cpSync(join(petRoot, 'electron-builder.yml'), join(stageDir, 'electron-builder.yml'))
+
+// koffi 是 external 的原生 FFI 依赖(主进程 bundle 不自包含它,见 electron.vite.config):
+// 打包时把 koffi 与平台包(内含 .node 二进制)原样拷进 staging 的 node_modules,
+// 由 electron-builder.yml 的 files 收进产物、.node 解出 asar。
+for (const dep of ['koffi', '@koromix/koffi-win32-x64']) {
+  const src = join(petRoot, 'node_modules', dep)
+  const dest = join(stageDir, 'node_modules', dep)
+  if (!existsSync(src)) {
+    console.error(`[package] 缺少 koffi 依赖:${src}(先 pnpm install)`)
+    process.exit(1)
+  }
+  // dereference:pnpm 的 node_modules/koffi 是符号链接,必须拷真实内容
+  cpSync(src, dest, { recursive: true, dereference: true })
+}
 
 // 独立目录的 package.json:dependencies 清空(产物已自包含),
 // 保留元信息;electron 版本由 electron-builder.yml 的 electronVersion 决定。

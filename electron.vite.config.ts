@@ -10,8 +10,11 @@ export default defineConfig({
       // 有 30+ 包,打包时拖 node_modules 既脆弱又臃肿)—— 改为全量打包成自包含
       // bundle(只 external electron 与 node 内置模块),打包产物零 node_modules 依赖,
       // mcp-server.js 也因此能被 DSH 用裸 node 直接 spawn(配合 asarUnpack)。
+      // koffi 除外:它是带 native 二进制(.node)的 FFI 库,打进 bundle 会丢失
+      // 原生模块("Cannot find the native Koffi module"),必须 external,运行时
+      // 从 node_modules 加载(dev 由 pnpm 解析,dist 由 electron-builder 打包)。
       rollupOptions: {
-        external: ['electron', /^electron\/.+/, ...builtinModules.flatMap((m) => [m, `node:${m}`])],
+        external: ['electron', 'koffi', /^electron\/.+/, ...builtinModules.flatMap((m) => [m, `node:${m}`])],
         input: {
           index: resolve(import.meta.dirname, 'src/main/index.ts'),
           'mcp-server': resolve(import.meta.dirname, 'src/main/mcp/server.ts'),

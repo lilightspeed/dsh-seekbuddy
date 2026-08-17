@@ -36,7 +36,9 @@
   "dependencies": {
     "@deepseek-ai/dsh-client-connection": "workspace:^",
     "@deepseek-ai/dsh-host-apiproxy": "workspace:^",
+    "@koromix/koffi-win32-x64": "3.1.5",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "koffi": "^3.1.5",
     "pixi.js": "^8.19.0",
     "ws": "^8.21.0",
     "xstate": "^5.32.5",
