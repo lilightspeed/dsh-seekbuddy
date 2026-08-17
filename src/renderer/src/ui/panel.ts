@@ -390,7 +390,8 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     if (petScale && document.activeElement !== petScale) petScale.value = String(Math.round(p.scale * 100))
     if (petHead && document.activeElement !== petHead) petHead.value = String(Math.round(p.headAmplitude * 100))
     if (petEye && document.activeElement !== petEye) petEye.value = String(Math.round(p.eyeAmplitude * 100))
-    if (petBody && document.activeElement !== petBody) petBody.value = String(Math.round(p.bodyAmplitude * 100))
+    if (petPupilSensitivity && document.activeElement !== petPupilSensitivity) petPupilSensitivity.value = String(Math.round(p.pupilSensitivity))
+    if (petPupilMax && document.activeElement !== petPupilMax) petPupilMax.value = String(Math.round(p.pupilMax * 100))
     if (petDeadZone && document.activeElement !== petDeadZone) petDeadZone.value = String(Math.round(p.deadZone))
     if (petDistance && document.activeElement !== petDistance) petDistance.value = String(Math.round(p.distance))
     if (petResponse && document.activeElement !== petResponse) petResponse.value = String(Math.round(p.response * 100))
@@ -462,17 +463,19 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
   const petHeadVal = document.querySelector<HTMLSpanElement>('#pet-head-val')
   const petEye = document.querySelector<HTMLInputElement>('#pet-eye')
   const petEyeVal = document.querySelector<HTMLSpanElement>('#pet-eye-val')
-  const petBody = document.querySelector<HTMLInputElement>('#pet-body')
-  const petBodyVal = document.querySelector<HTMLSpanElement>('#pet-body-val')
+  const petPupilSensitivity = document.querySelector<HTMLInputElement>('#pet-pupil-sensitivity')
+  const petPupilSensitivityVal = document.querySelector<HTMLSpanElement>('#pet-pupil-sensitivity-val')
+  const petPupilMax = document.querySelector<HTMLInputElement>('#pet-pupil-max')
+  const petPupilMaxVal = document.querySelector<HTMLSpanElement>('#pet-pupil-max-val')
   const petDeadZone = document.querySelector<HTMLInputElement>('#pet-deadzone')
   const petDeadZoneVal = document.querySelector<HTMLSpanElement>('#pet-deadzone-val')
   const petDistance = document.querySelector<HTMLInputElement>('#pet-distance')
   const petDistanceVal = document.querySelector<HTMLSpanElement>('#pet-distance-val')
   const petResponse = document.querySelector<HTMLInputElement>('#pet-response')
   const petResponseVal = document.querySelector<HTMLSpanElement>('#pet-response-val')
-  const petSliders: Array<HTMLInputElement | null> = [petX, petY, petScale, petHead, petEye, petBody, petDeadZone, petDistance, petResponse]
+  const petSliders: Array<HTMLInputElement | null> = [petX, petY, petScale, petHead, petEye, petPupilSensitivity, petPupilMax, petDeadZone, petDistance, petResponse]
 
-  /** 从滑块值构造宠物设置补丁(扁平 pet* 键,全量 9 项)。 */
+  /** 从滑块值构造宠物设置补丁(扁平 pet* 键,全量 10 项)。 */
   function petPatchFromSliders(): PetConfigUpdate {
     const num = (el: HTMLInputElement | null): number => (el ? Number(el.value) : 0)
     return {
@@ -481,7 +484,8 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
       petScale: num(petScale) / 100,
       petHeadAmplitude: num(petHead) / 100,
       petEyeAmplitude: num(petEye) / 100,
-      petBodyAmplitude: num(petBody) / 100,
+      petPupilSensitivity: num(petPupilSensitivity),
+      petPupilMax: num(petPupilMax) / 100,
       petDeadZone: num(petDeadZone),
       petDistance: num(petDistance),
       petResponse: num(petResponse) / 100,
@@ -494,7 +498,8 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     if (petScaleVal) petScaleVal.textContent = `${petScale?.value ?? '0'}%`
     if (petHeadVal) petHeadVal.textContent = `${petHead?.value ?? '0'}%`
     if (petEyeVal) petEyeVal.textContent = `${petEye?.value ?? '0'}%`
-    if (petBodyVal) petBodyVal.textContent = `${petBody?.value ?? '0'}%`
+    if (petPupilSensitivityVal) petPupilSensitivityVal.textContent = `${petPupilSensitivity?.value ?? '0'}px/s`
+    if (petPupilMaxVal) petPupilMaxVal.textContent = `${petPupilMax?.value ?? '0'}%`
     if (petDeadZoneVal) petDeadZoneVal.textContent = `${petDeadZone?.value ?? '0'}px`
     if (petDistanceVal) petDistanceVal.textContent = `${petDistance?.value ?? '0'}px`
     if (petResponseVal) petResponseVal.textContent = `${petResponse?.value ?? '0'}%`

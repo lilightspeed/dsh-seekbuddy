@@ -35,10 +35,11 @@ function sanitizeConfigUpdate(patch: PetConfigUpdate | undefined): PetConfigUpda
   if (patch?.petScale !== undefined) out.petScale = toFinite(patch.petScale)
   if (patch?.petHeadAmplitude !== undefined) out.petHeadAmplitude = toFinite(patch.petHeadAmplitude)
   if (patch?.petEyeAmplitude !== undefined) out.petEyeAmplitude = toFinite(patch.petEyeAmplitude)
-  if (patch?.petBodyAmplitude !== undefined) out.petBodyAmplitude = toFinite(patch.petBodyAmplitude)
   if (patch?.petDeadZone !== undefined) out.petDeadZone = toFinite(patch.petDeadZone)
   if (patch?.petDistance !== undefined) out.petDistance = toFinite(patch.petDistance)
   if (patch?.petResponse !== undefined) out.petResponse = toFinite(patch.petResponse)
+  if (patch?.petPupilSensitivity !== undefined) out.petPupilSensitivity = toFinite(patch.petPupilSensitivity)
+  if (patch?.petPupilMax !== undefined) out.petPupilMax = toFinite(patch.petPupilMax)
   return out
 }
 

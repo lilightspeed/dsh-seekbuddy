@@ -56,10 +56,11 @@ export class PetConfigStore {
     if (patch.petScale !== undefined) next.pet.scale = clamp(patch.petScale, 0.2, 3)
     if (patch.petHeadAmplitude !== undefined) next.pet.headAmplitude = clamp(patch.petHeadAmplitude, 0, 1)
     if (patch.petEyeAmplitude !== undefined) next.pet.eyeAmplitude = clamp(patch.petEyeAmplitude, 0, 1)
-    if (patch.petBodyAmplitude !== undefined) next.pet.bodyAmplitude = clamp(patch.petBodyAmplitude, 0, 1)
     if (patch.petDeadZone !== undefined) next.pet.deadZone = clamp(patch.petDeadZone, 0, 100)
     if (patch.petDistance !== undefined) next.pet.distance = clamp(patch.petDistance, 20, 2000)
     if (patch.petResponse !== undefined) next.pet.response = clamp(patch.petResponse, 0.2, 5)
+    if (patch.petPupilSensitivity !== undefined) next.pet.pupilSensitivity = clamp(patch.petPupilSensitivity, 200, 2000)
+    if (patch.petPupilMax !== undefined) next.pet.pupilMax = clamp(patch.petPupilMax, 0, 1)
     if (patch.voiceEnabled !== undefined) next.voice.enabled = Boolean(patch.voiceEnabled)
     if (patch.launchAtLogin !== undefined) next.launchAtLogin = Boolean(patch.launchAtLogin)
     if (patch.targetSessionId !== undefined) {
@@ -105,10 +106,11 @@ export class PetConfigStore {
           if (typeof raw.pet.scale === 'number') next.pet.scale = clamp(raw.pet.scale, 0.2, 3)
           if (typeof raw.pet.headAmplitude === 'number') next.pet.headAmplitude = clamp(raw.pet.headAmplitude, 0, 1)
           if (typeof raw.pet.eyeAmplitude === 'number') next.pet.eyeAmplitude = clamp(raw.pet.eyeAmplitude, 0, 1)
-          if (typeof raw.pet.bodyAmplitude === 'number') next.pet.bodyAmplitude = clamp(raw.pet.bodyAmplitude, 0, 1)
           if (typeof raw.pet.deadZone === 'number') next.pet.deadZone = clamp(raw.pet.deadZone, 0, 100)
           if (typeof raw.pet.distance === 'number') next.pet.distance = clamp(raw.pet.distance, 20, 2000)
           if (typeof raw.pet.response === 'number') next.pet.response = clamp(raw.pet.response, 0.2, 5)
+          if (typeof raw.pet.pupilSensitivity === 'number') next.pet.pupilSensitivity = clamp(raw.pet.pupilSensitivity, 200, 2000)
+          if (typeof raw.pet.pupilMax === 'number') next.pet.pupilMax = clamp(raw.pet.pupilMax, 0, 1)
         }
         if (typeof raw.voice?.enabled === 'boolean') next.voice.enabled = raw.voice.enabled
         if (typeof raw.launchAtLogin === 'boolean') next.launchAtLogin = raw.launchAtLogin

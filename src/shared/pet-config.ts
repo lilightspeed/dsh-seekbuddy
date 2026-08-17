@@ -26,14 +26,16 @@ export interface PetPetSettings {
   headAmplitude: number
   /** 眼珠跟随幅度(0..1)。 */
   eyeAmplitude: number
-  /** 身体跟随幅度(0..1)。 */
-  bodyAmplitude: number
   /** 死区半径 px(鼠标距锚点小于该值不响应)。 */
   deadZone: number
   /** 距离灵敏度 px(距离曲线尺度;越大需要移得越远才达到同样幅度)。 */
   distance: number
   /** 跟手速度倍数(0.2..3,乘到各通道平滑速度)。 */
   response: number
+  /** 瞳孔灵敏度(px/s):鼠标接近速度达到该值 → 瞳孔收缩到 pupilMax(0029/0030)。 */
+  pupilSensitivity: number
+  /** 瞳孔收缩最大幅度(0..1;1 = 参数满行程,即"缩到最小")。 */
+  pupilMax: number
 }
 
 export interface PetConfig {
@@ -59,10 +61,11 @@ export const DEFAULT_PET_CONFIG: PetConfig = {
     scale: 1,
     headAmplitude: 0.9,
     eyeAmplitude: 1,
-    bodyAmplitude: 0.35,
     deadZone: 12,
     distance: 320,
     response: 1,
+    pupilSensitivity: 600,
+    pupilMax: 1,
   },
   voice: { enabled: true },
   launchAtLogin: false,
@@ -85,8 +88,9 @@ export interface PetConfigUpdate {
   petScale?: number
   petHeadAmplitude?: number
   petEyeAmplitude?: number
-  petBodyAmplitude?: number
   petDeadZone?: number
   petDistance?: number
   petResponse?: number
+  petPupilSensitivity?: number
+  petPupilMax?: number
 }

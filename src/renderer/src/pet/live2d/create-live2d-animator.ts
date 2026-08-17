@@ -47,16 +47,17 @@ export function createLive2dAnimator(stage: PetStage, options: Live2dAnimatorOpt
   return createLive2dAnimatorWithRuntime(runtime, options)
 }
 
-/** PetPetSettings → follower 配置(响应速度乘到各通道平滑速度)。 */
+/** PetPetSettings → follower 配置(响应速度乘到各通道平滑速度;0030 起身体幅度不再可调,走默认)。 */
 function toFollowerConfig(p: PetPetSettings): ViewFollowerConfig {
   return {
     deadZoneRadius: p.deadZone,
     distanceScale: p.distance,
     eyeMax: p.eyeAmplitude,
     headMax: p.headAmplitude,
-    bodyMax: p.bodyAmplitude,
     smoothing: { eye: 12 * p.response, head: 6 * p.response, body: 3 * p.response },
     recenterSpeed: 5 * p.response,
+    pupilSensitivity: p.pupilSensitivity,
+    pupilMax: p.pupilMax,
   }
 }
 
@@ -123,10 +124,11 @@ function createLive2dAnimatorWithRuntime(
       scale: clamp(settings.scale, 0.2, 3),
       headAmplitude: clamp01(settings.headAmplitude),
       eyeAmplitude: clamp01(settings.eyeAmplitude),
-      bodyAmplitude: clamp01(settings.bodyAmplitude),
       deadZone: clamp(settings.deadZone, 0, 100),
       distance: clamp(settings.distance, 20, 2000),
       response: clamp(settings.response, 0.2, 5),
+      pupilSensitivity: clamp(settings.pupilSensitivity, 200, 2000),
+      pupilMax: clamp01(settings.pupilMax),
     }
     // follower 闭包持有同一个 config 对象,就地覆盖即可实时生效
     Object.assign(followerConfig, toFollowerConfig(petSettings))

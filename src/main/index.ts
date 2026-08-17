@@ -219,10 +219,12 @@ async function bootstrap(): Promise<void> {
     if (typeof patch?.petScale === 'number' && Number.isFinite(patch.petScale)) out.petScale = Math.min(3, Math.max(0.2, patch.petScale))
     if (typeof patch?.petHeadAmplitude === 'number' && Number.isFinite(patch.petHeadAmplitude)) out.petHeadAmplitude = Math.min(1, Math.max(0, patch.petHeadAmplitude))
     if (typeof patch?.petEyeAmplitude === 'number' && Number.isFinite(patch.petEyeAmplitude)) out.petEyeAmplitude = Math.min(1, Math.max(0, patch.petEyeAmplitude))
-    if (typeof patch?.petBodyAmplitude === 'number' && Number.isFinite(patch.petBodyAmplitude)) out.petBodyAmplitude = Math.min(1, Math.max(0, patch.petBodyAmplitude))
     if (typeof patch?.petDeadZone === 'number' && Number.isFinite(patch.petDeadZone)) out.petDeadZone = Math.min(100, Math.max(0, patch.petDeadZone))
     if (typeof patch?.petDistance === 'number' && Number.isFinite(patch.petDistance)) out.petDistance = Math.min(2000, Math.max(20, patch.petDistance))
     if (typeof patch?.petResponse === 'number' && Number.isFinite(patch.petResponse)) out.petResponse = Math.min(5, Math.max(0.2, patch.petResponse))
+    // 瞳孔收缩(0029/0030):灵敏度 px/s 收敛 200..2000,幅度 0..1
+    if (typeof patch?.petPupilSensitivity === 'number' && Number.isFinite(patch.petPupilSensitivity)) out.petPupilSensitivity = Math.min(2000, Math.max(200, patch.petPupilSensitivity))
+    if (typeof patch?.petPupilMax === 'number' && Number.isFinite(patch.petPupilMax)) out.petPupilMax = Math.min(1, Math.max(0, patch.petPupilMax))
     return out
   }
 
