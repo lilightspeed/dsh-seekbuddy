@@ -3,7 +3,7 @@
 	"Meta": {
 		"PhysicsSettingCount": 6,
 		"TotalInputCount": 6,
-		"TotalOutputCount": 14,
+		"TotalOutputCount": 15,
 		"VertexCount": 15,
 		"Fps": 60,
 		"EffectiveForces": {
@@ -340,7 +340,7 @@
 						"Id": "ParamTailTip"
 					},
 					"VertexIndex": 2,
-					"Scale": 1,
+					"Scale": 2,
 					"Weight": 100,
 					"Type": "Angle",
 					"Reflect": false
@@ -351,7 +351,7 @@
 						"Id": "ParamTailRoot"
 					},
 					"VertexIndex": 1,
-					"Scale": 1,
+					"Scale": 1.8,
 					"Weight": 100,
 					"Type": "Angle",
 					"Reflect": false
@@ -362,7 +362,7 @@
 						"Id": "ParamBackHairSwing"
 					},
 					"VertexIndex": 2,
-					"Scale": 1,
+					"Scale": 2,
 					"Weight": 100,
 					"Type": "Angle",
 					"Reflect": true
@@ -373,7 +373,7 @@
 						"Id": "ParamHairSwayY"
 					},
 					"VertexIndex": 2,
-					"Scale": 0.421,
+					"Scale": 0.8,
 					"Weight": 100,
 					"Type": "Angle",
 					"Reflect": false
@@ -444,7 +444,7 @@
 						"Id": "ParamTailTip"
 					},
 					"VertexIndex": 2,
-					"Scale": 1,
+					"Scale": 1.5,
 					"Weight": 100,
 					"Type": "Angle",
 					"Reflect": false
@@ -455,7 +455,7 @@
 						"Id": "ParamHairSwayX"
 					},
 					"VertexIndex": 1,
-					"Scale": 1,
+					"Scale": 1.5,
 					"Weight": 100,
 					"Type": "Angle",
 					"Reflect": false
@@ -466,7 +466,7 @@
 						"Id": "ParamBackHairUp"
 					},
 					"VertexIndex": 1,
-					"Scale": 1,
+					"Scale": 1.5,
 					"Weight": 100,
 					"Type": "Angle",
 					"Reflect": false
@@ -477,7 +477,18 @@
 						"Id": "ParamBackHairDown"
 					},
 					"VertexIndex": 2,
-					"Scale": 1,
+					"Scale": 1.5,
+					"Weight": 100,
+					"Type": "Angle",
+					"Reflect": false
+				},
+				{
+					"Destination": {
+						"Target": "Parameter",
+						"Id": "ParamAngleZ"
+					},
+					"VertexIndex": 1,
+					"Scale": 21,
 					"Weight": 100,
 					"Type": "Angle",
 					"Reflect": false
