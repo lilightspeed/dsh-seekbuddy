@@ -56,3 +56,14 @@ NNNN-<简短英文slug>.md
 | [0018-blink-breath.md](./0018-blink-breath.md) | 实现自动眨眼(显式注入眨眼参数 ID)+ 确认自动呼吸;解释 ParamAngleZ 未用与身体幅度无效果的原因 | 已验证 |
 | [0019-breath-clamp-fix.md](./0019-breath-clamp-fix.md) | 修复:自动呼吸不可见 —— 加算型更新器的 load/save 节奏 + 呼吸 offset 校正(参数波形实测) | 已验证 |
 | [0020-docs-cleanup.md](./0020-docs-cleanup.md) | 文档整理:删除 TS 学习路径,主题文档对齐现状(技术栈/结构/路线图/Live2D 落地) | 已验证 |
+| [0021-live2d-project-files-out.md](./0021-live2d-project-files-out.md) | 文档:Live2D 编辑器工程(.cmo3)移出 assets 至仓库外 | 已验证 |
+| [0022-deepseek-blue-theme.md](./0022-deepseek-blue-theme.md) | 主题换肤:强调色由暖黄改为 DeepSeek 主题蓝(design-platform deepseek scale) | 已验证 |
+| [0023-inputbar-flush-bottom.md](./0023-inputbar-flush-bottom.md) | 输入条贴底:通栏贴窗底(两侧/底部零空隙),面板/审批卡同步下移 | 已验证 |
+| [0024-inputbar-bottom-round-corners.md](./0024-inputbar-bottom-round-corners.md) | 输入条底角圆角:贴底基础上底部抬高 6px,四角圆角留空隙,面板/审批卡同步上调 | 已验证 |
+| [0025-inputbar-position-revert.md](./0025-inputbar-position-revert.md) | 输入条位置回退:整体贴底位置不动(bottom 0),仅保留四角圆角,面板/审批卡随动回退 | 已验证 |
+| [0026-multiline-input-and-stop-button.md](./0026-multiline-input-and-stop-button.md) | 输入框多行自动增高(封顶后滚轮翻看)+ 运行中发送变红色停止按钮(sessions.cancel) | 已验证 |
+| [0027-inputbar-detail-fixes.md](./0027-inputbar-detail-fixes.md) | 输入框细节修复:垂直等距 / 精确填满换行(break-all)/ 删除即时收缩 / 输入法不再反复换行 | 已验证 |
+| [0028-drop-space-wrap.md](./0028-drop-space-wrap.md) | 决定:放弃"空格当普通字符"换行方案(Chromium 限制,用户确认当前排版已满足) | 已验证 |
+| [0029-pupil-contraction-reaction.md](./0029-pupil-contraction-reaction.md) | 瞳孔收缩反应:空闲时鼠标快速接近宠物 → ParamPupilSize 缩瞳,停驻后缓慢复原 | 草稿 |
+| [0030-settings-pupil-knobs.md](./0030-settings-pupil-knobs.md) | 设置面板:删除「身体幅度」滑块,新增瞳孔缩放(灵敏度 px/s + 收缩幅度),实时生效并持久化 | 草稿 |
+| [0031-settings-follow-collapse.md](./0031-settings-follow-collapse.md) | 设置面板:视线跟随相关 7 个滑块收进可展开合集「视线跟随鼠标时」(原生 details,默认收起) | 草稿 |
