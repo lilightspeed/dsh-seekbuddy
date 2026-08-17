@@ -67,6 +67,13 @@ async function bootstrap(): Promise<void> {
     })
 
     if (cfg) win.setOpacity(cfg.appearance.opacity)
+    // 高斯模糊背景(Win11 22H2+):让窗口背后的桌面/其他应用被系统 DWM 模糊,
+    // 配合半透明窗口形成毛玻璃效果。低版本系统抛错时静默忽略(保持纯透明)。
+    try {
+      if (process.platform === 'win32') win.setBackgroundMaterial('acrylic')
+    } catch (error) {
+      console.warn('[pet] backgroundMaterial(acrylic) 不可用,保持纯透明窗口:', error)
+    }
     win.on('ready-to-show', () => win.show())
 
     // 窗口重建(如 mac activate)后拖动采样从零开始,避免旧窗口位置算出虚假位移(0032)
