@@ -65,8 +65,8 @@ for (const dep of ['koffi', '@koromix/koffi-win32-x64']) {
   cpSync(src, dest, { recursive: true, dereference: true })
 }
 
-// 独立目录的 package.json:dependencies 清空(产物已自包含),
-// 保留元信息;electron 版本由 electron-builder.yml 的 electronVersion 决定。
+// 独立目录的 package.json:声明 koffi(见下方说明),其余依赖清空
+// (产物已自包含);保留元信息;electron 版本由 electron-builder.yml 的 electronVersion 决定。
 writeFileSync(
   join(stageDir, 'package.json'),
   JSON.stringify(
@@ -78,7 +78,14 @@ writeFileSync(
       license: pkg.license,
       type: 'module',
       main: './out/main/index.js',
-      dependencies: {},
+      // electron-builder 的 files 模式**不处理 node_modules**,node_modules 只由
+      // 依赖收集器管理(无 lockfile → manual traversal 扫描物理 node_modules)。
+      // 因此这里必须声明 koffi 两个包,收集器才会把上方拷贝进来的 koffi
+      // (含 @koromix 平台包的 .node 二进制)收进产物并自动解出 asar。
+      dependencies: {
+        koffi: '3.1.5',
+        '@koromix/koffi-win32-x64': '3.1.5',
+      },
       devDependencies: {},
     },
     null,

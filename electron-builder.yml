@@ -9,13 +9,12 @@ directories:
   output: dist
   buildResources: build
 # main/preload/renderer 已由 electron-vite 全量打包进 out/;assets 供托盘图标。
-# koffi(FFI 调 DWM 系统圆角)是 external 依赖,运行时从 node_modules 加载,
-# 由 package.mjs 把 koffi + @koromix/koffi-win32-x64 拷入 staging 后随包。
+# koffi(FFI 调 DWM 系统圆角)由 package.mjs 拷入 staging 的 node_modules 并在
+# staging package.json 声明为依赖,electron-builder 收集器自动收进产物、
+# 并自动把 .node 原生二进制解出 asar。
 files:
   - out/**
   - assets/**
-  - node_modules/koffi/**
-  - node_modules/@koromix/**
 # MCP server 必须解出 asar:DSH 用裸 node spawn 它(node 读不了 asar 内文件)。
 # 解包后真实路径:<install>/resources/app.asar.unpacked/out/main/mcp-server.js
 # (该文件已自包含打包,spawn 时无需 node_modules)。
