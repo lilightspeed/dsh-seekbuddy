@@ -37,12 +37,13 @@
         user-select: none;
       }
 
-      /* ---- 背景:DeepSeek 淡蓝渐变卡片 + 高斯模糊色块 ---- */
+      /* ---- 背景:DeepSeek 淡蓝渐变卡片 + 高斯模糊色块 ----
+         铺满整个窗口边缘(inset 0),不留透明边距 —— 卡片即程序边界,
+         窗口四周不存在"卡片外还能拖动"的区域。 */
       #bg {
         position: fixed;
-        inset: 10px;
+        inset: 0;
         z-index: 0;
-        border-radius: 26px;
         overflow: hidden;
         pointer-events: none; /* 拖拽/点击全部交给 #stage */
         background: linear-gradient(165deg, #eaf1ff 0%, #dee9ff 48%, #f2f6ff 100%);
@@ -144,7 +145,7 @@
       #bubble {
         position: fixed;
         left: 50%;
-        bottom: 116px;
+        bottom: 106px;
         transform: translateX(-50%);
         z-index: 5;
         max-width: 300px;
@@ -169,20 +170,20 @@
       #bubble.visible {
         opacity: 1;
       }
-      /* 底部输入条:液态玻璃通栏,紧贴卡片底边(圆角与卡片一致,无额外缝隙) */
+      /* 底部输入条:液态玻璃通栏,紧贴窗口底边(程序即卡片,无额外边距) */
       #inputbar {
         position: fixed;
-        left: 10px;
-        right: 10px;
-        bottom: 10px;
+        left: 0;
+        right: 0;
+        bottom: 0;
         z-index: 5;
         display: flex;
         gap: 6px;
         background: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.32));
         backdrop-filter: blur(28px) saturate(180%);
         -webkit-backdrop-filter: blur(28px) saturate(180%);
-        border: 1px solid rgba(255, 255, 255, 0.6);
-        border-radius: 20px 20px 26px 26px;
+        border-top: 1px solid rgba(255, 255, 255, 0.6);
+        border-radius: 20px 20px 0 0;
         padding: 6px 8px;
         box-shadow:
           inset 0 1px 1px rgba(255, 255, 255, 0.7),
@@ -204,7 +205,7 @@
         padding: 0 4px;
         align-self: center;
         word-break: break-all;
-        max-height: calc(100vh - 64px);
+        max-height: calc(100vh - 52px);
         overflow-y: auto;
         scrollbar-width: thin;
       }
@@ -242,8 +243,8 @@
       /* 角落状态(开发期可见):液态玻璃小胶囊 */
       #status {
         position: fixed;
-        left: 18px;
-        top: 14px;
+        left: 8px;
+        top: 6px;
         z-index: 3;
         font-size: 10px;
         color: var(--ink-2);
@@ -261,8 +262,8 @@
       /* 面板开关按钮(右上角,可交互):圆形液态玻璃 */
       #btn-panel {
         position: fixed;
-        right: 18px;
-        top: 14px;
+        right: 8px;
+        top: 6px;
         z-index: 4;
         width: 30px;
         height: 30px;
@@ -282,21 +283,22 @@
       #btn-panel:hover {
         background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.5));
       }
-      /* 会话/历史/审批面板:大面液态玻璃 */
+      /* 会话/历史/审批面板:大面液态玻璃,贴窗口左右边缘 */
       #panel {
         position: fixed;
-        top: 48px;
-        left: 10px;
-        right: 10px;
-        bottom: 62px;
+        top: 42px;
+        left: 0;
+        right: 0;
+        bottom: 52px;
         z-index: 4;
         display: flex;
         flex-direction: column;
         background: linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.34));
         backdrop-filter: blur(32px) saturate(180%);
         -webkit-backdrop-filter: blur(32px) saturate(180%);
-        border: 1px solid rgba(255, 255, 255, 0.6);
-        border-radius: 20px;
+        border-top: 1px solid rgba(255, 255, 255, 0.6);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.6);
+        border-radius: 0;
         box-shadow:
           0 12px 40px rgba(77, 107, 254, 0.2),
           inset 0 1px 1px rgba(255, 255, 255, 0.7);
@@ -777,9 +779,9 @@
       /* 审批卡(浮动在输入条上方):液态玻璃 + 品牌蓝边 */
       #approval-card {
         position: fixed;
-        left: 16px;
-        right: 16px;
-        bottom: 58px;
+        left: 8px;
+        right: 8px;
+        bottom: 52px;
         z-index: 6;
         background: linear-gradient(180deg, rgba(233, 240, 255, 0.85), rgba(214, 228, 255, 0.6));
         backdrop-filter: blur(28px) saturate(180%);
