@@ -60,6 +60,11 @@ async function bootstrap(): Promise<void> {
       skipTaskbar: true,
       hasShadow: false,
       backgroundColor: '#00000000',
+      // 应用图标(win32):窗口/任务栏显示 ymcog-jpmci-001.ico;其他平台不设
+      // (nativeImage 不认 .ico,且 dev 下无 exe 图标可用)。
+      ...(process.platform === 'win32'
+        ? { icon: join(import.meta.dirname, '../../assets/pet/icons/ymcog-jpmci-001.ico') }
+        : {}),
       webPreferences: {
         // type:module 下 electron-vite 把 preload 输出为 .mjs,sandbox 必须关闭
         preload: join(import.meta.dirname, '../preload/index.mjs'),

@@ -2,6 +2,8 @@
 # (electron-builder Windows 安装包/可执行文件图标)。零第三方依赖(System.Drawing)。
 # 用法:pwsh -File scripts/make-icon.ps1
 # 输出:build/icon.ico(16/24/32/48/64/128/256,DIB 32bpp BGRA + AND 掩码)
+# 注意:当前 build/icon.ico 已改用 assets/pet/icons/ymcog-jpmci-001.ico(应用正式
+# 图标),运行本脚本会用 icon.png 占位图覆盖它 —— 仅在需要回到占位图时运行。
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
