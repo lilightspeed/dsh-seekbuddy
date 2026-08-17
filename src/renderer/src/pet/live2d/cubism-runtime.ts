@@ -1,5 +1,6 @@
 import { CubismModelSettingJson } from '@live2d/framework/cubismmodelsettingjson'
 import { CubismBreath, BreathParameterData } from '@live2d/framework/effect/cubismbreath'
+import { CubismEyeBlink } from '@live2d/framework/effect/cubismeyeblink'
 import type { CubismIdHandle } from '@live2d/framework/id/cubismid'
 import { CubismFramework, LogLevel, Option } from '@live2d/framework/live2dcubismframework'
 import { CubismMatrix44 } from '@live2d/framework/math/cubismmatrix44'
@@ -7,11 +8,12 @@ import { CubismViewMatrix } from '@live2d/framework/math/cubismviewmatrix'
 import type { CubismModel } from '@live2d/framework/model/cubismmodel'
 import { CubismUserModel } from '@live2d/framework/model/cubismusermodel'
 import { CubismBreathUpdater } from '@live2d/framework/motion/cubismbreathupdater'
+import { CubismEyeBlinkUpdater } from '@live2d/framework/motion/cubismeyeblinkupdater'
 import { CubismPhysicsUpdater } from '@live2d/framework/motion/cubismphysicsupdater'
 import { CubismUpdateScheduler } from '@live2d/framework/motion/cubismupdatescheduler'
 import { CubismPhysics } from '@live2d/framework/physics/cubismphysics'
 import { CubismWebGLOffscreenManager } from '@live2d/framework/rendering/cubismoffscreenmanager'
-import { PARAM_HEAD, PARAM_EYE, PARAM_BODY, PARAM_MANUAL, type ViewLook } from './parameters.ts'
+import { PARAM_HEAD, PARAM_EYE, PARAM_BODY, PARAM_MANUAL, PARAM_EXPRESSION, type ViewLook } from './parameters.ts'
 import type { Live2dAppearance, Live2dRuntime } from './runtime.ts'
 
 /**
@@ -139,6 +141,8 @@ class CubismRuntime implements Live2dRuntime {
   private userModel: DsPetUserModel | null = null
   private scheduler: CubismUpdateScheduler | null = null
   private breath: CubismBreath | null = null
+  private eyeBlink: CubismEyeBlink | null = null
+  private autoBlink = true
   private ready = false
   private disposed = false
   private viewMatrix = new CubismViewMatrix()
@@ -228,12 +232,24 @@ class CubismRuntime implements Live2dRuntime {
       }
     }
 
-    // 呼吸:只驱动模型自带的 ParamBreath(不碰头部角度,避免与视角跟随打架)
+    // 呼吸:只驱动模型自带的 ParamBreath(不碰头部角度,避免与视角跟随打架)。
+    // 公式 value = offset + peak·sin(2π·t/cycle),cycle 为周期秒 —— 0.5±0.5,周期 ~3.2s,
+    // 让 ParamBreath 在 0..1 满幅摆动(可见性取决于模型里该参数是否绑了可见变形)。
     this.breath = CubismBreath.create()
     this.breath.setParameters([
-      new BreathParameterData(CubismFramework.getIdManager().getId(PARAM_MANUAL.breath), 0.5, 0.5, 3.2345, 1),
+      new BreathParameterData(CubismFramework.getIdManager().getId(PARAM_MANUAL.breath), 0.5, 0.5, 3.2, 1),
     ])
     this.scheduler.addUpdatableList(new CubismBreathUpdater(this.breath))
+
+    // 眨眼:model3.json 的 EyeBlink 组为空(README §3.4),这里显式注入参数 ID 绕过。
+    // updater 的 motionUpdated 回调返回 true 时跳过眨眼 —— 用它做 setAutoBlink 门控。
+    this.eyeBlink = CubismEyeBlink.create()
+    this.eyeBlink.setParameterIds([
+      CubismFramework.getIdManager().getId(PARAM_EXPRESSION.eyeLOpen),
+      CubismFramework.getIdManager().getId(PARAM_EXPRESSION.eyeROpen),
+    ])
+    this.eyeBlink.setBlinkingInterval(3.5)
+    this.scheduler.addUpdatableList(new CubismEyeBlinkUpdater(() => !this.autoBlink, this.eyeBlink))
     this.scheduler.sortUpdatableList()
 
     // 渲染器:独立 GL 上下文 + 着色器(着色器文件由 loadShaders 异步拉取,先画后到)
@@ -267,7 +283,7 @@ class CubismRuntime implements Live2dRuntime {
 
     this.ready = true
     console.info(
-      `[live2d] 模型就绪:${url} | 参数数:${model.getParameterCount()} | 物理:${hasPhysics} | 纹理:${texCount}`,
+      `[live2d] 模型就绪:${url} | 参数数:${model.getParameterCount()} | 物理:${hasPhysics} | 纹理:${texCount} | 眨眼:on | 呼吸:on`,
     )
   }
 
@@ -346,9 +362,8 @@ class CubismRuntime implements Live2dRuntime {
   }
 
   setAutoBlink(on: boolean): void {
-    // model3.json 的 EyeBlink 组为空(README §3.4),SDK 自动眨眼暂不可用;
-    // 等表情里程碑补组后再接 CubismEyeBlinkUpdater。
-    console.debug(`[live2d] setAutoBlink(${on}) —— EyeBlink 组为空,暂跳过`)
+    this.autoBlink = on
+    console.debug(`[live2d] setAutoBlink(${on})`)
   }
 
   playMotion(name: string): void {
@@ -368,6 +383,8 @@ class CubismRuntime implements Live2dRuntime {
     this.scheduler = null
     if (this.breath) CubismBreath.delete(this.breath)
     this.breath = null
+    if (this.eyeBlink) CubismEyeBlink.delete(this.eyeBlink)
+    this.eyeBlink = null
     this.userModel?.release()
     this.userModel = null
     this.canvas.remove()

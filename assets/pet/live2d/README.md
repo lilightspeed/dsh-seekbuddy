@@ -61,8 +61,9 @@
    **官方 Cubism SDK for Web + 独立 canvas 自绘**(见 doc/08 §4)。
 3. **物理接线**:`PhysicsSetting1 后发` ← `ParamAngleX`,`PhysicsSetting2 后发上下` ←
    `ParamAngleY`,输出统一写 `ParamBackHairUp/Down/Swing`——头部角度变化即触发后发摆动,零代码。
-4. **model3.json 的 EyeBlink / LipSync 组当前为空**:SDK 自动眨眼/口型暂不可用;
-   做表情里程碑时把 `ParamEyeLOpen/ROpen` 加进 EyeBlink 组再导出(或运行时手动驱动)。
+4. **model3.json 的 EyeBlink / LipSync 组当前为空**:SDK 自动眨眼已由运行时显式注入
+   `ParamEyeLOpen/ROpen` 绕过(0018),不再依赖该组;LipSync(口型)仍待表情里程碑。
+   若想在编辑器侧也生效,把 `ParamEyeLOpen/ROpen` 加进 EyeBlink 组再导出。
 5. **当前没有嘴部参数(`ParamMouthOpenY` 等)**:talking 状态需先回编辑器补嘴部参数。
 6. **`CombinedParameters` 只是编辑器 UX**(头部 XY 联动),运行时忽略。
 7. **参数改名后必须整包重导(Model 导出)**:编辑器会自动同步 physics3.json 等所有引用,无需手改
