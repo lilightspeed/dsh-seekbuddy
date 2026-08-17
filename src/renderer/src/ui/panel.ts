@@ -1,4 +1,5 @@
 import type { PetActivityEntry, PetApi, PetHistoryEntry, PetPluginEntry, PetPluginListResult, PetSessionSummary } from '../../../shared/pet-event.ts'
+import type { PetConfigUpdate } from '../../../shared/pet-config.ts'
 import type { PendingApproval } from './approvals.ts'
 
 export interface PanelHooks {
@@ -14,6 +15,8 @@ export interface PanelHooks {
     subscribe(listener: (list: PetActivityEntry[]) => void): () => void
   }
   onFlash(text: string, ok: boolean): void
+  /** 宠物(Live2D)外观/手感变更(0017):主进程负责落盘并应用到 animator。 */
+  onPetSettingsChange?(patch: PetConfigUpdate): void
 }
 
 /** 相对时间("刚刚 / 5 分钟前 / 2 小时前 / 8月15日")。 */
@@ -370,6 +373,18 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     if (scaleVal) scaleVal.textContent = `${Math.round(cfg.appearance.scale * 100)}%`
     if (autostartCheck) autostartCheck.checked = cfg.launchAtLogin
     if (voiceCheck) voiceCheck.checked = cfg.voice.enabled
+    // 宠物(Live2D)外观/手感
+    const p = cfg.pet
+    if (petX && document.activeElement !== petX) petX.value = String(Math.round(p.positionX * 100))
+    if (petY && document.activeElement !== petY) petY.value = String(Math.round(p.positionY * 100))
+    if (petScale && document.activeElement !== petScale) petScale.value = String(Math.round(p.scale * 100))
+    if (petHead && document.activeElement !== petHead) petHead.value = String(Math.round(p.headAmplitude * 100))
+    if (petEye && document.activeElement !== petEye) petEye.value = String(Math.round(p.eyeAmplitude * 100))
+    if (petBody && document.activeElement !== petBody) petBody.value = String(Math.round(p.bodyAmplitude * 100))
+    if (petDeadZone && document.activeElement !== petDeadZone) petDeadZone.value = String(Math.round(p.deadZone))
+    if (petDistance && document.activeElement !== petDistance) petDistance.value = String(Math.round(p.distance))
+    if (petResponse && document.activeElement !== petResponse) petResponse.value = String(Math.round(p.response * 100))
+    refreshPetLabels()
   }
 
   // opacity 滑块:实时预览,拖动停顿 120ms 才落盘一次(透明度不改窗口尺寸,无反馈回路)
@@ -425,6 +440,69 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
       hooks.onFlash(cfg.voice.enabled ? '🔊 语音已开启(阶段 6 生效)' : '🔇 语音已关闭', true)
     })
   })
+
+  // ---- 宠物(Live2D)外观/手感(0017):拖动实时应用 + 120ms 防抖落盘 ----
+  const petX = document.querySelector<HTMLInputElement>('#pet-x')
+  const petXVal = document.querySelector<HTMLSpanElement>('#pet-x-val')
+  const petY = document.querySelector<HTMLInputElement>('#pet-y')
+  const petYVal = document.querySelector<HTMLSpanElement>('#pet-y-val')
+  const petScale = document.querySelector<HTMLInputElement>('#pet-scale')
+  const petScaleVal = document.querySelector<HTMLSpanElement>('#pet-scale-val')
+  const petHead = document.querySelector<HTMLInputElement>('#pet-head')
+  const petHeadVal = document.querySelector<HTMLSpanElement>('#pet-head-val')
+  const petEye = document.querySelector<HTMLInputElement>('#pet-eye')
+  const petEyeVal = document.querySelector<HTMLSpanElement>('#pet-eye-val')
+  const petBody = document.querySelector<HTMLInputElement>('#pet-body')
+  const petBodyVal = document.querySelector<HTMLSpanElement>('#pet-body-val')
+  const petDeadZone = document.querySelector<HTMLInputElement>('#pet-deadzone')
+  const petDeadZoneVal = document.querySelector<HTMLSpanElement>('#pet-deadzone-val')
+  const petDistance = document.querySelector<HTMLInputElement>('#pet-distance')
+  const petDistanceVal = document.querySelector<HTMLSpanElement>('#pet-distance-val')
+  const petResponse = document.querySelector<HTMLInputElement>('#pet-response')
+  const petResponseVal = document.querySelector<HTMLSpanElement>('#pet-response-val')
+  const petSliders: Array<HTMLInputElement | null> = [petX, petY, petScale, petHead, petEye, petBody, petDeadZone, petDistance, petResponse]
+
+  /** 从滑块值构造宠物设置补丁(扁平 pet* 键,全量 9 项)。 */
+  function petPatchFromSliders(): PetConfigUpdate {
+    const num = (el: HTMLInputElement | null): number => (el ? Number(el.value) : 0)
+    return {
+      petPositionX: num(petX) / 100,
+      petPositionY: num(petY) / 100,
+      petScale: num(petScale) / 100,
+      petHeadAmplitude: num(petHead) / 100,
+      petEyeAmplitude: num(petEye) / 100,
+      petBodyAmplitude: num(petBody) / 100,
+      petDeadZone: num(petDeadZone),
+      petDistance: num(petDistance),
+      petResponse: num(petResponse) / 100,
+    }
+  }
+
+  function refreshPetLabels(): void {
+    if (petXVal) petXVal.textContent = `${petX?.value ?? '0'}%`
+    if (petYVal) petYVal.textContent = `${petY?.value ?? '0'}%`
+    if (petScaleVal) petScaleVal.textContent = `${petScale?.value ?? '0'}%`
+    if (petHeadVal) petHeadVal.textContent = `${petHead?.value ?? '0'}%`
+    if (petEyeVal) petEyeVal.textContent = `${petEye?.value ?? '0'}%`
+    if (petBodyVal) petBodyVal.textContent = `${petBody?.value ?? '0'}%`
+    if (petDeadZoneVal) petDeadZoneVal.textContent = `${petDeadZone?.value ?? '0'}px`
+    if (petDistanceVal) petDistanceVal.textContent = `${petDistance?.value ?? '0'}px`
+    if (petResponseVal) petResponseVal.textContent = `${petResponse?.value ?? '0'}%`
+  }
+
+  let petTimer: ReturnType<typeof setTimeout> | undefined
+  function debouncePetSettings(): void {
+    if (petTimer) clearTimeout(petTimer)
+    petTimer = setTimeout(() => {
+      hooks.onPetSettingsChange?.(petPatchFromSliders())
+    }, 120)
+  }
+  for (const el of petSliders) {
+    el?.addEventListener('input', () => {
+      refreshPetLabels()
+      debouncePetSettings()
+    })
+  }
 
   // ---- B2 雷达 tab:全会话活动(运行中/完成/出错),点击设目标 ----
 

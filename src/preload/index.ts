@@ -29,6 +29,16 @@ function sanitizeConfigUpdate(patch: PetConfigUpdate | undefined): PetConfigUpda
   if (patch?.scale !== undefined) out.scale = toFinite(patch.scale)
   if (patch?.voiceEnabled !== undefined) out.voiceEnabled = Boolean(patch.voiceEnabled)
   if (patch?.launchAtLogin !== undefined) out.launchAtLogin = Boolean(patch.launchAtLogin)
+  // 宠物(Live2D)外观/手感(0017):toFinite 收敛
+  if (patch?.petPositionX !== undefined) out.petPositionX = toFinite(patch.petPositionX)
+  if (patch?.petPositionY !== undefined) out.petPositionY = toFinite(patch.petPositionY)
+  if (patch?.petScale !== undefined) out.petScale = toFinite(patch.petScale)
+  if (patch?.petHeadAmplitude !== undefined) out.petHeadAmplitude = toFinite(patch.petHeadAmplitude)
+  if (patch?.petEyeAmplitude !== undefined) out.petEyeAmplitude = toFinite(patch.petEyeAmplitude)
+  if (patch?.petBodyAmplitude !== undefined) out.petBodyAmplitude = toFinite(patch.petBodyAmplitude)
+  if (patch?.petDeadZone !== undefined) out.petDeadZone = toFinite(patch.petDeadZone)
+  if (patch?.petDistance !== undefined) out.petDistance = toFinite(patch.petDistance)
+  if (patch?.petResponse !== undefined) out.petResponse = toFinite(patch.petResponse)
   return out
 }
 

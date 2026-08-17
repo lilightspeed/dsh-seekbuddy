@@ -100,6 +100,11 @@ async function boot(): Promise<void> {
   // 舞台 + 动画后端(Live2D 优先,未接入 SDK 时回落占位球宠) + 状态机
   const stage = await createStage()
   const animator: PetAnimator = createLive2dAnimator(stage)
+
+  // 启动即应用持久化的宠物外观/手感(位置/大小/跟随)
+  void api.getConfig().then((cfg) => {
+    animator.applyPetSettings?.(cfg.pet)
+  })
   const actor = createActor(petMachine)
   actor.subscribe((snapshot) => {
     petText = snapshot.value as PetState
@@ -150,6 +155,12 @@ async function boot(): Promise<void> {
         actor.send({ type: 'DSH_ERROR' })
         showBubble(text, 3500)
       }
+    },
+    // 宠物设置变更:主进程落盘后,把新配置应用给 animator(实时生效)
+    onPetSettingsChange: (patch) => {
+      void api.setConfig(patch).then((cfg) => {
+        animator.applyPetSettings?.(cfg.pet)
+      })
     },
   })
   void panel

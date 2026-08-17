@@ -12,7 +12,7 @@ import { CubismUpdateScheduler } from '@live2d/framework/motion/cubismupdatesche
 import { CubismPhysics } from '@live2d/framework/physics/cubismphysics'
 import { CubismWebGLOffscreenManager } from '@live2d/framework/rendering/cubismoffscreenmanager'
 import { PARAM_HEAD, PARAM_EYE, PARAM_BODY, PARAM_MANUAL, type ViewLook } from './parameters.ts'
-import type { Live2dRuntime } from './runtime.ts'
+import type { Live2dAppearance, Live2dRuntime } from './runtime.ts'
 
 /**
  * Cubism SDK for Web 5-r.5 的 Live2dRuntime 实现 —— 独立 WebGL2 canvas 自绘(doc/08 §4 结论)。
@@ -69,8 +69,8 @@ export interface CubismRuntimeOptions {
   host: HTMLElement
   /** model3.json 的 publicDir 相对 URL(如 /pet/live2d/ds-pet.model3.json)。 */
   modelUrl: string
-  /** 模型中心在窗口中的竖直比例(0=顶,1=底);默认 0.44(与角色层锚点一致)。 */
-  anchorRatioY: number
+  /** 初始外观(位置/大小);之后由 setAppearance 实时调整(0017)。 */
+  appearance: Live2dAppearance
 }
 
 /** 创建 Cubism 运行时;WebGL2 不可用时返回 null(调用方回落占位动画)。 */
@@ -78,7 +78,7 @@ export function createCubismRuntime(options: CubismRuntimeOptions): Live2dRuntim
   ensureFrameworkStarted()
 
   const canvas = document.createElement('canvas')
-  // 不拦截任何指针事件:视角跟随走 window 级 pointermove,后续点击热区再单独接。
+  // 不拦截任何指针事件:视角跟随走主进程光标轮询,后续点击热区再单独接。
   canvas.style.pointerEvents = 'none'
   const gl = canvas.getContext('webgl2')
   if (!gl) {
@@ -87,7 +87,7 @@ export function createCubismRuntime(options: CubismRuntimeOptions): Live2dRuntim
   }
   options.host.appendChild(canvas)
 
-  return new CubismRuntime(canvas, gl, options.host, options.anchorRatioY)
+  return new CubismRuntime(canvas, gl, options.host, { ...options.appearance })
 }
 
 async function fetchArrayBuffer(url: string): Promise<ArrayBuffer> {
@@ -120,13 +120,22 @@ function loadPngTexture(gl: WebGL2RenderingContext, url: string): Promise<WebGLT
   })
 }
 
+/** 外观合法化:位置 0..1(模型中心不出屏),缩放 0.2..3。 */
+function clampAppearance(a: Live2dAppearance): Live2dAppearance {
+  return {
+    positionX: Math.min(1, Math.max(0, a.positionX)),
+    positionY: Math.min(1, Math.max(0, a.positionY)),
+    scale: Math.min(3, Math.max(0.2, a.scale)),
+  }
+}
+
 class CubismRuntime implements Live2dRuntime {
   private readonly canvas: HTMLCanvasElement
   private readonly gl: WebGL2RenderingContext
   private readonly host: HTMLElement
-  private readonly anchorRatioY: number
   private readonly frameBuffer: WebGLFramebuffer | null
 
+  private appearance: Live2dAppearance
   private userModel: DsPetUserModel | null = null
   private scheduler: CubismUpdateScheduler | null = null
   private breath: CubismBreath | null = null
@@ -141,18 +150,18 @@ class CubismRuntime implements Live2dRuntime {
     canvas: HTMLCanvasElement,
     gl: WebGL2RenderingContext,
     host: HTMLElement,
-    anchorRatioY: number,
+    appearance: Live2dAppearance,
   ) {
     this.canvas = canvas
     this.gl = gl
     this.host = host
-    this.anchorRatioY = anchorRatioY
+    this.appearance = clampAppearance(appearance)
     this.frameBuffer = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null
     this.resize()
     window.addEventListener('resize', this.onResize)
   }
 
-  /** canvas 与视图矩阵随窗口尺寸/DPR 同步。 */
+  /** canvas 尺寸/DPR 与视图矩阵随窗口同步。 */
   private resize(): void {
     const dpr = window.devicePixelRatio || 1
     const w = Math.max(1, Math.round(this.host.clientWidth * dpr))
@@ -162,15 +171,26 @@ class CubismRuntime implements Live2dRuntime {
       this.canvas.height = h
     }
     this.gl.viewport(0, 0, this.gl.drawingBufferWidth, this.gl.drawingBufferHeight)
+    this.rebuildView()
+  }
 
-    // 逻辑坐标:模型画布中心在原点(Y 向上);屏幕逻辑范围为 ±ratio(横) × ±1(纵)。
-    // 再沿 Y 平移,让模型中心落在窗口竖直比例 anchorRatioY 处。
-    const ratio = w / h
+  /** 按外观(位置/大小)重建视图矩阵:模型画布中心在原点(Y 向上),缩放到 scale 倍后平移到目标点。 */
+  private rebuildView(): void {
+    const ratio = this.canvas.width / Math.max(1, this.canvas.height)
     const view = new CubismViewMatrix()
     view.setScreenRect(-ratio, ratio, -1, 1)
     view.loadIdentity()
-    view.translateRelative(0, 1 - 2 * this.anchorRatioY)
+    view.scale(this.appearance.scale, this.appearance.scale)
+    const tx = (2 * this.appearance.positionX - 1) * ratio
+    const ty = 1 - 2 * this.appearance.positionY
+    view.translateRelative(tx, ty)
     this.viewMatrix = view
+  }
+
+  setAppearance(appearance: Live2dAppearance): void {
+    if (this.disposed) return
+    this.appearance = clampAppearance(appearance)
+    this.rebuildView()
   }
 
   loadModel(url: string): Promise<void> {

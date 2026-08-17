@@ -42,6 +42,7 @@ export class PetConfigStore {
       ...this.value,
       dsh: { ...this.value.dsh },
       appearance: { ...this.value.appearance },
+      pet: { ...this.value.pet },
       voice: { ...this.value.voice },
     }
     if (patch.dshBaseUrl !== undefined) {
@@ -50,6 +51,15 @@ export class PetConfigStore {
     }
     if (patch.opacity !== undefined) next.appearance.opacity = clamp(patch.opacity, 0.3, 1)
     if (patch.scale !== undefined) next.appearance.scale = clamp(patch.scale, 0.6, 1.6)
+    if (patch.petPositionX !== undefined) next.pet.positionX = clamp(patch.petPositionX, 0, 1)
+    if (patch.petPositionY !== undefined) next.pet.positionY = clamp(patch.petPositionY, 0, 1)
+    if (patch.petScale !== undefined) next.pet.scale = clamp(patch.petScale, 0.2, 3)
+    if (patch.petHeadAmplitude !== undefined) next.pet.headAmplitude = clamp(patch.petHeadAmplitude, 0, 1)
+    if (patch.petEyeAmplitude !== undefined) next.pet.eyeAmplitude = clamp(patch.petEyeAmplitude, 0, 1)
+    if (patch.petBodyAmplitude !== undefined) next.pet.bodyAmplitude = clamp(patch.petBodyAmplitude, 0, 1)
+    if (patch.petDeadZone !== undefined) next.pet.deadZone = clamp(patch.petDeadZone, 0, 100)
+    if (patch.petDistance !== undefined) next.pet.distance = clamp(patch.petDistance, 20, 2000)
+    if (patch.petResponse !== undefined) next.pet.response = clamp(patch.petResponse, 0.2, 5)
     if (patch.voiceEnabled !== undefined) next.voice.enabled = Boolean(patch.voiceEnabled)
     if (patch.launchAtLogin !== undefined) next.launchAtLogin = Boolean(patch.launchAtLogin)
     if (patch.targetSessionId !== undefined) {
@@ -80,6 +90,7 @@ export class PetConfigStore {
           ...this.value,
           dsh: { ...this.value.dsh },
           appearance: { ...this.value.appearance },
+          pet: { ...this.value.pet },
           voice: { ...this.value.voice },
         }
         if (typeof raw.dsh?.baseUrl === 'string') {
@@ -88,6 +99,17 @@ export class PetConfigStore {
         }
         if (typeof raw.appearance?.opacity === 'number') next.appearance.opacity = clamp(raw.appearance.opacity, 0.3, 1)
         if (typeof raw.appearance?.scale === 'number') next.appearance.scale = clamp(raw.appearance.scale, 0.6, 1.6)
+        if (raw.pet && typeof raw.pet === 'object') {
+          if (typeof raw.pet.positionX === 'number') next.pet.positionX = clamp(raw.pet.positionX, 0, 1)
+          if (typeof raw.pet.positionY === 'number') next.pet.positionY = clamp(raw.pet.positionY, 0, 1)
+          if (typeof raw.pet.scale === 'number') next.pet.scale = clamp(raw.pet.scale, 0.2, 3)
+          if (typeof raw.pet.headAmplitude === 'number') next.pet.headAmplitude = clamp(raw.pet.headAmplitude, 0, 1)
+          if (typeof raw.pet.eyeAmplitude === 'number') next.pet.eyeAmplitude = clamp(raw.pet.eyeAmplitude, 0, 1)
+          if (typeof raw.pet.bodyAmplitude === 'number') next.pet.bodyAmplitude = clamp(raw.pet.bodyAmplitude, 0, 1)
+          if (typeof raw.pet.deadZone === 'number') next.pet.deadZone = clamp(raw.pet.deadZone, 0, 100)
+          if (typeof raw.pet.distance === 'number') next.pet.distance = clamp(raw.pet.distance, 20, 2000)
+          if (typeof raw.pet.response === 'number') next.pet.response = clamp(raw.pet.response, 0.2, 5)
+        }
         if (typeof raw.voice?.enabled === 'boolean') next.voice.enabled = raw.voice.enabled
         if (typeof raw.launchAtLogin === 'boolean') next.launchAtLogin = raw.launchAtLogin
         if (raw.targetSessionId === null || typeof raw.targetSessionId === 'string') {
@@ -106,6 +128,7 @@ function cloneDefault(): PetConfig {
     ...DEFAULT_PET_CONFIG,
     dsh: { ...DEFAULT_PET_CONFIG.dsh },
     appearance: { ...DEFAULT_PET_CONFIG.appearance },
+    pet: { ...DEFAULT_PET_CONFIG.pet },
     voice: { ...DEFAULT_PET_CONFIG.voice },
   }
 }

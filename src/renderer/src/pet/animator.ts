@@ -1,4 +1,5 @@
 import type { PetState } from '../fsm/pet-machine.ts'
+import type { PetPetSettings } from '../../../shared/pet-config.ts'
 
 /**
  * 动画后端接口 —— "换 Live2D/Lottie 的成本锚点"。
@@ -11,4 +12,9 @@ export interface PetAnimator {
   /** 每帧推进(占位动画用;贴图/Live2D 后端可忽略)。 */
   tick(deltaSeconds: number): void
   dispose(): void
+  /**
+   * 应用宠物外观与跟随手感(设置面板实时调整,0017)。
+   * 可选:Live2D 后端实现;占位/贴图后端不实现(main.ts 用 ?. 调用)。
+   */
+  applyPetSettings?(settings: PetPetSettings): void
 }

@@ -52,3 +52,4 @@ NNNN-<简短英文slug>.md
 | [0014-live2d-view-follow-skeleton.md](./0014-live2d-view-follow-skeleton.md) | Live2D 视角跟随:动画器骨架 + 跟随核心逻辑 + SDK 接缝(SDK 未接入,回落球宠) | 已验证 |
 | [0015-live2d-cubism-runtime.md](./0015-live2d-cubism-runtime.md) | Live2D 视角跟随落地:vendor Cubism SDK for Web 5-r.5 + 独立 canvas 运行时(默认启用) | 已验证 |
 | [0016-cursor-follow-fix.md](./0016-cursor-follow-fix.md) | 修复:视角跟随不动 —— 拖拽区域吞鼠标事件,光标改由主进程轮询推送 | 已验证 |
+| [0017-pet-settings-tune.md](./0017-pet-settings-tune.md) | 视角跟随调优(Y 反转/幅度/窗外距离)+ 设置面板宠物参数(位置/大小/手感,持久化) | 已验证 |
