@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import type { PetApi, PetApprovalRequest, PetEvent } from '../shared/pet-event.ts'
+import type { PetApi, PetApprovalRequest, PetCursorPosition, PetEvent } from '../shared/pet-event.ts'
 import type { PetConfigUpdate } from '../shared/pet-config.ts'
 
 /**
@@ -42,6 +42,19 @@ const petApi: PetApi = {
     ipcRenderer.on('pet:event', listener)
     return () => {
       ipcRenderer.removeListener('pet:event', listener)
+    }
+  },
+  onCursor(handler) {
+    const listener = (_event: IpcRendererEvent, payload: PetCursorPosition): void => {
+      handler({
+        x: toFinite(payload?.x),
+        y: toFinite(payload?.y),
+        inside: Boolean(payload?.inside),
+      })
+    }
+    ipcRenderer.on('pet:cursor', listener)
+    return () => {
+      ipcRenderer.removeListener('pet:cursor', listener)
     }
   },
   getState: () => ipcRenderer.invoke('pet:get-state'),

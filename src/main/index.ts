@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, screen } from 'electron'
 import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
 import type { PetConnectionState, PetEvent, PetOpResult, PetApprovalRequest } from '../shared/pet-event.ts'
 import type { PetConfig, PetConfigUpdate } from '../shared/pet-config.ts'
@@ -95,6 +95,26 @@ async function bootstrap(): Promise<void> {
   function onPetEvent(event: PetEvent): void {
     notifier?.onEvent(event)
     sendPetEvent(event)
+  }
+
+  /**
+   * 光标轮询(0016):拖拽区域(`-webkit-app-region: drag`)会吞掉 renderer 的鼠标事件,
+   * 视角跟随改由主进程全局读光标(screen.getCursorScreenPoint)转局部坐标后推送。
+   * 光标在窗口外也照常推送(renderer 按窗口边缘夹取,宠物始终朝向光标方向)。
+   */
+  let cursorTimer: NodeJS.Timeout | undefined
+  function startCursorPolling(): void {
+    if (cursorTimer) return
+    cursorTimer = setInterval(() => {
+      const win = mainWindow
+      if (!win || win.isDestroyed() || !win.isVisible()) return
+      const cursor = screen.getCursorScreenPoint()
+      const bounds = win.getBounds()
+      const x = cursor.x - bounds.x
+      const y = cursor.y - bounds.y
+      const inside = x >= 0 && y >= 0 && x <= bounds.width && y <= bounds.height
+      win.webContents.send('pet:cursor', { x, y, inside })
+    }, 33)
   }
 
   function handleGetState(): PetConnectionState {
@@ -244,6 +264,7 @@ async function bootstrap(): Promise<void> {
     })
 
     mainWindow = createWindow()
+    startCursorPolling()
     restartConnection()
 
     // 阶段 4 反向链路:loopback bridge,MCP server(被 DSH spawn)经它驱动宠物。
@@ -291,6 +312,7 @@ async function bootstrap(): Promise<void> {
   })
 
   app.on('will-quit', () => {
+    if (cursorTimer) clearInterval(cursorTimer)
     connection?.stop()
     bridge?.close()
   })

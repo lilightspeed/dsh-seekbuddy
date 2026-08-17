@@ -149,9 +149,23 @@ export interface PetApprovalRequest {
   outcome: 'allowed-once' | 'rejected'
 }
 
+/** 主进程轮询的光标位置(窗口局部坐标,CSS px;窗口外时 renderer 按边缘夹取)。 */
+export interface PetCursorPosition {
+  x: number
+  y: number
+  /** 光标是否在窗口矩形内。 */
+  inside: boolean
+}
+
 /** preload 暴露给 renderer 的 window.petApi 白名单(阶段 3)。 */
 export interface PetApi {
   onPetEvent(handler: (event: PetEvent) => void): () => void
+  /**
+   * 主进程光标轮询(视角跟随用)。
+   * 拖拽区域(`-webkit-app-region: drag`)会吞掉 renderer 的鼠标事件,故光标由主进程
+   * 全局读取后推送(0016),光标在窗口外也照常推送。
+   */
+  onCursor(handler: (position: PetCursorPosition) => void): () => void
   getState(): Promise<PetConnectionState>
   /** 向当前目标会话发送一条文本消息(session.prompt)。 */
   sendMessage(text: string): Promise<PetOpResult>

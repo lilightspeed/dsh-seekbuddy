@@ -57,10 +57,27 @@ function createLive2dAnimatorWithRuntime(
   let state: PetState = 'idle'
   let pointer: { x: number; y: number } | null = null
   let loaded = false
+  let unsubscribeCursor: (() => void) | undefined
 
-  function onPointerMove(event: PointerEvent): void {
-    pointer = { x: event.clientX, y: event.clientY }
+  /** 写入当前光标(窗口局部坐标);窗口外按边缘夹取,宠物始终朝向光标方向。 */
+  function setPointer(x: number, y: number): void {
+    pointer = {
+      x: Math.min(Math.max(x, 0), window.innerWidth),
+      y: Math.min(Math.max(y, 0), window.innerHeight),
+    }
   }
+
+  // 主数据源:主进程光标轮询(拖拽区域吞 renderer 鼠标事件,0016)
+  if (window.petApi?.onCursor) {
+    unsubscribeCursor = window.petApi.onCursor((pos) => {
+      setPointer(pos.x, pos.y)
+    })
+  }
+  // 兜底:无 petApi 环境(如纯浏览器调试)仍走本地事件
+  function onPointerMove(event: PointerEvent): void {
+    setPointer(event.clientX, event.clientY)
+  }
+  window.addEventListener('pointermove', onPointerMove)
 
   function applyState(next: PetState): void {
     follower.setEnabled(shouldFollow(next))
@@ -92,6 +109,7 @@ function createLive2dAnimatorWithRuntime(
       runtime.update(deltaSeconds)
     },
     dispose(): void {
+      unsubscribeCursor?.()
       window.removeEventListener('pointermove', onPointerMove)
       runtime.dispose()
     },
