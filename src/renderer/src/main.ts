@@ -2,7 +2,7 @@ import { createActor } from 'xstate'
 import type { PetActivityEntry, PetApi, PetEvent } from '../../shared/pet-event.ts'
 import { petMachine, type PetState } from './fsm/pet-machine.ts'
 import type { PetAnimator } from './pet/animator.ts'
-import { createSpriteAnimator } from './pet/sprite-animator.ts'
+import { createLive2dAnimator } from './pet/live2d/create-live2d-animator.ts'
 import { createStage } from './pet/stage.ts'
 import { createApprovalCenter, type PendingApproval } from './ui/approvals.ts'
 import { createPanel } from './ui/panel.ts'
@@ -97,9 +97,9 @@ async function boot(): Promise<void> {
     return
   }
 
-  // 舞台 + 动画后端(占位球宠) + 状态机
+  // 舞台 + 动画后端(Live2D 优先,未接入 SDK 时回落占位球宠) + 状态机
   const stage = await createStage()
-  const animator: PetAnimator = createSpriteAnimator(stage)
+  const animator: PetAnimator = createLive2dAnimator(stage)
   const actor = createActor(petMachine)
   actor.subscribe((snapshot) => {
     petText = snapshot.value as PetState

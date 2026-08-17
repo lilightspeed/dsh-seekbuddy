@@ -1,0 +1,74 @@
+/**
+ * ds-pet 模型参数 ID 契约。
+ *
+ * 与 assets/pet/live2d/ds-pet.cdi3.json 一一对应;模型改名 / 重导后必须同步本文件
+ * (对照表见 assets/pet/live2d/README.md §2)。SDK 运行时按这些 ID 驱动参数。
+ */
+
+/** 视角跟随:头部角度(度)。 */
+export const PARAM_HEAD = {
+  x: 'ParamAngleX',
+  y: 'ParamAngleY',
+  z: 'ParamAngleZ',
+} as const
+
+/** 视角跟随:眼珠转动(归一化 -1..1)。 */
+export const PARAM_EYE = {
+  x: 'ParamEyeBallX',
+  y: 'ParamEyeBallY',
+} as const
+
+/** 视角跟随:身体旋转(可选联动,度)。 */
+export const PARAM_BODY = {
+  x: 'ParamBodyAngleX',
+  y: 'ParamBodyAngleY',
+  z: 'ParamBodyAngleZ',
+} as const
+
+/** 物理驱动:后发(由 physics3.json 自动写入,运行时只读、不手动设)。 */
+export const PARAM_BACK_HAIR = {
+  up: 'ParamBackHairUp',
+  down: 'ParamBackHairDown',
+  swing: 'ParamBackHairSwing',
+} as const
+
+/** 手动 / 程序驱动参数。 */
+export const PARAM_MANUAL = {
+  tailSwing: 'ParamTailSwing',
+  breath: 'ParamBreath',
+  pupilSize: 'ParamPupilSize',
+  hairFront: 'ParamHairFront',
+  hairSide: 'ParamHairSide',
+  cheek: 'ParamCheek',
+  browLAngle: 'ParamBrowLAngle',
+  browRAngle: 'ParamBrowRAngle',
+  browLY: 'ParamBrowLY',
+  browRY: 'ParamBrowRY',
+} as const
+
+/** 表情 / 说话参数(后续里程碑)。 */
+export const PARAM_EXPRESSION = {
+  eyeLOpen: 'ParamEyeLOpen',
+  eyeROpen: 'ParamEyeROpen',
+  eyeLSmile: 'ParamEyeLSmile',
+  eyeRSmile: 'ParamEyeRSmile',
+} as const
+
+/**
+ * 视角跟随每帧输出:全部为归一化 -1..1(与参数实际 min/max 解耦,
+ * 由 Live2dRuntime 适配层映射到模型参数范围并 clamp)。
+ */
+export interface ViewLook {
+  /** 头部偏转 X(左右)。 */
+  headX: number
+  /** 头部偏转 Y(上下)。 */
+  headY: number
+  /** 头部倾斜 Z。 */
+  headZ: number
+  /** 眼珠 X(左右)。 */
+  eyeX: number
+  /** 眼珠 Y(上下)。 */
+  eyeY: number
+  /** 身体旋转 X(左右,可选联动)。 */
+  bodyX: number
+}
