@@ -12,6 +12,36 @@
 			"Name": "角度 Y"
 		},
 		{
+			"Id": "ParamTailRoot",
+			"GroupId": "",
+			"Name": "尾巴根摆动"
+		},
+		{
+			"Id": "ParamTailTip",
+			"GroupId": "",
+			"Name": "尾巴尖摆动"
+		},
+		{
+			"Id": "ParamDragX",
+			"GroupId": "",
+			"Name": "左右拖动宠物"
+		},
+		{
+			"Id": "ParamDragY",
+			"GroupId": "",
+			"Name": "上下拖动宠物"
+		},
+		{
+			"Id": "ParamHairSwayX",
+			"GroupId": "",
+			"Name": "前发左右飘动"
+		},
+		{
+			"Id": "ParamHairSwayY",
+			"GroupId": "",
+			"Name": "前发上下飘动"
+		},
+		{
 			"Id": "ParamEyeBallX",
 			"GroupId": "",
 			"Name": "眼珠转动X"
@@ -27,24 +57,19 @@
 			"Name": "角度 Z"
 		},
 		{
-			"Id": "ParamTailSwing",
-			"GroupId": "",
-			"Name": "尾巴上下晃动"
-		},
-		{
 			"Id": "ParamEyeLOpen",
 			"GroupId": "",
 			"Name": "左眼 开闭"
 		},
 		{
-			"Id": "ParamEyeLSmile",
-			"GroupId": "",
-			"Name": "左眼 微笑"
-		},
-		{
 			"Id": "ParamEyeROpen",
 			"GroupId": "",
 			"Name": "右眼 开闭"
+		},
+		{
+			"Id": "ParamEyeLSmile",
+			"GroupId": "",
+			"Name": "左眼 微笑"
 		},
 		{
 			"Id": "ParamEyeRSmile",
@@ -95,36 +120,6 @@
 			"Id": "ParamBackHairSwing",
 			"GroupId": "",
 			"Name": "后发上下"
-		},
-		{
-			"Id": "ParamCheek",
-			"GroupId": "",
-			"Name": "脸颊泛红"
-		},
-		{
-			"Id": "ParamBodyAngleX",
-			"GroupId": "",
-			"Name": "身体旋转 X"
-		},
-		{
-			"Id": "ParamBodyAngleY",
-			"GroupId": "",
-			"Name": "身体旋转 Y"
-		},
-		{
-			"Id": "ParamBodyAngleZ",
-			"GroupId": "",
-			"Name": "身体旋转 Z"
-		},
-		{
-			"Id": "ParamHairFront",
-			"GroupId": "",
-			"Name": "摇动 前发"
-		},
-		{
-			"Id": "ParamHairSide",
-			"GroupId": "",
-			"Name": "摇动 侧发"
 		}
 	],
 	"ParameterGroups": [],

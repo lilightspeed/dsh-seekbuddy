@@ -3,7 +3,7 @@
 	"FileReferences": {
 		"Moc": "ds-pet.moc3",
 		"Textures": [
-			"ds-pet.1024/texture_00.png"
+			"ds-pet.2048/texture_00.png"
 		],
 		"Physics": "ds-pet.physics3.json",
 		"DisplayInfo": "ds-pet.cdi3.json"
