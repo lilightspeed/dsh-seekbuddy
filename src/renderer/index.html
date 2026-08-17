@@ -9,6 +9,23 @@
     />
     <title>DSH Pet</title>
     <style>
+      /* ================= 主题:DeepSeek 淡蓝 + 液态玻璃(Liquid Glass) ================= */
+      :root {
+        /* DeepSeek 品牌蓝系 */
+        --ds-blue: #4d6bfe;
+        --ds-blue-soft: #6e8bff;
+        --ds-blue-pale: #9db4ff;
+        --ds-blue-mist: #c9d6ff;
+        /* 文本:淡蓝底上的深蓝灰 */
+        --ink: #2c3a5f;
+        --ink-2: #55648a;
+        --ink-3: #7b88a8;
+        /* 玻璃材质 */
+        --glass-hi: rgba(255, 255, 255, 0.55);
+        --glass-lo: rgba(255, 255, 255, 0.28);
+        --glass-edge: rgba(255, 255, 255, 0.55);
+      }
+
       /* 透明无边框宠物窗口:html/body 必须透明 */
       html,
       body {
@@ -19,9 +36,66 @@
         font-family: system-ui, 'Microsoft YaHei', sans-serif;
         user-select: none;
       }
+
+      /* ---- 背景:DeepSeek 淡蓝渐变卡片 + 高斯模糊色块 ---- */
+      #bg {
+        position: fixed;
+        inset: 10px;
+        z-index: 0;
+        border-radius: 26px;
+        overflow: hidden;
+        pointer-events: none; /* 拖拽/点击全部交给 #stage */
+        background: linear-gradient(165deg, #eaf1ff 0%, #dee9ff 48%, #f2f6ff 100%);
+        box-shadow:
+          0 12px 40px rgba(77, 107, 254, 0.22),
+          inset 0 1px 0 rgba(255, 255, 255, 0.85);
+      }
+      /* 高斯模糊的柔光色块:blur 把品牌蓝揉进背景,形成"雾化"质感 */
+      .bg-blob {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(56px);
+        opacity: 0.55;
+        pointer-events: none;
+      }
+      .bg-blob.b1 {
+        width: 260px;
+        height: 260px;
+        left: -70px;
+        top: -40px;
+        background: radial-gradient(circle, var(--ds-blue) 0%, rgba(77, 107, 254, 0) 70%);
+        animation: blob-float 16s ease-in-out infinite;
+      }
+      .bg-blob.b2 {
+        width: 300px;
+        height: 300px;
+        right: -110px;
+        top: 90px;
+        background: radial-gradient(circle, var(--ds-blue-soft) 0%, rgba(110, 139, 255, 0) 70%);
+        animation: blob-float 20s ease-in-out infinite reverse;
+      }
+      .bg-blob.b3 {
+        width: 240px;
+        height: 240px;
+        left: 38%;
+        bottom: -90px;
+        background: radial-gradient(circle, var(--ds-blue-mist) 0%, rgba(201, 214, 255, 0) 70%);
+        animation: blob-float 24s ease-in-out infinite;
+      }
+      @keyframes blob-float {
+        0%,
+        100% {
+          transform: translate(0, 0) scale(1);
+        }
+        50% {
+          transform: translate(18px, -14px) scale(1.06);
+        }
+      }
+
       #stage {
         position: fixed;
         inset: 0;
+        z-index: 1;
         /* 原生拖拽区域:系统级移动窗口(60fps,零 IPC);
            输入条/面板等可交互区域必须标 no-drag */
         -webkit-app-region: drag;
@@ -30,48 +104,94 @@
         position: absolute;
         inset: 0;
       }
+
+      /* ---- 液态玻璃通用材质:透明 + 强模糊 + 高饱和 + 顶部镜面高光 ---- */
+      .glass {
+        position: relative;
+        background: linear-gradient(180deg, var(--glass-hi), var(--glass-lo));
+        backdrop-filter: blur(24px) saturate(180%);
+        -webkit-backdrop-filter: blur(24px) saturate(180%);
+        border: 1px solid var(--glass-edge);
+        box-shadow:
+          0 6px 24px rgba(77, 107, 254, 0.16),
+          inset 0 1px 1px rgba(255, 255, 255, 0.7),
+          inset 0 -1px 1px rgba(255, 255, 255, 0.15);
+      }
+      /* 镜面高光边:上亮下暗的渐变描边(iOS 液态玻璃的特征) */
+      .glass::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        padding: 1px;
+        background: linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.9),
+          rgba(255, 255, 255, 0.3) 28%,
+          rgba(255, 255, 255, 0.1) 60%,
+          rgba(255, 255, 255, 0.4)
+        );
+        -webkit-mask:
+          linear-gradient(#000 0 0) content-box,
+          linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+        mask:
+          linear-gradient(#000 0 0) content-box,
+          linear-gradient(#000 0 0);
+        mask-composite: exclude;
+        pointer-events: none;
+      }
       /* 气泡 */
       #bubble {
         position: fixed;
         left: 50%;
-        bottom: 108px;
+        bottom: 116px;
         transform: translateX(-50%);
+        z-index: 5;
         max-width: 300px;
         padding: 10px 14px;
-        border-radius: 14px;
-        background: rgba(255, 255, 255, 0.92);
-        color: #333;
+        border-radius: 18px;
+        color: var(--ink);
         font-size: 13px;
         line-height: 1.5;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
         opacity: 0;
         transition: opacity 0.2s;
         pointer-events: none;
         word-break: break-all;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.42));
+        backdrop-filter: blur(24px) saturate(180%);
+        -webkit-backdrop-filter: blur(24px) saturate(180%);
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        box-shadow:
+          0 8px 24px rgba(77, 107, 254, 0.2),
+          inset 0 1px 1px rgba(255, 255, 255, 0.7),
+          inset 0 -1px 1px rgba(255, 255, 255, 0.15);
       }
       #bubble.visible {
         opacity: 1;
       }
-      /* 底部输入条:通栏贴底(位置不变),四角圆角,底角圆角处自然留出空隙 */
+      /* 底部输入条:液态玻璃通栏,四角圆角,底角圆角处自然留出空隙 */
       #inputbar {
         position: fixed;
-        left: 0;
-        right: 0;
-        bottom: 0;
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+        z-index: 5;
         display: flex;
         gap: 6px;
-        background: rgba(255, 255, 255, 0.85);
-        border-radius: 12px;
-        padding: 6px;
-        box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.15);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.32));
+        backdrop-filter: blur(28px) saturate(180%);
+        -webkit-backdrop-filter: blur(28px) saturate(180%);
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        border-radius: 20px;
+        padding: 6px 8px;
+        box-shadow:
+          0 8px 28px rgba(77, 107, 254, 0.18),
+          inset 0 1px 1px rgba(255, 255, 255, 0.7),
+          inset 0 -1px 1px rgba(255, 255, 255, 0.15);
         -webkit-app-region: no-drag;
       }
-      /* 多行输入框:自动换行 + 自动增高;高度封顶后改为内部滚轮翻看
-         (max-height = 100vh - 52,即输入条顶边停在距窗顶 40px,接近右上角"菜单"按钮)
-         - align-self: center:单行/空态文本在输入条内上下等距(flex stretch 会把
-           textarea 拉高到按钮高度,文本顶部对齐、底部留空 → 不等距,且删除后
-           scrollHeight 被 clientHeight 钳制,空行不消失)
-         - word-break: break-all:每行精确填满才换行(拉丁词不再按词边界提前换行) */
+      /* 多行输入框:自动换行 + 自动增高;高度封顶后改为内部滚轮翻看 */
       #inputbar textarea {
         flex: 1;
         min-width: 0;
@@ -82,100 +202,141 @@
         font-size: 13px;
         line-height: 1.4;
         font-family: inherit;
-        color: #333;
-        padding: 0;
+        color: var(--ink);
+        padding: 0 4px;
         align-self: center;
         word-break: break-all;
-        max-height: calc(100vh - 52px);
+        max-height: calc(100vh - 64px);
         overflow-y: auto;
         scrollbar-width: thin;
       }
+      #inputbar textarea::placeholder {
+        color: var(--ink-3);
+      }
       #inputbar button {
-        border: none;
-        border-radius: 8px;
-        background: #4176e6;
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        border-radius: 14px;
+        background: linear-gradient(180deg, rgba(77, 107, 254, 0.92), rgba(77, 107, 254, 0.78));
         color: #fff;
         font-size: 13px;
-        padding: 6px 12px;
+        padding: 6px 14px;
         cursor: pointer;
         align-self: flex-start;
+        backdrop-filter: blur(12px) saturate(160%);
+        -webkit-backdrop-filter: blur(12px) saturate(160%);
+        box-shadow:
+          0 4px 14px rgba(77, 107, 254, 0.35),
+          inset 0 1px 1px rgba(255, 255, 255, 0.35);
       }
       #inputbar button:hover {
-        background: #679efe;
+        filter: brightness(1.08);
       }
       /* 目标会话运行中:发送按钮变为红色"停止" */
       #inputbar button.stop {
-        background: #e5484d;
+        background: linear-gradient(180deg, rgba(229, 72, 77, 0.94), rgba(229, 72, 77, 0.82));
+        box-shadow:
+          0 4px 14px rgba(229, 72, 77, 0.35),
+          inset 0 1px 1px rgba(255, 255, 255, 0.3);
       }
       #inputbar button.stop:hover {
-        background: #cf3f43;
+        filter: brightness(1.06);
       }
-      /* 角落状态(开发期可见) */
+      /* 角落状态(开发期可见):液态玻璃小胶囊 */
       #status {
         position: fixed;
-        left: 8px;
-        top: 6px;
+        left: 18px;
+        top: 14px;
+        z-index: 3;
         font-size: 10px;
-        color: rgba(80, 80, 80, 0.75);
-        background: rgba(255, 255, 255, 0.5);
-        border-radius: 6px;
-        padding: 2px 6px;
+        color: var(--ink-2);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.3));
+        backdrop-filter: blur(16px) saturate(160%);
+        -webkit-backdrop-filter: blur(16px) saturate(160%);
+        border: 1px solid rgba(255, 255, 255, 0.55);
+        border-radius: 10px;
+        padding: 3px 8px;
         pointer-events: none;
+        box-shadow:
+          0 2px 8px rgba(77, 107, 254, 0.12),
+          inset 0 1px 0 rgba(255, 255, 255, 0.6);
       }
-      /* 面板开关按钮(右上角,可交互) */
+      /* 面板开关按钮(右上角,可交互):圆形液态玻璃 */
       #btn-panel {
         position: fixed;
-        right: 8px;
-        top: 6px;
-        width: 26px;
-        height: 26px;
-        border: none;
-        border-radius: 8px;
-        background: rgba(255, 255, 255, 0.75);
-        color: #555;
-        font-size: 14px;
+        right: 18px;
+        top: 14px;
+        z-index: 4;
+        width: 30px;
+        height: 30px;
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        border-radius: 12px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.3));
+        backdrop-filter: blur(16px) saturate(170%);
+        -webkit-backdrop-filter: blur(16px) saturate(170%);
+        color: var(--ds-blue);
+        font-size: 15px;
         cursor: pointer;
-        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+        box-shadow:
+          0 3px 10px rgba(77, 107, 254, 0.15),
+          inset 0 1px 1px rgba(255, 255, 255, 0.7);
         -webkit-app-region: no-drag;
       }
       #btn-panel:hover {
-        background: rgba(255, 255, 255, 0.95);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.5));
       }
-      /* 会话/历史/审批面板 */
+      /* 会话/历史/审批面板:大面液态玻璃 */
       #panel {
         position: fixed;
-        top: 40px;
-        left: 8px;
-        right: 8px;
-        bottom: 54px;
+        top: 48px;
+        left: 10px;
+        right: 10px;
+        bottom: 62px;
+        z-index: 4;
         display: flex;
         flex-direction: column;
-        background: rgba(255, 255, 255, 0.95);
-        border-radius: 12px;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.34));
+        backdrop-filter: blur(32px) saturate(180%);
+        -webkit-backdrop-filter: blur(32px) saturate(180%);
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        border-radius: 20px;
+        box-shadow:
+          0 12px 40px rgba(77, 107, 254, 0.2),
+          inset 0 1px 1px rgba(255, 255, 255, 0.7);
         overflow: hidden;
         -webkit-app-region: no-drag;
       }
       .panel-tabs {
         display: flex;
         gap: 4px;
-        padding: 6px;
-        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        padding: 8px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.4);
         flex: none;
+        background: rgba(255, 255, 255, 0.18);
       }
       .panel-tabs button {
         flex: 1;
-        border: none;
+        border: 1px solid transparent;
         background: transparent;
-        border-radius: 8px;
-        padding: 6px 0;
+        border-radius: 12px;
+        padding: 7px 0;
         font-size: 12px;
-        color: #666;
+        color: var(--ink-2);
         cursor: pointer;
+        transition:
+          background 0.15s ease,
+          color 0.15s ease;
+      }
+      .panel-tabs button:hover {
+        background: rgba(255, 255, 255, 0.35);
+        color: var(--ds-blue);
       }
       .panel-tabs button.active {
-        background: #4176e6;
+        background: linear-gradient(180deg, rgba(77, 107, 254, 0.92), rgba(77, 107, 254, 0.78));
         color: #fff;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        box-shadow:
+          0 3px 10px rgba(77, 107, 254, 0.35),
+          inset 0 1px 1px rgba(255, 255, 255, 0.35);
       }
       .badge {
         display: inline-block;
@@ -183,16 +344,18 @@
         margin-left: 4px;
         padding: 0 4px;
         border-radius: 8px;
-        background: #e5484d;
+        background: linear-gradient(180deg, rgba(229, 72, 77, 0.95), rgba(229, 72, 77, 0.85));
         color: #fff;
         font-size: 10px;
         line-height: 14px;
         text-align: center;
+        box-shadow: 0 1px 4px rgba(229, 72, 77, 0.4);
       }
       .panel-body {
         flex: 1;
         overflow-y: auto;
         padding: 6px;
+        scrollbar-width: thin;
       }
       .tab {
         display: none;
@@ -200,28 +363,36 @@
       .tab.active {
         display: block;
       }
-      /* 会话行 */
+      /* 会话行:轻微玻璃悬停 / 选中 = 品牌蓝玻璃 */
       .session-row {
         display: flex;
         align-items: center;
         gap: 6px;
         padding: 8px 10px;
-        border-radius: 8px;
+        border-radius: 12px;
         cursor: pointer;
         font-size: 12px;
+        border: 1px solid transparent;
+        transition:
+          background 0.12s ease,
+          border-color 0.12s ease;
       }
       .session-row:hover {
-        background: rgba(65, 118, 230, 0.15);
+        background: rgba(255, 255, 255, 0.4);
+        border-color: rgba(255, 255, 255, 0.5);
       }
       .session-row.selected {
-        background: rgba(65, 118, 230, 0.3);
+        background: linear-gradient(180deg, rgba(77, 107, 254, 0.35), rgba(77, 107, 254, 0.2));
+        border-color: rgba(255, 255, 255, 0.4);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
       }
       .session-row .dot {
         width: 8px;
         height: 8px;
         border-radius: 50%;
         flex: none;
-        background: #ccc;
+        background: #c6cde2;
       }
       .session-row .dot.running {
         background: #35c759;
@@ -242,11 +413,11 @@
       /* 会话行实时状态列(运行中 / ✓ 完成 / ✗ 出错 / 相对时间) */
       .session-row .session-status {
         flex: none;
-        color: #999;
+        color: var(--ink-3);
         font-size: 10px;
       }
       .session-row .session-status.running {
-        color: #35c759;
+        color: #1e9e48;
         font-weight: 600;
       }
       /* B3 只读插件监控 */
@@ -258,29 +429,37 @@
       }
       .plugin-hint {
         font-size: 10px;
-        color: #999;
+        color: var(--ink-3);
         flex: 1;
         line-height: 1.4;
       }
       .plugin-status {
         padding: 2px 10px 6px;
         font-size: 11px;
-        color: #888;
+        color: var(--ink-2);
       }
       .plugin-error {
         padding: 6px 10px;
         font-size: 12px;
         color: #c0392b;
-        background: rgba(229, 72, 77, 0.1);
-        border-radius: 8px;
+        background: rgba(229, 72, 77, 0.12);
+        border: 1px solid rgba(229, 72, 77, 0.2);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border-radius: 10px;
         margin: 4px 8px;
       }
       .plugin-card {
-        border: 1px solid rgba(0, 0, 0, 0.08);
-        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        border-radius: 14px;
         padding: 8px 10px;
         margin: 6px 8px;
-        background: rgba(255, 255, 255, 0.6);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.24));
+        backdrop-filter: blur(16px) saturate(160%);
+        -webkit-backdrop-filter: blur(16px) saturate(160%);
+        box-shadow:
+          0 4px 14px rgba(77, 107, 254, 0.1),
+          inset 0 1px 0 rgba(255, 255, 255, 0.6);
       }
       .plugin-head {
         display: flex;
@@ -292,37 +471,37 @@
         font-family: ui-monospace, monospace;
         font-size: 12px;
         font-weight: 600;
-        color: #333;
+        color: var(--ink);
       }
       .plugin-state {
         font-size: 10px;
         padding: 2px 8px;
         border-radius: 10px;
         flex: none;
-        background: #ddd;
-        color: #555;
+        background: rgba(120, 130, 160, 0.2);
+        color: #5a6488;
       }
       .plugin-state.running {
-        background: rgba(53, 199, 89, 0.2);
+        background: rgba(53, 199, 89, 0.22);
         color: #1e7a3e;
       }
       .plugin-state.failed {
-        background: rgba(229, 72, 77, 0.15);
+        background: rgba(229, 72, 77, 0.16);
         color: #c0392b;
       }
       .plugin-state.awaiting-approval,
       .plugin-state.client-pending {
-        background: rgba(65, 118, 230, 0.25);
-        color: #4868b2;
+        background: rgba(77, 107, 254, 0.25);
+        color: #3d56b8;
       }
       .plugin-name {
         font-size: 12px;
-        color: #666;
+        color: var(--ink-2);
         margin-top: 2px;
       }
       .plugin-meta {
         font-size: 10px;
-        color: #999;
+        color: var(--ink-3);
         margin-top: 4px;
       }
       .plugin-raw {
@@ -332,15 +511,15 @@
       .plugin-raw pre {
         max-height: 120px;
         overflow: auto;
-        background: rgba(0, 0, 0, 0.04);
-        border-radius: 6px;
+        background: rgba(77, 107, 254, 0.08);
+        border-radius: 8px;
         padding: 6px;
         font-size: 10px;
         margin: 4px 0 0;
       }
       .session-row .title {
         flex: 1;
-        color: #333;
+        color: var(--ink);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -351,9 +530,10 @@
         font-size: 10px;
         line-height: 1;
         padding: 3px 6px;
-        border-radius: 6px;
-        background: #4176e6;
+        border-radius: 8px;
+        background: linear-gradient(180deg, rgba(77, 107, 254, 0.92), rgba(77, 107, 254, 0.78));
         color: #fff;
+        box-shadow: 0 2px 6px rgba(77, 107, 254, 0.3);
       }
       /* 发送目标横幅:会话页顶部,明确告知发消息落点 */
       .target-banner {
@@ -362,11 +542,13 @@
         gap: 6px;
         margin: 2px 2px 8px;
         padding: 8px 10px;
-        border-radius: 8px;
-        background: rgba(65, 118, 230, 0.22);
-        border: 1px dashed #4176e6;
+        border-radius: 12px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.28));
+        backdrop-filter: blur(12px) saturate(160%);
+        -webkit-backdrop-filter: blur(12px) saturate(160%);
+        border: 1px dashed var(--ds-blue-soft);
         font-size: 12px;
-        color: #2f4c8f;
+        color: #38519f;
       }
       .target-banner .target-label {
         flex: none;
@@ -382,47 +564,53 @@
         flex: none;
         border: none;
         background: transparent;
-        color: #5686fe;
+        color: var(--ds-blue);
         font-size: 11px;
         cursor: pointer;
-        padding: 2px 4px;
-        border-radius: 4px;
+        padding: 2px 6px;
+        border-radius: 8px;
       }
       .target-banner .target-clear:hover {
-        background: rgba(65, 118, 230, 0.35);
+        background: rgba(77, 107, 254, 0.2);
       }
       .session-row .blank-tag {
-        color: #999;
+        color: var(--ink-3);
         font-size: 10px;
       }
       .panel-btn {
         width: 100%;
         margin-top: 4px;
-        border: 1px dashed #ccc;
-        background: transparent;
-        border-radius: 8px;
-        padding: 6px;
+        border: 1px dashed rgba(110, 139, 255, 0.6);
+        background: rgba(255, 255, 255, 0.25);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border-radius: 12px;
+        padding: 7px;
         font-size: 12px;
-        color: #888;
+        color: var(--ds-blue);
         cursor: pointer;
+        transition:
+          background 0.12s ease,
+          border-color 0.12s ease;
       }
       .panel-btn:hover {
-        border-color: #4176e6;
-        color: #679efe;
+        border-color: var(--ds-blue);
+        color: var(--ds-blue);
+        background: rgba(255, 255, 255, 0.5);
       }
       /* 设置 tab(阶段 5) */
       .setting-group {
         padding: 8px 10px;
-        border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.4);
       }
       .setting-label {
         font-size: 12px;
-        color: #666;
+        color: var(--ink-2);
         font-weight: 600;
         margin-bottom: 6px;
       }
       .setting-val {
-        color: #679efe;
+        color: var(--ds-blue);
         font-weight: 600;
       }
       .setting-row {
@@ -432,33 +620,41 @@
       .setting-row input[type='text'] {
         flex: 1;
         min-width: 0;
-        border: 1px solid rgba(0, 0, 0, 0.15);
-        border-radius: 8px;
-        padding: 6px 8px;
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        border-radius: 10px;
+        padding: 6px 10px;
         font-size: 12px;
         outline: none;
-        background: #fff;
-        color: #333;
+        background: rgba(255, 255, 255, 0.5);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        color: var(--ink);
       }
       .setting-row input[type='text']:focus {
-        border-color: #4176e6;
+        border-color: var(--ds-blue);
+        box-shadow: 0 0 0 2px rgba(77, 107, 254, 0.18);
       }
       .setting-apply {
-        border: none;
-        border-radius: 8px;
-        background: #4176e6;
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        border-radius: 10px;
+        background: linear-gradient(180deg, rgba(77, 107, 254, 0.92), rgba(77, 107, 254, 0.78));
         color: #fff;
         font-size: 12px;
         padding: 6px 12px;
         cursor: pointer;
         flex: none;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        box-shadow:
+          0 3px 10px rgba(77, 107, 254, 0.32),
+          inset 0 1px 1px rgba(255, 255, 255, 0.35);
       }
       .setting-apply:hover {
-        background: #679efe;
+        filter: brightness(1.08);
       }
       .setting-group input[type='range'] {
         width: 100%;
-        accent-color: #4176e6;
+        accent-color: var(--ds-blue);
       }
       /* 宠物设置行:参数名 + 值 + 滑块 */
       .setting-pet-row {
@@ -469,12 +665,12 @@
         justify-content: space-between;
         align-items: center;
         font-size: 12px;
-        color: #666;
+        color: var(--ink-2);
         margin-bottom: 4px;
       }
       .setting-pet-row input[type='range'] {
         width: 100%;
-        accent-color: #4176e6;
+        accent-color: var(--ds-blue);
       }
       /* 视线跟随合集(0031):原生 details 折叠,标题可点击展开/收起 */
       .setting-pet-collapse {
@@ -489,7 +685,7 @@
         gap: 6px;
         font-size: 12px;
         font-weight: 600;
-        color: #666;
+        color: var(--ink-2);
         padding: 6px 10px;
       }
       .setting-pet-collapse summary::-webkit-details-marker {
@@ -498,7 +694,7 @@
       .setting-pet-collapse summary::before {
         content: '▸';
         display: inline-block;
-        color: #4176e6;
+        color: var(--ds-blue);
         font-size: 10px;
         transition: transform 0.15s ease;
       }
@@ -506,99 +702,113 @@
         transform: rotate(90deg);
       }
       .setting-pet-collapse summary:hover {
-        color: #4176e6;
+        color: var(--ds-blue);
       }
       .setting-check {
         display: flex;
         align-items: center;
         gap: 8px;
         font-size: 12px;
-        color: #555;
+        color: var(--ink-2);
         padding: 4px 0;
         cursor: pointer;
       }
       .setting-check input {
-        accent-color: #4176e6;
+        accent-color: var(--ds-blue);
       }
       .setting-hint {
         font-size: 10px;
-        color: #999;
+        color: var(--ink-3);
         padding: 6px 10px 10px;
         line-height: 1.5;
       }
       /* 历史行 */
       .history-title {
-        padding: 6px 8px;
+        padding: 6px 10px;
         font-size: 12px;
         font-weight: 600;
-        color: #2f4c8f;
-        background: rgba(65, 118, 230, 0.15);
-        border-radius: 8px;
+        color: #38519f;
+        background: linear-gradient(180deg, rgba(77, 107, 254, 0.25), rgba(77, 107, 254, 0.14));
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        border-radius: 10px;
         margin-bottom: 4px;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
       .history-row {
-        padding: 5px 8px;
-        border-radius: 8px;
+        padding: 5px 10px;
+        border-radius: 10px;
         font-size: 12px;
         line-height: 1.45;
         word-break: break-all;
         margin-bottom: 2px;
+        border: 1px solid transparent;
       }
       .history-row.user {
-        background: rgba(90, 160, 255, 0.12);
+        background: rgba(110, 139, 255, 0.14);
+        border-color: rgba(255, 255, 255, 0.3);
         color: #1a5bb8;
       }
       .history-row.assistant {
-        background: rgba(80, 200, 120, 0.12);
+        background: rgba(53, 199, 89, 0.14);
+        border-color: rgba(255, 255, 255, 0.3);
         color: #1e7a3e;
       }
       .history-row.tool {
-        background: rgba(65, 118, 230, 0.14);
-        color: #4868b2;
+        background: rgba(77, 107, 254, 0.16);
+        border-color: rgba(255, 255, 255, 0.3);
+        color: #3d56b8;
         font-family: ui-monospace, monospace;
         font-size: 11px;
       }
       .history-row.meta {
-        color: #999;
+        color: var(--ink-3);
         font-size: 11px;
         text-align: center;
+        border: none;
+        background: transparent;
       }
       .history-row .time {
         display: block;
-        color: #bbb;
+        color: var(--ink-3);
         font-size: 10px;
       }
-      /* 审批卡(浮动在输入条上方) */
+      /* 审批卡(浮动在输入条上方):液态玻璃 + 品牌蓝边 */
       #approval-card {
         position: fixed;
-        left: 10px;
-        right: 10px;
-        bottom: 54px;
-        background: rgba(237, 243, 254, 0.97);
-        border: 1px solid #d3e2ff;
-        border-radius: 12px;
+        left: 16px;
+        right: 16px;
+        bottom: 58px;
+        z-index: 6;
+        background: linear-gradient(180deg, rgba(233, 240, 255, 0.85), rgba(214, 228, 255, 0.6));
+        backdrop-filter: blur(28px) saturate(180%);
+        -webkit-backdrop-filter: blur(28px) saturate(180%);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        border-radius: 18px;
         padding: 10px 12px;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+        box-shadow:
+          0 10px 32px rgba(77, 107, 254, 0.25),
+          inset 0 1px 1px rgba(255, 255, 255, 0.8);
         -webkit-app-region: no-drag;
       }
       .approval-title {
         font-size: 12px;
-        color: #4868b2;
+        color: #3d56b8;
         font-weight: 600;
         margin-bottom: 4px;
       }
       .approval-tool {
         font-size: 13px;
-        color: #333;
+        color: var(--ink);
         word-break: break-all;
         font-family: ui-monospace, monospace;
       }
       .approval-reason {
         font-size: 11px;
-        color: #888;
+        color: var(--ink-2);
         margin-top: 2px;
         word-break: break-all;
       }
@@ -609,29 +819,38 @@
       }
       .approval-actions button {
         flex: 1;
-        border: none;
-        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        border-radius: 12px;
         padding: 7px 0;
         font-size: 13px;
         cursor: pointer;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.35);
       }
       #approval-allow,
       .approval-allow-btn {
-        background: #35c759;
+        background: linear-gradient(180deg, rgba(53, 199, 89, 0.94), rgba(53, 199, 89, 0.84));
         color: #fff;
+        box-shadow:
+          0 4px 12px rgba(53, 199, 89, 0.35),
+          inset 0 1px 1px rgba(255, 255, 255, 0.35);
       }
       #approval-allow:hover,
       .approval-allow-btn:hover {
-        background: #2fb04e;
+        filter: brightness(1.06);
       }
       #approval-reject,
       .approval-reject-btn {
-        background: #e5484d;
+        background: linear-gradient(180deg, rgba(229, 72, 77, 0.94), rgba(229, 72, 77, 0.84));
         color: #fff;
+        box-shadow:
+          0 4px 12px rgba(229, 72, 77, 0.35),
+          inset 0 1px 1px rgba(255, 255, 255, 0.3);
       }
       #approval-reject:hover,
       .approval-reject-btn:hover {
-        background: #cf3f43;
+        filter: brightness(1.06);
       }
       .hidden {
         display: none !important;
@@ -639,10 +858,16 @@
     </style>
   </head>
   <body>
+    <!-- 背景:DeepSeek 淡蓝渐变 + 高斯模糊色块(纯视觉层,不拦截事件) -->
+    <div id="bg">
+      <div class="bg-blob b1"></div>
+      <div class="bg-blob b2"></div>
+      <div class="bg-blob b3"></div>
+    </div>
     <div id="stage"></div>
-    <div id="bubble"></div>
-    <button id="btn-panel" title="会话 / 历史 / 审批 / 设置">☰</button>
-    <div id="panel" class="hidden">
+    <div id="bubble" class="glass"></div>
+    <button id="btn-panel" class="glass" title="会话 / 历史 / 审批 / 设置">☰</button>
+    <div id="panel" class="glass hidden">
       <div class="panel-tabs">
         <button data-tab="sessions" class="active">会话<span id="session-running-badge" class="badge hidden">0</span></button>
         <button data-tab="history">历史</button>
@@ -698,7 +923,7 @@
         </div>
       </div>
     </div>
-    <div id="approval-card" class="hidden">
+    <div id="approval-card" class="glass hidden">
       <div class="approval-title">🔐 DSH 需要审批</div>
       <div class="approval-tool" id="approval-tool"></div>
       <div class="approval-reason" id="approval-reason"></div>
@@ -707,11 +932,11 @@
         <button id="approval-reject">拒绝</button>
       </div>
     </div>
-    <div id="inputbar">
+    <div id="inputbar" class="glass">
       <textarea id="msg-input" rows="1" placeholder="对 DSH 说点什么…" spellcheck="false"></textarea>
       <button id="btn-send">发送</button>
     </div>
-    <div id="status">connecting…</div>
+    <div id="status" class="glass">connecting…</div>
     <!-- Live2D Cubism Core:定义全局 Live2DCubismCore(Framework 与适配层依赖),必须在模块脚本前加载 -->
     <script src="/pet/live2d/core/live2dcubismcore.js"></script>
     <script type="module" src="/src/main.ts"></script>
