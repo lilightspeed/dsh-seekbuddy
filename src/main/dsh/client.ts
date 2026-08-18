@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto'
 import { AbstractApiClient } from '@deepseek-ai/dsh-host-apiproxy/client'
+import { RpcId, type ClientRequest } from '@deepseek-ai/dsh-host-apiproxy/api'
 import { hostFrameSchema, muxFrameSchema } from '@deepseek-ai/dsh-host-apiproxy/api/events.schema'
-import { serverRequestSchema } from '@deepseek-ai/dsh-host-apiproxy/api/rpc.schema'
+import { serverRequestSchema, serverResponseSchema } from '@deepseek-ai/dsh-host-apiproxy/api/rpc.schema'
 import type { HostFrame, MuxFrame, RpcRequest } from '@deepseek-ai/dsh-host-apiproxy/api'
 import WebSocket from 'ws'
 
@@ -46,6 +48,39 @@ export class DshApiClient extends AbstractApiClient {
     onOpen?: () => void,
   ): AsyncIterable<RpcRequest<HostFrame>> {
     return this.readWebSocket(HOST_EVENTS_PATH, signal, hostFrameSchema, onOpen)
+  }
+
+  /**
+   * 执行一条会话斜杠命令(如 `/permission danger-full-access`)。
+   *
+   * 走 Host 的 Typert Remote `commands/execute`(POST {base}/api/commands/execute,
+   * 与浏览器 `ctx.remote.commands.execute` 同一 wire 格式):命令经命令注册表执行,
+   * 只写领域事件、不会作为用户消息发给模型。无法执行(部署未挂载命令服务/命令不存在)
+   * 时返回 ok:false,调用方按尽力而为处理。
+   */
+  async runCommand(sessionId: string, line: string): Promise<{ ok: boolean; summary: string }> {
+    try {
+      const url = new URL('/api/commands/execute', this.resolveBase())
+      const message: ClientRequest = {
+        type: 'client-request',
+        rpcId: RpcId(randomUUID()),
+        method: 'commands/execute',
+        payload: { args: { agentId: sessionId, line } },
+      }
+      const response = await this.doFetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(message),
+      })
+      if (!response.ok) return { ok: false, summary: `HTTP ${response.status}` }
+      const full = serverResponseSchema.parse(await response.json())
+      if (!full.result.ok) {
+        return { ok: false, summary: full.result.error.code }
+      }
+      return { ok: true, summary: JSON.stringify(full.result.value) ?? 'ok' }
+    } catch (error) {
+      return { ok: false, summary: String(error) }
+    }
   }
 
   /** WS 下行:onOpen 在连接建立后触发;message → ServerRequest 信封 + 帧 schema 校验 → yield。 */

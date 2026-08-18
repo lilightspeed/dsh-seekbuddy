@@ -90,16 +90,59 @@ export function createPetOps(
     const connection = getConnection()
     if (!connection) return { ok: false, summary: 'connection not ready' }
     try {
-      const response = await connection.api.sessions.create({})
+      // 继承"目标"会话(显式目标优先,否则最近的非空会话):工作目录 / 模式(agent preset)/
+      // 权限(preset)。目标缺失时回退 Host 默认(cwd 与默认 preset/默认模式)。
+      const inherit = await resolveInheritTarget(connection)
+      const createPayload: { cwd?: string; agentPreset?: string } = {}
+      if (inherit.cwd !== undefined) createPayload.cwd = inherit.cwd
+      if (inherit.agentPreset !== undefined) createPayload.agentPreset = inherit.agentPreset
+      const response = await connection.api.sessions.create(createPayload)
       const result = response.result
       if (!result.ok) {
         return { ok: false, summary: `rpc error: ${JSON.stringify(result.error)}` }
       }
       const sessionId = String(result.value.sessionId)
       setTargetSessionId(sessionId)
-      return { ok: true, summary: `created → ${sessionId}`, sessionId }
+      const bits: string[] = [`新建会话 ${sessionId.slice(0, 8)}`]
+      if (inherit.cwd !== undefined) bits.push(`cwd=${inherit.cwd}`)
+      if (inherit.agentPreset !== undefined) bits.push(`mode=${inherit.agentPreset}`)
+      // 权限事实(permission/preset + sandbox/mode + approval/policy)不随 session.create
+      // 传递,只能经 /permission 命令写入:对新建会话执行同一条命令,使其权限与目标一致。
+      // 尽力而为 —— 命令服务未挂载/预设未知时只影响这一项,不阻塞会话创建。
+      if (inherit.permissionPreset !== undefined && inherit.permissionPreset !== 'custom') {
+        const applied = await connection.api.runCommand(sessionId, `/permission ${inherit.permissionPreset}`)
+        bits.push(applied.ok
+          ? `perm=${inherit.permissionPreset}`
+          : `perm=${inherit.permissionPreset}(${applied.summary})`)
+      }
+      return { ok: true, summary: bits.join(' · '), sessionId }
     } catch (error) {
       return { ok: false, summary: String(error) }
+    }
+  }
+
+  /**
+   * 解析"目标"会话要继承的字段:显式目标优先,否则最近的非空会话(与主进程
+   * resolveTargetSession 一致)。返回该会话的 cwd / agentPreset / 权限预设。
+   */
+  async function resolveInheritTarget(connection: ConnectionHandle): Promise<{
+    cwd?: string
+    agentPreset?: string
+    permissionPreset?: string
+  }> {
+    const listResponse = await connection.api.sessions.list({})
+    const list = listResponse.result
+    if (!list.ok) return {}
+    const items = list.value.items
+    const targetId = getTargetSessionId()
+    const chosen = targetId ? items.find((item) => String(item.sessionId) === targetId) : undefined
+    const target = chosen ?? items.find((item) => !item.blank)
+    if (target === undefined) return {}
+    const permission = permissionPresetOf(target)
+    return {
+      ...(target.cwd === undefined ? {} : { cwd: target.cwd }),
+      ...(target.agentPreset === undefined ? {} : { agentPreset: target.agentPreset }),
+      ...(permission === undefined ? {} : { permissionPreset: permission }),
     }
   }
 
@@ -156,6 +199,18 @@ export function createPetOps(
 function sessionTitle(item: { projections?: { values?: Record<string, unknown> } }): string | null {
   const title = item.projections?.values?.['title']
   return typeof title === 'string' && title.length > 0 ? title : null
+}
+
+/**
+ * 会话权限预设:list 行的 `projections.values.permissions.currentValue`
+ * (permission-presets 投影的 select 值,如 danger-full-access=Full access)。
+ * 部署未挂载投影/权限服务时该 key 缺席,返回 undefined。
+ */
+function permissionPresetOf(item: { projections?: { values?: Record<string, unknown> } }): string | undefined {
+  const permissions = item.projections?.values?.['permissions']
+  if (permissions === null || typeof permissions !== 'object') return undefined
+  const current = (permissions as { currentValue?: unknown }).currentValue
+  return typeof current === 'string' && current.length > 0 ? current : undefined
 }
 
 /**

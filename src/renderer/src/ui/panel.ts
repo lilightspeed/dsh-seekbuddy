@@ -148,35 +148,22 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
 
   /**
    * 目标会话解析:显式目标优先;未选时回退"最近更新的非空会话"(与主进程
-   * ensureTargetSession 一致)。返回 { id, title, isExplicit }。
+   * ensureTargetSession 一致)。返回目标会话 id,无可用会话时为 null。
    */
-  function resolveTarget(items: PetSessionSummary[]): { id: string; title: string; isExplicit: boolean } | null {
+  function resolveTarget(items: PetSessionSummary[]): string | null {
     const explicit = targetSessionId ? items.find((item) => item.sessionId === targetSessionId) : undefined
-    if (explicit) return { id: explicit.sessionId, title: shortTitle(explicit), isExplicit: true }
+    if (explicit) return explicit.sessionId
     const fallback = items.find((item) => !item.blank)
-    if (fallback) return { id: fallback.sessionId, title: shortTitle(fallback), isExplicit: false }
-    return null
+    return fallback?.sessionId ?? null
   }
 
-  /** 清除显式目标 → 回退自动(最近会话),并刷新列表/横幅。 */
-  async function clearTarget(): Promise<void> {
-    const result = await api.selectSession(null)
-    if (!result.ok) {
-      hooks.onFlash(`✗ 清除目标:${result.summary}`, false)
-      return
-    }
-    targetSessionId = null
-    hooks.onFlash('📤 已回退自动发送目标', true)
-    await refreshSessions()
-  }
-
-  /** 会话页:顶部"发送目标"横幅(明确指出发消息落点)+ 会话列表(含实时状态)。 */
+  /** 会话页:顶部"新建会话"按钮(继承目标会话的工作目录/模式/权限)+ 会话列表(含实时状态)。 */
   function renderSessions(items: PetSessionSummary[]): void {
     if (!sessionsEl) return
     sessionsEl.textContent = ''
     const target = resolveTarget(items)
     // 有效目标(显式或自动回退)变化 → 通知输入条刷新"发送/停止"按钮
-    const effectiveId = target?.id ?? null
+    const effectiveId = target
     if (effectiveId !== notifiedTarget) {
       notifiedTarget = effectiveId
       hooks.onTargetChange?.(effectiveId)
@@ -184,31 +171,17 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     // B2 实时状态:活动表(回合增量)叠加在列表基线上
     const activity = new Map(hooks.activity.list().map((e) => [e.sessionId, e]))
 
-    // 顶部横幅:说明当前发消息会到哪个会话
-    const banner = document.createElement('div')
-    banner.className = 'target-banner'
-    const label = document.createElement('span')
-    label.className = 'target-label'
-    label.textContent = target ? (target.isExplicit ? '📤 发送到' : '📤 自动发送到') : '📤 发送目标'
-    const name = document.createElement('span')
-    name.className = 'target-name'
-    name.textContent = target ? target.title : '（无可用会话，发送时将新建）'
-    name.title = target?.id ?? ''
-    banner.append(label, name)
-    if (target && target.isExplicit) {
-      const clearBtn = document.createElement('button')
-      clearBtn.className = 'target-clear'
-      clearBtn.textContent = '取消选择'
-      clearBtn.title = '回退为自动选择最近会话'
-      clearBtn.addEventListener('click', () => void clearTarget())
-      banner.appendChild(clearBtn)
-    }
-    sessionsEl.appendChild(banner)
+    // 顶部新建按钮:新建会话继承当前"目标"会话的工作目录 / 模式 / 权限
+    const createBtn = document.createElement('button')
+    createBtn.className = 'panel-btn'
+    createBtn.textContent = '＋ 新建会话'
+    createBtn.addEventListener('click', () => void createSession())
+    sessionsEl.appendChild(createBtn)
 
     for (const item of items) {
       const row = document.createElement('div')
       row.className = 'session-row'
-      if (item.sessionId === target?.id) row.classList.add('selected')
+      if (item.sessionId === target) row.classList.add('selected')
       const dot = document.createElement('span')
       // 实时状态(活动表)与列表基线取并集:任一 running 即脉冲绿点
       const act = activity.get(item.sessionId)
@@ -230,7 +203,7 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
         status.textContent = relativeTime(item.updatedAt)
       }
       row.append(dot, title, status)
-      if (item.sessionId === target?.id) {
+      if (item.sessionId === target) {
         const tag = document.createElement('span')
         tag.className = 'target-tag'
         tag.textContent = '目标'
@@ -239,11 +212,6 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
       row.addEventListener('click', () => void selectSession(item.sessionId))
       sessionsEl.appendChild(row)
     }
-    const createBtn = document.createElement('button')
-    createBtn.className = 'panel-btn'
-    createBtn.textContent = '＋ 新建会话'
-    createBtn.addEventListener('click', () => void createSession())
-    sessionsEl.appendChild(createBtn)
   }
 
   async function selectSession(sessionId: string): Promise<void> {
@@ -253,7 +221,7 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
       return
     }
     targetSessionId = sessionId
-    // 只把该会话设为目标,停留在会话页(横幅/徽标由 refreshSessions 同步更新);
+    // 只把该会话设为目标,停留在会话页(选中标记/徽标由 refreshSessions 同步更新);
     // 历史锚点也预置,之后用户主动切到"历史"tab 时直接看该会话。
     const items = await refreshSessions()
     historySessionId = sessionId
@@ -267,7 +235,7 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
       hooks.onFlash(`✗ 新建会话:${result.summary}`, false)
       return
     }
-    hooks.onFlash(`✅ 新建会话 ${result.sessionId.slice(0, 8)}`, true)
+    hooks.onFlash(`✅ ${result.summary}`, true)
     await refreshSessions()
   }
 
