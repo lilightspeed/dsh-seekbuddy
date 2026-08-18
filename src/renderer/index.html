@@ -320,6 +320,46 @@
         margin-bottom: 2px;
         color: var(--ink);
       }
+      .summary-pop-row p {
+        margin: 0;
+      }
+      .summary-pop-row pre {
+        margin: 2px 0;
+        padding: 4px 6px;
+        background: rgba(77, 107, 254, 0.08);
+        border-radius: 6px;
+        font-size: 11px;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      .summary-pop-row code {
+        font-family: ui-monospace, 'Cascadia Code', monospace;
+        font-size: 11px;
+        background: rgba(77, 107, 254, 0.12);
+        padding: 0 3px;
+        border-radius: 4px;
+      }
+      .summary-pop-row pre code {
+        background: transparent;
+        padding: 0;
+      }
+      .summary-pop-row .md-heading {
+        font-weight: 700;
+      }
+      .summary-pop-row .md-quote {
+        color: var(--ink-3);
+        border-left: 2px solid rgba(77, 107, 254, 0.35);
+        padding-left: 6px;
+      }
+      .summary-pop-row .md-bullet {
+        color: var(--ds-blue);
+      }
+      .summary-pop-row .time {
+        color: var(--ink-3);
+        font-size: 10px;
+        margin-right: 6px;
+      }
       .summary-pop-row.user {
         background: rgba(110, 139, 255, 0.14);
         color: #1a5bb8;
@@ -331,11 +371,6 @@
       .summary-pop-row.meta {
         background: rgba(229, 72, 77, 0.12);
         color: #c0392b;
-      }
-      .summary-pop-row .time {
-        color: var(--ink-3);
-        font-size: 10px;
-        margin-right: 6px;
       }
       .summary-pop-empty {
         color: var(--ink-3);

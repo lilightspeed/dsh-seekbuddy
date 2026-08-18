@@ -5,6 +5,7 @@ import type { PetAnimator } from './pet/animator.ts'
 import { createLive2dAnimator } from './pet/live2d/create-live2d-animator.ts'
 import { createStage } from './pet/stage.ts'
 import { createApprovalCenter, type PendingApproval } from './ui/approvals.ts'
+import { markdownToDom, markdownToInline } from './ui/markdown.ts'
 import { createPanel } from './ui/panel.ts'
 
 declare global {
@@ -148,7 +149,7 @@ function summaryKindTag(entry: PetSummaryEntry): string {
   return entry.kind === 'user' ? '👤' : entry.kind === 'assistant' ? '🤖' : ''
 }
 
-/** 常驻条显示缓冲尾部(最近一条重要消息);meta 直接显示结果文本。 */
+/** 常驻条显示缓冲尾部(最近一条重要消息);meta 直接显示结果文本;其余渲染行内 markdown。 */
 function renderSummaryBar(): void {
   if (!summaryBarEl) return
   const last = summaryEntries[summaryEntries.length - 1]
@@ -156,7 +157,13 @@ function renderSummaryBar(): void {
     summaryBarEl.classList.add('hidden')
     return
   }
-  summaryBarEl.textContent = last.kind === 'meta' ? last.text : `${summaryKindTag(last)} ${last.text}`
+  summaryBarEl.textContent = ''
+  if (last.kind === 'meta') {
+    summaryBarEl.textContent = last.text
+  } else {
+    summaryBarEl.appendChild(document.createTextNode(`${summaryKindTag(last)} `))
+    summaryBarEl.appendChild(markdownToInline(last.text))
+  }
   summaryBarEl.classList.remove('hidden')
 }
 
@@ -179,7 +186,9 @@ function renderSummaryPop(): void {
     const time = document.createElement('span')
     time.className = 'time'
     time.textContent = new Date(entry.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    row.append(time, document.createTextNode(entry.text))
+    row.appendChild(time)
+    // 渲染 markdown(粗体/行内代码/代码块/列表…),文本一律 textContent 写入
+    row.appendChild(markdownToDom(entry.text))
     frag.appendChild(row)
   }
   summaryPopEl.appendChild(frag)

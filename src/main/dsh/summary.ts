@@ -10,9 +10,13 @@ import type { PetSummaryEntry } from '../../shared/pet-event.ts'
  * 只按 event.type 窄化,不依赖具体 data 深度(与仓库类型同源,禁止手写接口类型)。
  */
 
-/** 折叠连续空白/换行 → 单空格,并截断到上限(带省略号)。 */
-export function clampText(text: string, max = 160): string {
-  const flat = text.replace(/\s+/g, ' ').trim()
+/**
+ * 截断到上限(带省略号)。**保留换行**:renderer 的 markdown 渲染需要行结构
+ * (代码块/列表);单行预览由消息条自己折叠。截断可能切断代码块 fence,
+ * 渲染器对未闭合标记按文本容忍。
+ */
+export function clampText(text: string, max = 300): string {
+  const flat = text.trim()
   if (flat.length <= max) return flat
   return `${flat.slice(0, max - 1)}…`
 }
