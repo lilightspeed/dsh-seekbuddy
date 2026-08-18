@@ -13,7 +13,7 @@ import { CubismPhysicsUpdater } from '@live2d/framework/motion/cubismphysicsupda
 import { CubismUpdateScheduler } from '@live2d/framework/motion/cubismupdatescheduler'
 import { CubismPhysics } from '@live2d/framework/physics/cubismphysics'
 import { CubismWebGLOffscreenManager } from '@live2d/framework/rendering/cubismoffscreenmanager'
-import { PARAM_HEAD, PARAM_EYE, PARAM_BODY, PARAM_MANUAL, PARAM_EXPRESSION, PARAM_DRAG, type ViewLook } from './parameters.ts'
+import { PARAM_HEAD, PARAM_EYE, PARAM_BODY, PARAM_MANUAL, PARAM_EXPRESSION, PARAM_DRAG, PARAM_BACK_HAIR, PARAM_HAIR_SWAY, type ViewLook } from './parameters.ts'
 import type { Live2dAppearance, Live2dRuntime } from './runtime.ts'
 
 /**
@@ -30,6 +30,45 @@ import type { Live2dAppearance, Live2dRuntime } from './runtime.ts'
 
 /** 着色器静态根(publicDir=assets,文件在 assets/pet/live2d/shaders/)。 */
 const SHADER_PATH = '/pet/live2d/shaders/'
+
+/**
+ * 未拖动时恢复"角度驱动头发"(0036)。
+ *
+ * 素材 physics3.json 的 Setting1-4 以 ParamAngleX/Y 为输入驱动后发/前发(输出
+ * BackHairUp/Down/Swing、HairSwayX/Y),但 Setting5/6(拖动)在末尾以 Type=Angle +
+ * Weight=100(绝对赋值)输出同一批头发参数 —— 无拖动时 ParamDrag=0,输出≈0,
+ * 把角度驱动的头发摆动整体清零(视线跟随鼠标时头发纹丝不动)。
+ *
+ * 解法:SDK 的 CubismPhysics._currentRigOutputs 保留每个 setting 各自的粒子输出
+ * (raw,未被后续 setting 覆盖)。物理演算后在代码层按"同帧后写覆盖"规则重放
+ * 前 HAIR_VIEW_SETTING_COUNT 个 setting(角度),再按 dragBlend 与拖动输出混合:
+ * 拖动窗口时由 ParamDragX/Y 物理控制,窗口未拖动时由 ParamAngleX/Y 物理控制。
+ */
+const HAIR_VIEW_SETTING_COUNT = 4
+/** 拖动归一化模(|x|+|y|,0..2)达到该值视为"拖动中"(dragBlend 上升)。 */
+const DRAG_BLEND_DEADZONE = 0.03
+/** dragBlend 上升速度(1/s):开始拖动时快速切入拖动物理。 */
+const DRAG_BLEND_ATTACK = 15
+/** dragBlend 回落速度(1/s):停止拖动后缓慢回到角度驱动,保留物理余韵。 */
+const DRAG_BLEND_RELEASE = 2
+
+/**
+ * CubismPhysics 私有成员的最小结构声明(vendor/live2d 5-r.5,仅读取,不修改)。
+ * 升级 SDK 时需核对:settings.baseOutputIndex / outputs.angleScale / _currentRigOutputs。
+ */
+interface SdkPhysicsRigOutput {
+  destination: { id: string }
+  angleScale: number
+  weight: number
+}
+interface SdkPhysicsRig {
+  settings: { baseOutputIndex: number; outputCount: number }[]
+  outputs: SdkPhysicsRigOutput[]
+}
+interface SdkPhysicsState {
+  _physicsRig: SdkPhysicsRig
+  _currentRigOutputs: { outputs: number[] }[]
+}
 
 let s_frameworkStarted = false
 
@@ -69,6 +108,12 @@ interface ParamIndexSet {
   /** 拖动物理反馈:左右 / 上下拖动宠物(0032,physics3.json 的输入)。 */
   dragX: number
   dragY: number
+  /** 头发参数(物理输出,0036):未拖动时由角度物理重放恢复写入。 */
+  hairUp: number
+  hairDown: number
+  hairSwing: number
+  hairSwayX: number
+  hairSwayY: number
 }
 
 export interface CubismRuntimeOptions {
@@ -151,6 +196,12 @@ class CubismRuntime implements Live2dRuntime {
   private pendingLook: ViewLook | null = null
   /** 拖动物理反馈输入(0032):由 setDrag 暂存,update() 在 load/save 之间写入。 */
   private pendingDrag: { x: number; y: number } | null = null
+  /**
+   * 拖动混合权重(0036):1 = 头发由拖动物理(Setting5/6)输出驱动,
+   * 0 = 由角度物理(Setting1-4)输出驱动。attack 快、release 慢,停止拖动后
+   * 缓慢回落以保留拖动余韵。
+   */
+  private dragBlend = 0
   private ready = false
   private disposed = false
   private viewMatrix = new CubismViewMatrix()
@@ -164,6 +215,11 @@ class CubismRuntime implements Live2dRuntime {
     pupil: -1,
     dragX: -1,
     dragY: -1,
+    hairUp: -1,
+    hairDown: -1,
+    hairSwing: -1,
+    hairSwayX: -1,
+    hairSwayY: -1,
   }
 
   private readonly onResize = (): void => this.resize()
@@ -301,6 +357,11 @@ class CubismRuntime implements Live2dRuntime {
       pupil: model.getParameterIndex(this.id(PARAM_MANUAL.pupilSize)),
       dragX: model.getParameterIndex(this.id(PARAM_DRAG.x)),
       dragY: model.getParameterIndex(this.id(PARAM_DRAG.y)),
+      hairUp: model.getParameterIndex(this.id(PARAM_BACK_HAIR.up)),
+      hairDown: model.getParameterIndex(this.id(PARAM_BACK_HAIR.down)),
+      hairSwing: model.getParameterIndex(this.id(PARAM_BACK_HAIR.swing)),
+      hairSwayX: model.getParameterIndex(this.id(PARAM_HAIR_SWAY.x)),
+      hairSwayY: model.getParameterIndex(this.id(PARAM_HAIR_SWAY.y)),
     }
 
     this.ready = true
@@ -369,9 +430,10 @@ class CubismRuntime implements Live2dRuntime {
 
   private applyViewLook(model: CubismModel, look: ViewLook): void {
     this.setParam(model, this.paramIndex.headX, look.headX)
-    // 注意:headY(上下转头)不在这里写 —— 素材 physics3.json 的 PhysicsSetting5
-    // 输出 ParamAngleY(拖动点头),物理演算在 saveParameters 之后绝对覆盖它;
-    // headY 增量改由 update() 在物理演算之后叠加(见 addViewHeadYDelta)。
+    // headY(上下转头)也要写入:物理 Setting2/4 以 ParamAngleY 为输入驱动头发,
+    // 输入快照需要看到上下转头(0036)。物理 Setting5 会在 saveParameters 之后
+    // 绝对覆盖 ParamAngleY(拖动点头),由 update() 在物理演算后 addViewHeadYDelta 加回增量。
+    this.setParam(model, this.paramIndex.headY, look.headY)
     this.setParam(model, this.paramIndex.headZ, look.headZ)
     this.setParam(model, this.paramIndex.eyeX, look.eyeX)
     this.setParam(model, this.paramIndex.eyeY, look.eyeY)
@@ -379,6 +441,83 @@ class CubismRuntime implements Live2dRuntime {
     // 瞳孔收缩:ParamPupilSize 已从 moc3 核实 min=0 / default=0 / max=1(0029),
     // 归一化 0..1 经 setParam 线性映射 → 0=正常,1=缩到最小;与视角方向无关,单独写
     this.setParam(model, this.paramIndex.pupil, look.pupilContract)
+  }
+
+  /**
+   * 拖动混合权重:按本帧拖动输入强度平滑 —— 开始拖动快速上升(切入拖动物理),
+   * 停止拖动缓慢回落(角度驱动接管,同时保留物理余韵)。
+   */
+  private updateDragBlend(deltaSeconds: number): void {
+    if (!this.pendingDrag) return
+    const mag = Math.abs(this.pendingDrag.x) + Math.abs(this.pendingDrag.y)
+    const target = mag >= DRAG_BLEND_DEADZONE ? 1 : 0
+    const speed = target > this.dragBlend ? DRAG_BLEND_ATTACK : DRAG_BLEND_RELEASE
+    const k = 1 - Math.exp(-speed * deltaSeconds)
+    this.dragBlend += (target - this.dragBlend) * k
+  }
+
+  /**
+   * 物理演算后,把"角度驱动的头发输出"重放回参数(0036)。
+   *
+   * SDK 物理按 JSON 顺序逐 setting 绝对赋值,Setting5/6(拖动)在末尾把 Setting1-4
+   * (角度)写好的后发/前发参数清零(无拖动时输出≈0)。SDK 内部 `_currentRigOutputs`
+   * 保留每个 setting 各自的粒子输出(raw,未被后续覆盖):这里按"同帧后写覆盖"规则
+   * 重放前 HAIR_VIEW_SETTING_COUNT 个 setting 对头发参数的输出(乘 angleScale 并
+   * clamp 到参数范围),再按 dragBlend 与当前值(拖动输出)混合。
+   *
+   * 依赖 SDK 私有结构,见 SdkPhysicsState;素材重导若改变 Setting 顺序(角度应在
+   * 拖动之前)或输出类型(非 Angle 需用 translationScale)需同步本方法。
+   */
+  private restoreHairFromAnglePhysics(model: CubismModel): void {
+    const physics = this.userModel?.physicsHandle
+    if (!physics) return
+    const state = physics as unknown as SdkPhysicsState
+    const rig = state._physicsRig
+    const rigOutputs = state._currentRigOutputs
+    if (!rig || !rigOutputs || rigOutputs.length < HAIR_VIEW_SETTING_COUNT) return
+
+    const blend = this.dragBlend
+    for (let s = 0; s < HAIR_VIEW_SETTING_COUNT; s++) {
+      const setting = rig.settings[s]
+      const settingOutputs = rigOutputs[s]?.outputs
+      if (!setting || !settingOutputs) continue
+      for (let j = 0; j < setting.outputCount; j++) {
+        const out = rig.outputs[setting.baseOutputIndex + j]
+        if (!out) continue
+        const index = this.hairIndexByParamId(out.destination.id)
+        if (index < 0) continue
+        // raw = 该 setting 的粒子输出(未乘 Scale);素材输出均为 Type=Angle → angleScale。
+        // 当前素材 Weight=100(绝对赋值),低权重混合不重放(需自行按 weight 混合)。
+        const raw = settingOutputs[j] ?? 0
+        const min = model.getParameterMinimumValue(index)
+        const max = model.getParameterMaximumValue(index)
+        const restored = Math.min(max, Math.max(min, raw * out.angleScale))
+        if (blend > 0) {
+          const current = model.getParameterValueByIndex(index)
+          model.setParameterValueByIndex(index, current * blend + restored * (1 - blend))
+        } else {
+          model.setParameterValueByIndex(index, restored)
+        }
+      }
+    }
+  }
+
+  /** 参数 ID → 头发参数索引(-1 = 非头发参数 / 模型不存在)。 */
+  private hairIndexByParamId(id: string): number {
+    switch (id) {
+      case PARAM_BACK_HAIR.up:
+        return this.paramIndex.hairUp
+      case PARAM_BACK_HAIR.down:
+        return this.paramIndex.hairDown
+      case PARAM_BACK_HAIR.swing:
+        return this.paramIndex.hairSwing
+      case PARAM_HAIR_SWAY.x:
+        return this.paramIndex.hairSwayX
+      case PARAM_HAIR_SWAY.y:
+        return this.paramIndex.hairSwayY
+      default:
+        return -1
+    }
   }
 
   update(deltaSeconds: number): void {
@@ -399,6 +538,10 @@ class CubismRuntime implements Live2dRuntime {
 
     // 调度器:物理(后发随头部角度摆动)+ 眨眼 + 呼吸(在基准上一次性加算)
     this.scheduler?.onLateUpdate(model, deltaSeconds)
+    // 拖动混合权重:拖动中 → 1(头发由拖动物理输出),停止 → 0(角度物理接管)
+    this.updateDragBlend(deltaSeconds)
+    // 未拖动时,把被拖动 Setting5/6 清零的角度驱动头发输出重放回来(0036)
+    this.restoreHairFromAnglePhysics(model)
     // 物理输出 ParamDragY→ParamAngleY 会覆盖视角跟随的 headY(上下转头),
     // 这里把 headY 增量叠加回去:拖动点头(物理)与鼠标转头(跟随)共存。
     if (this.pendingLook) this.addViewHeadYDelta(model, this.pendingLook.headY)

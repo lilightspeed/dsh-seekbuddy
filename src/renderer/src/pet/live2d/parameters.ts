@@ -25,11 +25,20 @@ export const PARAM_BODY = {
   z: 'ParamBodyAngleZ',
 } as const
 
-/** 物理驱动:后发(由 physics3.json 自动写入,运行时只读、不手动设)。 */
+/**
+ * 物理驱动:后发。由 physics3.json 自动写入;0036 起未拖动时由角度物理输出重放恢复
+ * (拖动 Setting5/6 的绝对赋值会把它清零,见 cubism-runtime.ts restoreHairFromAnglePhysics)。
+ */
 export const PARAM_BACK_HAIR = {
   up: 'ParamBackHairUp',
   down: 'ParamBackHairDown',
   swing: 'ParamBackHairSwing',
+} as const
+
+/** 物理驱动:前发(由 physics3.json 自动写入;0036 起未拖动时同样由角度物理重放恢复)。 */
+export const PARAM_HAIR_SWAY = {
+  x: 'ParamHairSwayX',
+  y: 'ParamHairSwayY',
 } as const
 
 /**
