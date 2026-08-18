@@ -1,5 +1,5 @@
 /**
- * 轻量 markdown → DOM 渲染(主页消息条/浮层用)。
+ * 轻量 markdown → DOM 渲染(最近对话浮层用)。
  *
  * 安全纪律:所有用户文本一律经 textContent 写入,元素白名单由本文件代码控制,
  * 绝不 innerHTML 拼接来源文本 —— 无 XSS 面。
@@ -112,15 +112,5 @@ export function markdownToDom(text: string): DocumentFragment {
     frag.appendChild(p)
     i++
   }
-  return frag
-}
-
-/**
- * 单行预览(消息条用):换行折叠为空格后做行内渲染 —— 粗体/行内代码有效果,
- * 代码块 fence 原样出现(单行预览可接受)。
- */
-export function markdownToInline(text: string): DocumentFragment {
-  const frag = document.createDocumentFragment()
-  appendInline(frag, text.replace(/\s*\n\s*/g, ' ').trim())
   return frag
 }

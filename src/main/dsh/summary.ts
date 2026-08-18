@@ -2,7 +2,7 @@ import type { SessionEvent } from '@deepseek-ai/dsh-client-connection/client'
 import type { PetSummaryEntry } from '../../shared/pet-event.ts'
 
 /**
- * 主页常驻消息条的重要性过滤(单一职责:增量流与历史基线共用同一规则)。
+ * 最近对话浮层的重要性过滤(单一职责:增量流与历史基线共用同一规则)。
  *
  * 保留:用户消息 / 助手**最终**文本回复(无 tool-call 块)/ 工具失败 / 回合异常。
  * 丢弃:thinking(reasoning)、工具调用过程、chunk/step/request/todo、正常完成回合。
@@ -12,7 +12,7 @@ import type { PetSummaryEntry } from '../../shared/pet-event.ts'
 
 /**
  * 截断到上限(带省略号)。**保留换行**:renderer 的 markdown 渲染需要行结构
- * (代码块/列表);单行预览由消息条自己折叠。截断可能切断代码块 fence,
+ * (代码块/列表);单行预览由渲染器自己折叠。截断可能切断代码块 fence,
  * 渲染器对未闭合标记按文本容忍。
  */
 export function clampText(text: string, max = 300): string {
@@ -21,7 +21,7 @@ export function clampText(text: string, max = 300): string {
   return `${flat.slice(0, max - 1)}…`
 }
 
-/** 回合结束 reason.kind → 摘要文本;正常完成(completed)不进消息条(气泡已提示)。 */
+/** 回合结束 reason.kind → 摘要文本;正常完成(completed)不生成摘要(气泡已提示)。 */
 function turnEndText(kind: string): string | null {
   switch (kind) {
     case 'completed':

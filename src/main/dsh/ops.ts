@@ -22,7 +22,7 @@ import { summaryEntryOf } from './summary.ts'
 export interface PetOps {
   listSessions(): Promise<PetSessionListResult>
   getHistory(sessionId: string, beforeSeq: number | null, maxMessages: number | null): Promise<PetHistoryResult>
-  /** 主页消息条基线:拉尾部事件并按"重要性规则"过滤(与增量流同一过滤器)。 */
+  /** 最近对话浮层基线:拉尾部事件并按"重要性规则"过滤(与增量流同一过滤器)。 */
   getHistorySummary(sessionId: string, maxMessages: number | null): Promise<PetSummaryResult>
   selectSession(sessionId: string | null): PetOpResult
   createSession(): Promise<PetCreateResult>
@@ -87,7 +87,7 @@ export function createPetOps(
   }
 
   /**
-   * 主页消息条基线:拉尾部事件,经 summaryEntryOf(与增量流同一过滤器)过滤出
+   * 最近对话浮层基线:拉尾部事件,经 summaryEntryOf(与增量流同一过滤器)过滤出
    * 重要摘要。每次调用独立配对 tool/call → tool/result(历史流顺序完整)。
    */
   async function getHistorySummary(

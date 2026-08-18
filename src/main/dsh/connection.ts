@@ -19,7 +19,7 @@ const BACKOFF_MAX_MS = 30_000
  * 每代 = host.describe 握手 → 起 mux/host 两条 WS 流 → 泵帧到 onEvent;
  * 任一流结束/出错 → reconnecting → 指数退避(带抖动)重试。
  * getBaseUrl:阶段 5 起注入配置读取器,改 DSH 地址后由调用方重建连接。
- * isTargetSession:主页消息条只关注目标会话,其余会话的摘要不推送。
+ * isTargetSession:最近对话浮层只关注目标会话,其余会话的摘要不推送。
  */
 export function createConnection(
   onEvent: (event: PetEvent) => void,
@@ -50,7 +50,7 @@ export function createConnection(
     }
   }
 
-  /** mux 帧 → 语义事件(阶段 2:turn 生命周期;阶段 3:审批;B2:会话活动增量;消息条:重要摘要)。 */
+  /** mux 帧 → 语义事件(阶段 2:turn 生命周期;阶段 3:审批;B2:会话活动增量;历史浮层:重要摘要)。 */
   function pumpMuxFrame(frame: MuxFrame, rpcId: string): void {
     switch (frame.type) {
       case 'session/event': {
@@ -66,7 +66,7 @@ export function createConnection(
           onEvent({ type: 'dsh:turn-end', reason, sessionId })
           onEvent({ type: 'dsh:session-update', sessionId, running: false, reason, time: event.time })
         }
-        // 主页消息条:只推目标会话的重要消息摘要(噪音已在 summary.ts 过滤)
+        // 最近对话浮层:只推目标会话的重要消息摘要(噪音已在 summary.ts 过滤)
         if (isTargetSession(sessionId)) {
           const entry = summaryEntryOf(event, toolNames)
           if (entry) onEvent({ type: 'dsh:summary-update', sessionId, entry })

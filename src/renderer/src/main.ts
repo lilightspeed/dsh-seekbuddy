@@ -5,7 +5,7 @@ import type { PetAnimator } from './pet/animator.ts'
 import { createLive2dAnimator } from './pet/live2d/create-live2d-animator.ts'
 import { createStage } from './pet/stage.ts'
 import { createApprovalCenter, type PendingApproval } from './ui/approvals.ts'
-import { markdownToDom, markdownToInline } from './ui/markdown.ts'
+import { markdownToDom } from './ui/markdown.ts'
 import { createPanel } from './ui/panel.ts'
 
 declare global {
@@ -15,12 +15,11 @@ declare global {
 }
 
 const api = window.petApi
-const statusEl = document.querySelector<HTMLDivElement>('#status')
 const bubbleEl = document.querySelector<HTMLDivElement>('#bubble')
 const inputEl = document.querySelector<HTMLTextAreaElement>('#msg-input')
 const sendBtn = document.querySelector<HTMLButtonElement>('#btn-send')
-// 主页常驻消息条 + 最近对话浮层
-const summaryBarEl = document.querySelector<HTMLDivElement>('#summary-bar')
+// 顶部按钮:左 = 历史/重连;右 = 菜单。最近对话浮层由历史按钮开合。
+const btnHistoryEl = document.querySelector<HTMLButtonElement>('#btn-history')
 const summaryPopEl = document.querySelector<HTMLDivElement>('#summary-pop')
 // 浮动审批卡
 const approvalCardEl = document.querySelector<HTMLDivElement>('#approval-card')
@@ -31,7 +30,6 @@ const approvalRejectBtn = document.querySelector<HTMLButtonElement>('#approval-r
 
 let bubbleTimer: ReturnType<typeof setTimeout> | undefined
 let connText = 'connecting'
-let petText = ''
 /** 当前浮动卡显示的审批条目。 */
 let cardApproval: PendingApproval | null = null
 /** 当前有效发送目标(显式选择或自动回退;由面板回调同步)。 */
@@ -77,8 +75,20 @@ function seedRunningSessions(): void {
   })
 }
 
-function renderStatus(): void {
-  if (statusEl) statusEl.textContent = `${connText}${petText ? ` · pet: ${petText}` : ''}`
+/**
+ * 顶部历史按钮:连接状态驱动文案与样式。
+ * 已连接 → "点击展开历史"(开合最近对话浮层);未连接 → "reconnect"(点击立即重连)。
+ * 未连接时浮层数据已过期,一并收起。
+ */
+function renderHistoryButton(): void {
+  if (!btnHistoryEl) return
+  const connected = connText === 'connected'
+  btnHistoryEl.textContent = connected ? '点击展开历史' : 'reconnect'
+  btnHistoryEl.classList.toggle('disconnected', !connected)
+  if (!connected && summaryPopEl) {
+    summaryPopEl.classList.add('hidden')
+    summaryPopEl.textContent = ''
+  }
 }
 
 /** 气泡:显示 text,visibleMs 后自动隐藏。 */
@@ -138,34 +148,12 @@ function createActivityStore(): {
   }
 }
 
-// ---- 主页常驻消息条:目标会话的重要消息摘要(主进程已过滤噪音并截断) ----
+// ---- 最近对话浮层(顶部历史按钮开合):目标会话的重要消息摘要(主进程已过滤噪音并截断) ----
 
 /** 缓冲:按 seq 升序(去重;上限 50 条,超出丢最旧)。 */
 let summaryEntries: PetSummaryEntry[] = []
-/** 消息条当前关注的会话(切会话竞态保护:基线/增量过期即丢弃)。 */
+/** 当前关注的会话(切会话竞态保护:基线/增量过期即丢弃)。 */
 let summarySessionId: string | null = null
-
-function summaryKindTag(entry: PetSummaryEntry): string {
-  return entry.kind === 'user' ? '👤' : entry.kind === 'assistant' ? '🤖' : ''
-}
-
-/** 常驻条显示缓冲尾部(最近一条重要消息);meta 直接显示结果文本;其余渲染行内 markdown。 */
-function renderSummaryBar(): void {
-  if (!summaryBarEl) return
-  const last = summaryEntries[summaryEntries.length - 1]
-  if (!last) {
-    summaryBarEl.classList.add('hidden')
-    return
-  }
-  summaryBarEl.textContent = ''
-  if (last.kind === 'meta') {
-    summaryBarEl.textContent = last.text
-  } else {
-    summaryBarEl.appendChild(document.createTextNode(`${summaryKindTag(last)} `))
-    summaryBarEl.appendChild(markdownToInline(last.text))
-  }
-  summaryBarEl.classList.remove('hidden')
-}
 
 /** 浮层:完整列出缓冲;打开时滚到底,已在底部时新条目跟随滚动。 */
 function renderSummaryPop(): void {
@@ -195,12 +183,11 @@ function renderSummaryPop(): void {
   if (wasAtBottom) summaryPopEl.scrollTop = summaryPopEl.scrollHeight
 }
 
-/** 入缓冲:按 seq 去重(主进程已按目标会话过滤);驱动常驻条与浮层刷新。 */
+/** 入缓冲:按 seq 去重(主进程已按目标会话过滤);浮层开着时刷新。 */
 function pushSummaryEntry(entry: PetSummaryEntry): void {
   if (summaryEntries.some((e) => e.seq === entry.seq)) return
   summaryEntries.push(entry)
   if (summaryEntries.length > 50) summaryEntries.splice(0, summaryEntries.length - 50)
-  renderSummaryBar()
   if (summaryPopEl && !summaryPopEl.classList.contains('hidden')) renderSummaryPop()
 }
 
@@ -208,7 +195,6 @@ function pushSummaryEntry(entry: PetSummaryEntry): void {
 function resetSummary(sessionId: string | null): void {
   summarySessionId = sessionId
   summaryEntries = []
-  renderSummaryBar()
   if (summaryPopEl) {
     summaryPopEl.classList.add('hidden')
     summaryPopEl.textContent = ''
@@ -220,7 +206,7 @@ function resetSummary(sessionId: string | null): void {
   })
 }
 
-/** 点击常驻条:展开/收起最近对话浮层(打开时滚到底)。 */
+/** 点击历史按钮:展开/收起最近对话浮层(打开时滚到底)。 */
 function toggleSummaryPop(): void {
   if (!summaryPopEl) return
   const show = summaryPopEl.classList.contains('hidden')
@@ -234,7 +220,7 @@ function toggleSummaryPop(): void {
 async function boot(): Promise<void> {
   if (!api) {
     connText = 'preload 未注入 window.petApi'
-    renderStatus()
+    renderHistoryButton()
     return
   }
 
@@ -251,8 +237,6 @@ async function boot(): Promise<void> {
   })
   const actor = createActor(petMachine)
   actor.subscribe((snapshot) => {
-    petText = snapshot.value as PetState
-    renderStatus()
     animator.play(snapshot.value as PetState)
   })
   actor.start()
@@ -306,7 +290,7 @@ async function boot(): Promise<void> {
         animator.applyPetSettings?.(cfg.pet)
       })
     },
-    // 有效发送目标(显式或自动回退)变化 → 刷新"发送/停止"按钮 + 主页消息条切会话重拉基线
+    // 有效发送目标(显式或自动回退)变化 → 刷新"发送/停止"按钮 + 最近对话浮层切会话重拉基线
     onTargetChange: (id) => {
       targetSessionId = id
       renderSendButton()
@@ -328,20 +312,20 @@ async function boot(): Promise<void> {
     switch (event.type) {
       case 'dsh:connected':
         connText = 'connected'
-        renderStatus()
+        renderHistoryButton()
         // 重连后会话列表可能变化,刷新面板;雷达活动表清空重建(旧代事件已过期)
         activity.clear()
         // 运行中集合同样进入新代:清空后用会话列表快照播种(覆盖"连接时已在跑"的回合)
         runningSessions.clear()
         seedRunningSessions()
         void panel.refreshSessions()
-        // 消息条缓冲属旧代事件,重置并重拉当前目标会话基线(refreshSessions 后
+        // 浮层缓冲属旧代事件,重置并重拉当前目标会话基线(refreshSessions 后
         // onTargetChange 若目标变化会再触发一次 resetSummary,幂等)
         resetSummary(targetSessionId)
         break
       case 'dsh:state':
         connText = event.state
-        renderStatus()
+        renderHistoryButton()
         break
       case 'dsh:turn-start':
         actor.send({ type: 'DSH_WORKING' })
@@ -383,7 +367,7 @@ async function boot(): Promise<void> {
         renderSendButton()
         break
       case 'dsh:summary-update':
-        // 主页消息条:主进程已按目标会话过滤;若 renderer 尚未锚定会话(面板回调
+        // 最近对话浮层:主进程已按目标会话过滤;若 renderer 尚未锚定会话(面板回调
         // 晚于事件),以事件会话为准
         if (summarySessionId === null) summarySessionId = event.sessionId
         if (event.sessionId === summarySessionId) pushSummaryEntry(event.entry)
@@ -427,7 +411,7 @@ async function boot(): Promise<void> {
   void api.getState().then((state) => {
     if (state.connection) {
       connText = state.connection
-      renderStatus()
+      renderHistoryButton()
       seedRunningSessions()
       void panel.refreshSessions()
     }
@@ -480,8 +464,11 @@ async function boot(): Promise<void> {
   })
   inputEl?.addEventListener('compositionend', () => autoGrowInput())
 
-  // 主页消息条:点击展开/收起最近对话浮层
-  summaryBarEl?.addEventListener('click', toggleSummaryPop)
+  // 顶部历史按钮:已连接 → 开合最近对话浮层;未连接 → 立即重连
+  btnHistoryEl?.addEventListener('click', () => {
+    if (connText === 'connected') toggleSummaryPop()
+    else void api?.reconnect()
+  })
 }
 
 void boot()

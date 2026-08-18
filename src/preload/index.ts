@@ -73,6 +73,7 @@ const petApi: PetApi = {
   },
   getState: () => ipcRenderer.invoke('pet:get-state'),
   sendMessage: (text) => ipcRenderer.invoke('pet:send-message', String(text ?? '')),
+  reconnect: () => ipcRenderer.invoke('pet:reconnect'),
   stopTurn: () => ipcRenderer.invoke('pet:stop-turn'),
   listSessions: () => ipcRenderer.invoke('pet:list-sessions'),
   getHistory: (sessionId, beforeSeq, maxMessages) =>

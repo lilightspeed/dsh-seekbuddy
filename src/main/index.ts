@@ -232,7 +232,7 @@ async function bootstrap(): Promise<void> {
   function restartConnection(): void {
     if (!config) return
     connection?.stop()
-    // isTargetSession:主页消息条只推送目标会话的重要消息摘要(其余会话不推)
+    // isTargetSession:最近对话浮层只推送目标会话的重要消息摘要(其余会话不推)
     connection = createConnection(onPetEvent, () => config!.get().dsh.baseUrl, (sessionId) => sessionId === targetSessionId)
     connection.start()
   }
@@ -314,6 +314,11 @@ async function bootstrap(): Promise<void> {
 
     ipcMain.handle('pet:get-state', () => handleGetState())
     ipcMain.handle('pet:send-message', (_event, text: string) => handleSendMessage(text))
+    // 手动重连:stop 旧连接并立即起新代(中断指数退避),与改地址重建同一路径
+    ipcMain.handle('pet:reconnect', () => {
+      restartConnection()
+      return { label: 'connection.reconnect', ok: true, summary: 'reconnecting' }
+    })
     ipcMain.handle('pet:stop-turn', () => petOps?.stopTurn() ?? { label: 'session.cancel', ok: false, summary: 'ops not ready' })
     ipcMain.handle('pet:list-sessions', () => petOps?.listSessions() ?? { ok: false, summary: 'ops not ready', targetSessionId: null, items: [] })
     ipcMain.handle('pet:get-history', (_event, sessionId: string, beforeSeq: number | null, maxMessages: number | null) =>

@@ -59,7 +59,7 @@ export type PetEvent =
       time: number
     }
   /**
-   * 主页常驻消息条:目标会话新增一条"重要消息"摘要。
+   * 最近对话浮层:目标会话新增一条"重要消息"摘要。
    * 主进程已按重要性规则过滤(用户消息 / 助手最终回复 / 工具失败 / 回合异常)
    * 并折叠/截断;renderer 只按 seq 去重累积渲染。
    */
@@ -141,7 +141,7 @@ export interface PetHistoryResult {
   entries: PetHistoryEntry[]
 }
 
-/** 主页常驻消息条:一条"重要消息"的扁平摘要(主进程已过滤噪音并折叠/截断)。 */
+/** 最近对话浮层:一条"重要消息"的扁平摘要(主进程已过滤噪音并折叠/截断)。 */
 export interface PetSummaryEntry {
   /** 会话内事件序号(去重锚点;同一 seq 只进一次缓冲)。 */
   seq: number
@@ -202,12 +202,14 @@ export interface PetApi {
   getState(): Promise<PetConnectionState>
   /** 向当前目标会话发送一条文本消息(session.prompt)。 */
   sendMessage(text: string): Promise<PetOpResult>
+  /** 立即重建 DSH 连接(手动重连:中断退避并开新代)。 */
+  reconnect(): Promise<PetOpResult>
   /** 停止当前目标会话的运行中回合(sessions.cancel);无显式目标时回退最近非空会话。 */
   stopTurn(): Promise<PetOpResult>
   listSessions(): Promise<PetSessionListResult>
   /** 读会话历史;beforeSeq 为向上翻页锚点(省略 = 尾部页)。 */
   getHistory(sessionId: string, beforeSeq?: number, maxMessages?: number): Promise<PetHistoryResult>
-  /** 拉目标会话尾部"重要消息"摘要(主页消息条基线;主进程过滤噪音并截断)。 */
+  /** 拉目标会话尾部"重要消息"摘要(最近对话浮层基线;主进程过滤噪音并截断)。 */
   getHistorySummary(sessionId: string, maxMessages?: number): Promise<PetSummaryResult>
   /** 设置目标会话(发消息的落点);null = 回退到最近会话。 */
   selectSession(sessionId: string | null): Promise<PetOpResult>

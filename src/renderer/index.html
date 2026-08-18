@@ -252,52 +252,38 @@
       #inputbar button.stop:hover {
         filter: brightness(1.06);
       }
-      /* 角落状态(开发期可见):液态玻璃小胶囊(内移避开窗口圆角弧线) */
-      #status {
+      /* 顶部历史按钮(左上,可交互):液态玻璃胶囊。
+         未连接时显示 "reconnect"(点击立即重连);已连接显示 "点击展开历史"(点击开合最近对话浮层) */
+      #btn-history {
         position: fixed;
         left: 18px;
         top: 10px;
-        z-index: 3;
-        font-size: 10px;
-        color: var(--ink-2);
-        background: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.3));
-        backdrop-filter: blur(16px) saturate(160%);
-        -webkit-backdrop-filter: blur(16px) saturate(160%);
-        border: 1px solid rgba(255, 255, 255, 0.55);
-        border-radius: 10px;
-        padding: 3px 8px;
-        pointer-events: none;
-        box-shadow:
-          0 2px 8px rgba(77, 107, 254, 0.12),
-          inset 0 1px 0 rgba(255, 255, 255, 0.6);
-      }
-      /* 主页常驻消息条:顶部中央小胶囊,显示目标会话最近一条"重要消息";
-         主进程已过滤噪音(thinking/工具过程)并折叠截断,点击展开最近对话浮层 */
-      #summary-bar {
-        position: fixed;
-        top: 10px;
-        left: 50%;
-        transform: translateX(-50%);
         z-index: 4;
-        max-width: 46%;
-        min-width: 130px;
-        padding: 4px 12px;
+        border: 1px solid rgba(255, 255, 255, 0.6);
         border-radius: 12px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.3));
+        backdrop-filter: blur(16px) saturate(170%);
+        -webkit-backdrop-filter: blur(16px) saturate(170%);
+        color: var(--ds-blue);
         font-size: 11px;
-        line-height: 1.5;
-        color: var(--ink);
+        line-height: 1.4;
+        padding: 5px 12px;
         cursor: pointer;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        text-align: center;
-        transition: background 0.15s ease;
+        box-shadow:
+          0 3px 10px rgba(77, 107, 254, 0.15),
+          inset 0 1px 1px rgba(255, 255, 255, 0.7);
+        transition: background 0.15s ease, color 0.15s ease;
         -webkit-app-region: no-drag;
       }
-      #summary-bar:hover {
-        background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.55));
+      #btn-history:hover {
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.5));
       }
-      /* 最近对话浮层:点击消息条展开;z-index 3 低于面板(4),面板打开时被盖住 */
+      /* 未连接:警示色,提示可点击重连 */
+      #btn-history.disconnected {
+        color: #c0392b;
+        border-color: rgba(229, 72, 77, 0.5);
+      }
+      /* 最近对话浮层:点击历史按钮展开;z-index 3 低于面板(4),面板打开时被盖住 */
       #summary-pop {
         position: fixed;
         top: 42px;
@@ -1024,9 +1010,8 @@
       <textarea id="msg-input" rows="1" placeholder="对 DSH 说点什么…" spellcheck="false"></textarea>
       <button id="btn-send">发送</button>
     </div>
-    <div id="status" class="glass">connecting…</div>
-    <!-- 主页常驻消息条:目标会话最近一条重要消息;点击展开/收起最近对话浮层 -->
-    <div id="summary-bar" class="glass hidden" title="点击查看最近对话"></div>
+    <!-- 顶部按钮:左 = 历史/重连(未连接显示 reconnect,已连接点击展开最近对话);右 = 菜单 -->
+    <button id="btn-history" class="glass disconnected" title="最近对话 / 重连">reconnect</button>
     <div id="summary-pop" class="glass hidden"></div>
     <!-- Live2D Cubism Core:定义全局 Live2DCubismCore(Framework 与适配层依赖),必须在模块脚本前加载 -->
     <script src="/pet/live2d/core/live2dcubismcore.js"></script>
