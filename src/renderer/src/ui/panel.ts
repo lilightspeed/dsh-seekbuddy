@@ -1,6 +1,7 @@
 import type { PetActivityEntry, PetApi, PetHistoryEntry, PetPluginEntry, PetPluginListResult, PetSessionSummary } from '../../../shared/pet-event.ts'
 import type { PetConfigUpdate } from '../../../shared/pet-config.ts'
 import type { PendingApproval } from './approvals.ts'
+import { conceal, reveal } from './reveal.ts'
 
 export interface PanelHooks {
   /** 审批中心(面板审批 tab 与浮动卡共用)。 */
@@ -115,11 +116,13 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
   function toggle(): void {
     if (!panelEl) return
     const show = panelEl.classList.contains('hidden')
-    panelEl.classList.toggle('hidden', !show)
     if (show) {
       void refreshSessions()
       renderApprovals()
       if (settingsEl?.classList.contains('active')) void refreshSettings()
+      reveal(panelEl)
+    } else {
+      conceal(panelEl)
     }
   }
 

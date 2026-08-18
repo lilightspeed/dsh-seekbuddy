@@ -7,6 +7,7 @@ import { createStage } from './pet/stage.ts'
 import { createApprovalCenter, type PendingApproval } from './ui/approvals.ts'
 import { markdownToDom } from './ui/markdown.ts'
 import { createPanel } from './ui/panel.ts'
+import { conceal, reveal } from './ui/reveal.ts'
 
 declare global {
   interface Window {
@@ -206,14 +207,16 @@ function resetSummary(sessionId: string | null): void {
   })
 }
 
-/** 点击历史按钮:展开/收起最近对话浮层(打开时滚到底)。 */
+/** 点击历史按钮:展开/收起最近对话浮层(平滑过渡,打开时滚到底)。 */
 function toggleSummaryPop(): void {
   if (!summaryPopEl) return
   const show = summaryPopEl.classList.contains('hidden')
-  summaryPopEl.classList.toggle('hidden', !show)
   if (show) {
     renderSummaryPop()
     summaryPopEl.scrollTop = summaryPopEl.scrollHeight
+    reveal(summaryPopEl)
+  } else {
+    conceal(summaryPopEl)
   }
 }
 
