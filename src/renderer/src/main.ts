@@ -213,8 +213,10 @@ function toggleSummaryPop(): void {
   const show = summaryPopEl.classList.contains('hidden')
   if (show) {
     renderSummaryPop()
-    summaryPopEl.scrollTop = summaryPopEl.scrollHeight
+    // 必须先显示再滚底:display:none 时 scrollTop 赋值无效,
+    // reveal 移除 hidden 后元素才可滚动(否则首次打开视角停在顶部)
     reveal(summaryPopEl)
+    summaryPopEl.scrollTop = summaryPopEl.scrollHeight
   } else {
     conceal(summaryPopEl)
   }
