@@ -1,4 +1,4 @@
-import type { PetActivityEntry, PetApi, PetHistoryEntry, PetPluginEntry, PetPluginListResult, PetSessionSummary } from '../../../shared/pet-event.ts'
+import type { PetActivityEntry, PetApi, PetPluginEntry, PetPluginListResult, PetSessionSummary } from '../../../shared/pet-event.ts'
 import type { PetConfigUpdate } from '../../../shared/pet-config.ts'
 import type { PendingApproval } from './approvals.ts'
 import { conceal, reveal } from './reveal.ts'
@@ -20,6 +20,8 @@ export interface PanelHooks {
   onPetSettingsChange?(patch: PetConfigUpdate): void
   /** 有效发送目标(显式目标或自动回退)变化通知:驱动输入条"发送/停止"按钮状态。 */
   onTargetChange?(sessionId: string | null): void
+  /** 面板即将展开(互斥):调用方在此收起历史浮层等已展开的浮层。 */
+  onOpen?(): void
 }
 
 /** 相对时间("刚刚 / 5 分钟前 / 2 小时前 / 8月15日")。 */
@@ -54,14 +56,13 @@ function shortTitle(session: PetSessionSummary): string {
 }
 
 /**
- * 会话面板:会话列表(切换目标)+ 雷达 + 历史 + 审批 + 设置 tab。
+ * 会话面板:会话列表(切换目标)+ 审批 + 插件 + 设置 tab(历史已并入"点击展开历史"浮层)。
  * vanilla DOM(React/Zustand 待复杂 UI 再引入)。
  */
 export function createPanel(api: PetApi, hooks: PanelHooks) {
   const panelEl = document.querySelector<HTMLDivElement>('#panel')
   const btnEl = document.querySelector<HTMLButtonElement>('#btn-panel')
   const sessionsEl = document.querySelector<HTMLDivElement>('#tab-sessions')
-  const historyEl = document.querySelector<HTMLDivElement>('#tab-history')
   const approvalsEl = document.querySelector<HTMLDivElement>('#tab-approvals')
   const pluginsEl = document.querySelector<HTMLDivElement>('#tab-plugins')
   const settingsEl = document.querySelector<HTMLDivElement>('#tab-settings')
@@ -78,36 +79,15 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
   let lastPluginResult: PetPluginListResult | null = null
   let lastPluginSummary = '未刷新'
   let pluginLoading = false
-  /** 历史查看的会话 + 已加载锚点。 */
-  let historySessionId: string | null = null
-  let historySessionTitle: string | null = null
-  let historyBeforeSeq: number | null = null
-  let historyHasMore = false
-  let historyLoading = false
 
-  function switchTab(name: 'sessions' | 'history' | 'approvals' | 'plugins' | 'settings'): void {
+  function switchTab(name: 'sessions' | 'approvals' | 'plugins' | 'settings'): void {
     document.querySelectorAll<HTMLButtonElement>('#panel .panel-tabs button').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset['tab'] === name)
     })
     sessionsEl?.classList.toggle('active', name === 'sessions')
-    historyEl?.classList.toggle('active', name === 'history')
     approvalsEl?.classList.toggle('active', name === 'approvals')
     pluginsEl?.classList.toggle('active', name === 'plugins')
     settingsEl?.classList.toggle('active', name === 'settings')
-    if (name === 'history') {
-      if (!historySessionId) {
-        // 尚未选择会话:提示去会话页选一个
-        if (historyEl) {
-          historyEl.textContent = ''
-          const hint = document.createElement('div')
-          hint.className = 'history-row meta'
-          hint.textContent = '← 请先在「会话」页选择一个会话查看历史'
-          historyEl.appendChild(hint)
-        }
-      } else {
-        void refreshHistory()
-      }
-    }
     if (name === 'approvals') renderApprovals()
     if (name === 'plugins') renderPlugins()
     if (name === 'settings') void refreshSettings()
@@ -117,6 +97,8 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     if (!panelEl) return
     const show = panelEl.classList.contains('hidden')
     if (show) {
+      // 互斥:面板展开时收起历史浮层(由调用方经 hooks.onOpen 处理)
+      hooks.onOpen?.()
       void refreshSessions()
       renderApprovals()
       if (settingsEl?.classList.contains('active')) void refreshSettings()
@@ -124,6 +106,16 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     } else {
       conceal(panelEl)
     }
+  }
+
+  /** 面板是否处于展开状态(供外部互斥判断)。 */
+  function isOpen(): boolean {
+    return panelEl !== null && !panelEl.classList.contains('hidden')
+  }
+
+  /** 收起面板(若展开;conceal 内部对已隐藏元素为空操作)。 */
+  function close(): void {
+    if (panelEl) conceal(panelEl)
   }
 
   async function refreshSessions(): Promise<PetSessionSummary[] | null> {
@@ -136,16 +128,6 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     sessionItems = result.items
     renderSessions(result.items)
     updateRunningBadge()
-    // 会话列表刷新后,历史锚点失效,重置为尾部
-    historySessionId = null
-    historyBeforeSeq = null
-    if (!historyEl?.classList.contains('active')) return result.items
-    const current = result.items.find((item) => item.sessionId === targetSessionId)
-    if (current) {
-      historySessionId = current.sessionId
-      historySessionTitle = current.title
-    }
-    void refreshHistory()
     return result.items
   }
 
@@ -224,12 +206,8 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
       return
     }
     targetSessionId = sessionId
-    // 只把该会话设为目标,停留在会话页(选中标记/徽标由 refreshSessions 同步更新);
-    // 历史锚点也预置,之后用户主动切到"历史"tab 时直接看该会话。
-    const items = await refreshSessions()
-    historySessionId = sessionId
-    historyBeforeSeq = null
-    historySessionTitle = items?.find((item) => item.sessionId === sessionId)?.title ?? null
+    // 只把该会话设为目标,停留在会话页(选中标记/徽标由 refreshSessions 同步更新)
+    await refreshSessions()
   }
 
   async function createSession(): Promise<void> {
@@ -240,74 +218,6 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     }
     hooks.onFlash(`✅ ${result.summary}`, true)
     await refreshSessions()
-  }
-
-  /** 加载历史(首次 = 尾部页;afterOldest = 向上翻页)。 */
-  async function refreshHistory(afterOldest = false): Promise<void> {
-    if (!historyEl || !historySessionId || historyLoading) return
-    historyLoading = true
-    try {
-      const beforeSeq = afterOldest ? historyBeforeSeq : null
-      const result = await api.getHistory(historySessionId, beforeSeq ?? undefined, 40)
-      if (!result.ok) {
-        hooks.onFlash(`✗ 历史:${result.summary}`, false)
-        return
-      }
-      historyHasMore = result.hasMore
-      // 向上翻页:新条目插到顶部(seq 必然更小);首次加载整页替换
-      renderHistoryInto(result.entries, afterOldest)
-      historyBeforeSeq = result.entries[0]?.seq ?? null
-    } finally {
-      historyLoading = false
-    }
-  }
-
-  function renderHistoryInto(entries: PetHistoryEntry[], prepend: boolean): void {
-    if (!historyEl) return
-    const frag = document.createDocumentFragment()
-    for (const entry of entries) {
-      const row = document.createElement('div')
-      row.className = `history-row ${entry.kind}`
-      row.dataset['seq'] = String(entry.seq)
-      const time = document.createElement('span')
-      time.className = 'time'
-      time.textContent = new Date(entry.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      const text = document.createElement('div')
-      text.textContent = entry.text
-      row.append(time, text)
-      frag.appendChild(row)
-    }
-    if (prepend) {
-      // 插到"加载更早"按钮之后(按钮保持置顶)
-      const olderBtn = historyEl.querySelector('.panel-btn')
-      if (olderBtn) {
-        olderBtn.after(frag)
-      } else {
-        historyEl.prepend(frag)
-      }
-    } else {
-      historyEl.textContent = ''
-      // 标题:当前查看的会话
-      if (historySessionTitle) {
-        const title = document.createElement('div')
-        title.className = 'history-title'
-        title.textContent = `💬 ${historySessionTitle}`
-        historyEl.appendChild(title)
-      }
-      if (entries.length === 0) {
-        const empty = document.createElement('div')
-        empty.className = 'history-row meta'
-        empty.textContent = '（无历史消息）'
-        historyEl.appendChild(empty)
-      } else if (historyHasMore) {
-        const olderBtn = document.createElement('button')
-        olderBtn.className = 'panel-btn'
-        olderBtn.textContent = '↑ 加载更早'
-        olderBtn.addEventListener('click', () => void refreshHistory(true))
-        historyEl.appendChild(olderBtn)
-      }
-      historyEl.appendChild(frag)
-    }
   }
 
   function renderApprovals(): void {
@@ -689,8 +599,8 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
 
   btnEl?.addEventListener('click', toggle)
   document.querySelectorAll<HTMLButtonElement>('#panel .panel-tabs button').forEach((btn) => {
-    btn.addEventListener('click', () => switchTab(btn.dataset['tab'] as 'sessions' | 'history' | 'approvals' | 'plugins' | 'settings'))
+    btn.addEventListener('click', () => switchTab(btn.dataset['tab'] as 'sessions' | 'approvals' | 'plugins' | 'settings'))
   })
 
-  return { toggle, refreshSessions }
+  return { toggle, close, isOpen, refreshSessions }
 }

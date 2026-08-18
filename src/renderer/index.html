@@ -835,22 +835,7 @@
         padding: 6px 10px 10px;
         line-height: 1.5;
       }
-      /* 历史行 */
-      .history-title {
-        padding: 6px 10px;
-        font-size: 12px;
-        font-weight: 600;
-        color: #38519f;
-        background: linear-gradient(180deg, rgba(77, 107, 254, 0.25), rgba(77, 107, 254, 0.14));
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-        border: 1px solid rgba(255, 255, 255, 0.35);
-        border-radius: 10px;
-        margin-bottom: 4px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
+      /* 历史行(审批/插件页空状态与卡片复用) */
       .history-row {
         padding: 5px 10px;
         border-radius: 10px;
@@ -980,18 +965,16 @@
     </div>
     <div id="stage"></div>
     <div id="bubble" class="glass"></div>
-    <button id="btn-panel" class="glass" title="会话 / 历史 / 审批 / 设置">☰</button>
+    <button id="btn-panel" class="glass" title="会话 / 审批 / 插件 / 设置">☰</button>
     <div id="panel" class="glass hidden">
       <div class="panel-tabs">
         <button data-tab="sessions" class="active">会话<span id="session-running-badge" class="badge hidden">0</span></button>
-        <button data-tab="history">历史</button>
         <button data-tab="approvals">审批<span id="approval-badge" class="badge hidden">0</span></button>
         <button data-tab="plugins">插件</button>
         <button data-tab="settings">设置</button>
       </div>
       <div class="panel-body">
         <div id="tab-sessions" class="tab active"></div>
-        <div id="tab-history" class="tab"></div>
         <div id="tab-approvals" class="tab"></div>
         <div id="tab-plugins" class="tab"></div>
         <div id="tab-settings" class="tab">

@@ -267,7 +267,7 @@ async function boot(): Promise<void> {
   // B2 多会话雷达:活动表 + 面板订阅
   const activity = createActivityStore()
 
-  // 会话面板(会话列表/切换 + 历史 + 审批 + 雷达 + 设置 tab)
+  // 会话面板(会话列表/切换 + 审批 + 雷达 + 设置 tab;历史已并入"点击展开历史"浮层)
   const panel = createPanel(api, {
     approvals: {
       list: () => approvals.list(),
@@ -298,6 +298,10 @@ async function boot(): Promise<void> {
       targetSessionId = id
       renderSendButton()
       resetSummary(id)
+    },
+    // 互斥:面板展开时先收起历史浮层
+    onOpen: () => {
+      if (summaryPopEl && !summaryPopEl.classList.contains('hidden')) conceal(summaryPopEl)
     },
   })
   void panel
@@ -467,10 +471,12 @@ async function boot(): Promise<void> {
   })
   inputEl?.addEventListener('compositionend', () => autoGrowInput())
 
-  // 顶部历史按钮:已连接 → 开合最近对话浮层;未连接 → 立即重连
+  // 顶部历史按钮:已连接 → 开合最近对话浮层(互斥:菜单面板开着先收起);未连接 → 立即重连
   btnHistoryEl?.addEventListener('click', () => {
-    if (connText === 'connected') toggleSummaryPop()
-    else void api?.reconnect()
+    if (connText === 'connected') {
+      if (panel.isOpen()) panel.close()
+      toggleSummaryPop()
+    } else void api?.reconnect()
   })
 }
 
