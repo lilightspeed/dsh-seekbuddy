@@ -295,7 +295,28 @@
         padding: 6px;
         border-radius: 14px;
         -webkit-app-region: no-drag;
+        /* 透明窗口下 backdrop-filter 无法模糊窗口内的 Live2D canvas(Chromium 限制),
+           宠物会透过 .glass 的半透明底干扰文字 —— 覆盖为近不透明背景等效解决,
+           保留渐变/圆角/高光的玻璃观感;backdrop-filter 保留(能生效的环境锦上添花) */
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.9));
+        backdrop-filter: blur(24px) saturate(180%);
+        -webkit-backdrop-filter: blur(24px) saturate(180%);
+        /* 滚动条:细圆角滑块 + 透明轨道,消除原生方角/箭头按钮,与玻璃卡片风格统一 */
         scrollbar-width: thin;
+        scrollbar-color: rgba(77, 107, 254, 0.35) transparent;
+      }
+      #summary-pop::-webkit-scrollbar {
+        width: 6px;
+      }
+      #summary-pop::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      #summary-pop::-webkit-scrollbar-thumb {
+        background: rgba(77, 107, 254, 0.3);
+        border-radius: 3px;
+      }
+      #summary-pop::-webkit-scrollbar-thumb:hover {
+        background: rgba(77, 107, 254, 0.5);
       }
       .summary-pop-row {
         padding: 4px 8px;
