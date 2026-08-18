@@ -57,7 +57,8 @@ const DRAG_BLEND_RELEASE = 2
  * 升级 SDK 时需核对:settings.baseOutputIndex / outputs.angleScale / _currentRigOutputs。
  */
 interface SdkPhysicsRigOutput {
-  destination: { id: string }
+  /** CubismId 实例(getString() 返回参数名)。 */
+  destination: { id: { getString(): string } }
   angleScale: number
   weight: number
 }
@@ -484,7 +485,8 @@ class CubismRuntime implements Live2dRuntime {
       for (let j = 0; j < setting.outputCount; j++) {
         const out = rig.outputs[setting.baseOutputIndex + j]
         if (!out) continue
-        const index = this.hairIndexByParamId(out.destination.id)
+        // destination.id 是 CubismId 实例,必须 getString() 取参数名(否则 switch 永不匹配)
+        const index = this.hairIndexByParamId(out.destination.id.getString())
         if (index < 0) continue
         // raw = 该 setting 的粒子输出(未乘 Scale);素材输出均为 Type=Angle → angleScale。
         // 当前素材 Weight=100(绝对赋值),低权重混合不重放(需自行按 weight 混合)。
