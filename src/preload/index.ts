@@ -82,6 +82,8 @@ const petApi: PetApi = {
       beforeSeq == null ? null : toFinite(beforeSeq),
       maxMessages == null ? null : toFinite(maxMessages),
     ),
+  getHistorySummary: (sessionId, maxMessages) =>
+    ipcRenderer.invoke('pet:get-history-summary', String(sessionId ?? ''), maxMessages == null ? null : toFinite(maxMessages)),
   selectSession: (sessionId) => ipcRenderer.invoke('pet:select-session', sessionId == null ? null : String(sessionId)),
   createSession: () => ipcRenderer.invoke('pet:create-session'),
   respondApproval: (request) => ipcRenderer.invoke('pet:respond-approval', sanitizeApproval(request)),

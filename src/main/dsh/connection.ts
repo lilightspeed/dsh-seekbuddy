@@ -1,6 +1,7 @@
 import type { HostFrame, MuxFrame, RpcRequest } from '@deepseek-ai/dsh-host-apiproxy/api'
 import type { ConnectionState, HostDescription, PetEvent } from '../../shared/pet-event.ts'
 import { DshApiClient } from './client.ts'
+import { summaryEntryOf } from './summary.ts'
 
 /** 连接句柄:renderer 经 preload 白名单间接使用。 */
 export interface ConnectionHandle {
@@ -18,16 +19,20 @@ const BACKOFF_MAX_MS = 30_000
  * 每代 = host.describe 握手 → 起 mux/host 两条 WS 流 → 泵帧到 onEvent;
  * 任一流结束/出错 → reconnecting → 指数退避(带抖动)重试。
  * getBaseUrl:阶段 5 起注入配置读取器,改 DSH 地址后由调用方重建连接。
+ * isTargetSession:主页消息条只关注目标会话,其余会话的摘要不推送。
  */
 export function createConnection(
   onEvent: (event: PetEvent) => void,
   getBaseUrl: () => string,
+  isTargetSession: (sessionId: string) => boolean,
 ): ConnectionHandle {
   const api = new DshApiClient(getBaseUrl)
   let running = false
   let currentState: ConnectionState | null = null
   let description: HostDescription | null = null
   let generationAbort: AbortController | undefined
+  /** tool/call 的 callId → 工具名(增量流内配对;供工具失败摘要显示)。 */
+  const toolNames = new Map<string, string>()
 
   function emitState(state: ConnectionState): void {
     if (currentState === state) return
@@ -45,20 +50,26 @@ export function createConnection(
     }
   }
 
-  /** mux 帧 → 语义事件(阶段 2:turn 生命周期;阶段 3:审批;B2:会话活动增量)。 */
+  /** mux 帧 → 语义事件(阶段 2:turn 生命周期;阶段 3:审批;B2:会话活动增量;消息条:重要摘要)。 */
   function pumpMuxFrame(frame: MuxFrame, rpcId: string): void {
     switch (frame.type) {
       case 'session/event': {
         const event = frame.event
+        const sessionId = String(frame.sessionId)
         if (event.type === 'turn/start') {
-          onEvent({ type: 'dsh:turn-start', sessionId: String(frame.sessionId) })
+          onEvent({ type: 'dsh:turn-start', sessionId })
           // B2 雷达:turn/start → running,带服务端事件时间
-          onEvent({ type: 'dsh:session-update', sessionId: String(frame.sessionId), running: true, reason: null, time: event.time })
+          onEvent({ type: 'dsh:session-update', sessionId, running: true, reason: null, time: event.time })
         }
         if (event.type === 'turn/end') {
           const reason = event.data.reason.kind
-          onEvent({ type: 'dsh:turn-end', reason, sessionId: String(frame.sessionId) })
-          onEvent({ type: 'dsh:session-update', sessionId: String(frame.sessionId), running: false, reason, time: event.time })
+          onEvent({ type: 'dsh:turn-end', reason, sessionId })
+          onEvent({ type: 'dsh:session-update', sessionId, running: false, reason, time: event.time })
+        }
+        // 主页消息条:只推目标会话的重要消息摘要(噪音已在 summary.ts 过滤)
+        if (isTargetSession(sessionId)) {
+          const entry = summaryEntryOf(event, toolNames)
+          if (entry) onEvent({ type: 'dsh:summary-update', sessionId, entry })
         }
         break
       }
@@ -103,6 +114,8 @@ export function createConnection(
     while (running) {
       const generation = new AbortController()
       generationAbort = generation
+      // 新代增量流从头开始,tool/call → tool/result 配对也从头来
+      toolNames.clear()
       try {
         // 握手:host.describe 证明上行可达(成功后下行流已在途)
         const describeResponse = await api.host.describe({}, generation.signal)

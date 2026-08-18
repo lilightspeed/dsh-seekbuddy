@@ -1,5 +1,5 @@
 import { createActor } from 'xstate'
-import type { PetActivityEntry, PetApi, PetEvent } from '../../shared/pet-event.ts'
+import type { PetActivityEntry, PetApi, PetEvent, PetSummaryEntry } from '../../shared/pet-event.ts'
 import { petMachine, type PetState } from './fsm/pet-machine.ts'
 import type { PetAnimator } from './pet/animator.ts'
 import { createLive2dAnimator } from './pet/live2d/create-live2d-animator.ts'
@@ -18,6 +18,9 @@ const statusEl = document.querySelector<HTMLDivElement>('#status')
 const bubbleEl = document.querySelector<HTMLDivElement>('#bubble')
 const inputEl = document.querySelector<HTMLTextAreaElement>('#msg-input')
 const sendBtn = document.querySelector<HTMLButtonElement>('#btn-send')
+// 主页常驻消息条 + 最近对话浮层
+const summaryBarEl = document.querySelector<HTMLDivElement>('#summary-bar')
+const summaryPopEl = document.querySelector<HTMLDivElement>('#summary-pop')
 // 浮动审批卡
 const approvalCardEl = document.querySelector<HTMLDivElement>('#approval-card')
 const approvalToolEl = document.querySelector<HTMLDivElement>('#approval-tool')
@@ -99,7 +102,9 @@ function renderApprovalCard(list: PendingApproval[]): void {
   approvalCardEl.classList.remove('hidden')
 }
 
-/** B2 多会话雷达:内存活动表,由 dsh:session-update 增量累积;订阅者拿快照。 */
+/**
+ * B2 多会话雷达:内存活动表,由 dsh:session-update 增量累积;订阅者拿快照。
+ */
 type ActivityListener = (list: PetActivityEntry[]) => void
 function createActivityStore(): {
   update(entry: PetActivityEntry): void
@@ -129,6 +134,91 @@ function createActivityStore(): {
       listeners.add(listener)
       return () => listeners.delete(listener)
     },
+  }
+}
+
+// ---- 主页常驻消息条:目标会话的重要消息摘要(主进程已过滤噪音并截断) ----
+
+/** 缓冲:按 seq 升序(去重;上限 50 条,超出丢最旧)。 */
+let summaryEntries: PetSummaryEntry[] = []
+/** 消息条当前关注的会话(切会话竞态保护:基线/增量过期即丢弃)。 */
+let summarySessionId: string | null = null
+
+function summaryKindTag(entry: PetSummaryEntry): string {
+  return entry.kind === 'user' ? '👤' : entry.kind === 'assistant' ? '🤖' : ''
+}
+
+/** 常驻条显示缓冲尾部(最近一条重要消息);meta 直接显示结果文本。 */
+function renderSummaryBar(): void {
+  if (!summaryBarEl) return
+  const last = summaryEntries[summaryEntries.length - 1]
+  if (!last) {
+    summaryBarEl.classList.add('hidden')
+    return
+  }
+  summaryBarEl.textContent = last.kind === 'meta' ? last.text : `${summaryKindTag(last)} ${last.text}`
+  summaryBarEl.classList.remove('hidden')
+}
+
+/** 浮层:完整列出缓冲;打开时滚到底,已在底部时新条目跟随滚动。 */
+function renderSummaryPop(): void {
+  if (!summaryPopEl) return
+  const wasAtBottom = summaryPopEl.scrollHeight - summaryPopEl.scrollTop - summaryPopEl.clientHeight < 8
+  summaryPopEl.textContent = ''
+  if (summaryEntries.length === 0) {
+    const empty = document.createElement('div')
+    empty.className = 'summary-pop-empty'
+    empty.textContent = '（暂无重要消息）'
+    summaryPopEl.appendChild(empty)
+    return
+  }
+  const frag = document.createDocumentFragment()
+  for (const entry of summaryEntries) {
+    const row = document.createElement('div')
+    row.className = `summary-pop-row ${entry.kind}`
+    const time = document.createElement('span')
+    time.className = 'time'
+    time.textContent = new Date(entry.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    row.append(time, document.createTextNode(entry.text))
+    frag.appendChild(row)
+  }
+  summaryPopEl.appendChild(frag)
+  if (wasAtBottom) summaryPopEl.scrollTop = summaryPopEl.scrollHeight
+}
+
+/** 入缓冲:按 seq 去重(主进程已按目标会话过滤);驱动常驻条与浮层刷新。 */
+function pushSummaryEntry(entry: PetSummaryEntry): void {
+  if (summaryEntries.some((e) => e.seq === entry.seq)) return
+  summaryEntries.push(entry)
+  if (summaryEntries.length > 50) summaryEntries.splice(0, summaryEntries.length - 50)
+  renderSummaryBar()
+  if (summaryPopEl && !summaryPopEl.classList.contains('hidden')) renderSummaryPop()
+}
+
+/** 切换会话/重连:清空缓冲并拉一次尾部历史基线(经主进程过滤);竞态用 summarySessionId 保护。 */
+function resetSummary(sessionId: string | null): void {
+  summarySessionId = sessionId
+  summaryEntries = []
+  renderSummaryBar()
+  if (summaryPopEl) {
+    summaryPopEl.classList.add('hidden')
+    summaryPopEl.textContent = ''
+  }
+  if (!sessionId) return
+  void api?.getHistorySummary(sessionId, 60).then((result) => {
+    if (!result.ok || summarySessionId !== sessionId) return
+    for (const entry of result.entries) pushSummaryEntry(entry)
+  })
+}
+
+/** 点击常驻条:展开/收起最近对话浮层(打开时滚到底)。 */
+function toggleSummaryPop(): void {
+  if (!summaryPopEl) return
+  const show = summaryPopEl.classList.contains('hidden')
+  summaryPopEl.classList.toggle('hidden', !show)
+  if (show) {
+    renderSummaryPop()
+    summaryPopEl.scrollTop = summaryPopEl.scrollHeight
   }
 }
 
@@ -207,10 +297,11 @@ async function boot(): Promise<void> {
         animator.applyPetSettings?.(cfg.pet)
       })
     },
-    // 有效发送目标(显式或自动回退)变化 → 刷新"发送/停止"按钮
+    // 有效发送目标(显式或自动回退)变化 → 刷新"发送/停止"按钮 + 主页消息条切会话重拉基线
     onTargetChange: (id) => {
       targetSessionId = id
       renderSendButton()
+      resetSummary(id)
     },
   })
   void panel
@@ -235,6 +326,9 @@ async function boot(): Promise<void> {
         runningSessions.clear()
         seedRunningSessions()
         void panel.refreshSessions()
+        // 消息条缓冲属旧代事件,重置并重拉当前目标会话基线(refreshSessions 后
+        // onTargetChange 若目标变化会再触发一次 resetSummary,幂等)
+        resetSummary(targetSessionId)
         break
       case 'dsh:state':
         connText = event.state
@@ -278,6 +372,12 @@ async function boot(): Promise<void> {
         if (event.running) runningSessions.add(event.sessionId)
         else runningSessions.delete(event.sessionId)
         renderSendButton()
+        break
+      case 'dsh:summary-update':
+        // 主页消息条:主进程已按目标会话过滤;若 renderer 尚未锚定会话(面板回调
+        // 晚于事件),以事件会话为准
+        if (summarySessionId === null) summarySessionId = event.sessionId
+        if (event.sessionId === summarySessionId) pushSummaryEntry(event.entry)
         break
       case 'pet:speak':
         actor.send({ type: 'TALK' })
@@ -370,6 +470,9 @@ async function boot(): Promise<void> {
     autoGrowInput()
   })
   inputEl?.addEventListener('compositionend', () => autoGrowInput())
+
+  // 主页消息条:点击展开/收起最近对话浮层
+  summaryBarEl?.addEventListener('click', toggleSummaryPop)
 }
 
 void boot()

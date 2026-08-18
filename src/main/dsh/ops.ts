@@ -8,8 +8,11 @@ import type {
   PetOpResult,
   PetSessionListResult,
   PetSessionSummary,
+  PetSummaryEntry,
+  PetSummaryResult,
 } from '../../shared/pet-event.ts'
 import type { ConnectionHandle } from './connection.ts'
+import { summaryEntryOf } from './summary.ts'
 
 /**
  * 阶段 3 操作面:会话列表/切换/历史 + 审批回包。
@@ -19,6 +22,8 @@ import type { ConnectionHandle } from './connection.ts'
 export interface PetOps {
   listSessions(): Promise<PetSessionListResult>
   getHistory(sessionId: string, beforeSeq: number | null, maxMessages: number | null): Promise<PetHistoryResult>
+  /** 主页消息条基线:拉尾部事件并按"重要性规则"过滤(与增量流同一过滤器)。 */
+  getHistorySummary(sessionId: string, maxMessages: number | null): Promise<PetSummaryResult>
   selectSession(sessionId: string | null): PetOpResult
   createSession(): Promise<PetCreateResult>
   respondApproval(request: PetApprovalRequest): Promise<PetOpResult>
@@ -78,6 +83,36 @@ export function createPetOps(
       return { ok: true, summary: `${entries.length} events`, sessionId, hasMore: result.value.hasMore, entries }
     } catch (error) {
       return { ok: false, summary: String(error), sessionId, hasMore: false, entries: [] }
+    }
+  }
+
+  /**
+   * 主页消息条基线:拉尾部事件,经 summaryEntryOf(与增量流同一过滤器)过滤出
+   * 重要摘要。每次调用独立配对 tool/call → tool/result(历史流顺序完整)。
+   */
+  async function getHistorySummary(
+    sessionId: string,
+    maxMessages: number | null,
+  ): Promise<PetSummaryResult> {
+    const connection = getConnection()
+    if (!connection) return { ok: false, summary: 'connection not ready', sessionId: null, entries: [] }
+    if (!sessionId) return { ok: false, summary: 'missing sessionId', sessionId: null, entries: [] }
+    try {
+      const response = await connection.api.sessions.history({
+        sessionId: sessionId as SessionId,
+        ...(maxMessages === null ? {} : { maxMessages }),
+      })
+      const result = response.result
+      if (!result.ok) {
+        return { ok: false, summary: `rpc error: ${JSON.stringify(result.error)}`, sessionId, entries: [] }
+      }
+      const toolNames = new Map<string, string>()
+      const entries = result.value.events
+        .map((entry) => summaryEntryOf(entry.event, toolNames))
+        .filter((e): e is PetSummaryEntry => e !== null)
+      return { ok: true, summary: `${entries.length} entries`, sessionId, entries }
+    } catch (error) {
+      return { ok: false, summary: String(error), sessionId, entries: [] }
     }
   }
 
@@ -192,7 +227,7 @@ export function createPetOps(
     }
   }
 
-  return { listSessions, getHistory, selectSession, createSession, respondApproval, stopTurn }
+  return { listSessions, getHistory, getHistorySummary, selectSession, createSession, respondApproval, stopTurn }
 }
 
 /** 会话标题:list 行的 projections.values.title(投影缓存;无则 null)。 */

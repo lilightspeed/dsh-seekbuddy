@@ -58,6 +58,12 @@ export type PetEvent =
       /** 事件时间戳(ms,服务端事件时间)。 */
       time: number
     }
+  /**
+   * 主页常驻消息条:目标会话新增一条"重要消息"摘要。
+   * 主进程已按重要性规则过滤(用户消息 / 助手最终回复 / 工具失败 / 回合异常)
+   * 并折叠/截断;renderer 只按 seq 去重累积渲染。
+   */
+  | { type: 'dsh:summary-update'; sessionId: string; entry: PetSummaryEntry }
   /** 阶段 4 反向链路:MCP 工具驱动宠物开口。 */
   | { type: 'pet:speak'; text: string }
   /** 阶段 4 反向链路:MCP 工具切换表情状态。 */
@@ -135,6 +141,24 @@ export interface PetHistoryResult {
   entries: PetHistoryEntry[]
 }
 
+/** 主页常驻消息条:一条"重要消息"的扁平摘要(主进程已过滤噪音并折叠/截断)。 */
+export interface PetSummaryEntry {
+  /** 会话内事件序号(去重锚点;同一 seq 只进一次缓冲)。 */
+  seq: number
+  /** Unix epoch 毫秒。 */
+  time: number
+  kind: 'user' | 'assistant' | 'meta'
+  /** 已折叠空白并截断的展示文本。 */
+  text: string
+}
+
+export interface PetSummaryResult {
+  ok: boolean
+  summary: string
+  sessionId: string | null
+  entries: PetSummaryEntry[]
+}
+
 export interface PetCreateResult {
   ok: boolean
   summary: string
@@ -183,6 +207,8 @@ export interface PetApi {
   listSessions(): Promise<PetSessionListResult>
   /** 读会话历史;beforeSeq 为向上翻页锚点(省略 = 尾部页)。 */
   getHistory(sessionId: string, beforeSeq?: number, maxMessages?: number): Promise<PetHistoryResult>
+  /** 拉目标会话尾部"重要消息"摘要(主页消息条基线;主进程过滤噪音并截断)。 */
+  getHistorySummary(sessionId: string, maxMessages?: number): Promise<PetSummaryResult>
   /** 设置目标会话(发消息的落点);null = 回退到最近会话。 */
   selectSession(sessionId: string | null): Promise<PetOpResult>
   /** 新建会话并选为目标。 */

@@ -232,7 +232,8 @@ async function bootstrap(): Promise<void> {
   function restartConnection(): void {
     if (!config) return
     connection?.stop()
-    connection = createConnection(onPetEvent, () => config!.get().dsh.baseUrl)
+    // isTargetSession:主页消息条只推送目标会话的重要消息摘要(其余会话不推)
+    connection = createConnection(onPetEvent, () => config!.get().dsh.baseUrl, (sessionId) => sessionId === targetSessionId)
     connection.start()
   }
 
@@ -317,6 +318,9 @@ async function bootstrap(): Promise<void> {
     ipcMain.handle('pet:list-sessions', () => petOps?.listSessions() ?? { ok: false, summary: 'ops not ready', targetSessionId: null, items: [] })
     ipcMain.handle('pet:get-history', (_event, sessionId: string, beforeSeq: number | null, maxMessages: number | null) =>
       petOps?.getHistory(sessionId, beforeSeq, maxMessages) ?? { ok: false, summary: 'ops not ready', sessionId, hasMore: false, entries: [] },
+    )
+    ipcMain.handle('pet:get-history-summary', (_event, sessionId: string, maxMessages: number | null) =>
+      petOps?.getHistorySummary(sessionId, maxMessages) ?? { ok: false, summary: 'ops not ready', sessionId: null, entries: [] },
     )
     ipcMain.handle('pet:select-session', (_event, sessionId: string | null) => petOps?.selectSession(sessionId) ?? { label: 'session.select', ok: false, summary: 'ops not ready' })
     ipcMain.handle('pet:create-session', () => petOps?.createSession() ?? { ok: false, summary: 'ops not ready' })

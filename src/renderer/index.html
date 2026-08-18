@@ -271,6 +271,78 @@
           0 2px 8px rgba(77, 107, 254, 0.12),
           inset 0 1px 0 rgba(255, 255, 255, 0.6);
       }
+      /* 主页常驻消息条:顶部中央小胶囊,显示目标会话最近一条"重要消息";
+         主进程已过滤噪音(thinking/工具过程)并折叠截断,点击展开最近对话浮层 */
+      #summary-bar {
+        position: fixed;
+        top: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 4;
+        max-width: 46%;
+        min-width: 130px;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 11px;
+        line-height: 1.5;
+        color: var(--ink);
+        cursor: pointer;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-align: center;
+        transition: background 0.15s ease;
+        -webkit-app-region: no-drag;
+      }
+      #summary-bar:hover {
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.55));
+      }
+      /* 最近对话浮层:点击消息条展开;z-index 3 低于面板(4),面板打开时被盖住 */
+      #summary-pop {
+        position: fixed;
+        top: 42px;
+        left: 8px;
+        right: 8px;
+        z-index: 3;
+        max-height: 40vh;
+        overflow-y: auto;
+        padding: 6px;
+        border-radius: 14px;
+        -webkit-app-region: no-drag;
+        scrollbar-width: thin;
+      }
+      .summary-pop-row {
+        padding: 4px 8px;
+        border-radius: 10px;
+        font-size: 12px;
+        line-height: 1.45;
+        word-break: break-all;
+        margin-bottom: 2px;
+        color: var(--ink);
+      }
+      .summary-pop-row.user {
+        background: rgba(110, 139, 255, 0.14);
+        color: #1a5bb8;
+      }
+      .summary-pop-row.assistant {
+        background: rgba(53, 199, 89, 0.14);
+        color: #1e7a3e;
+      }
+      .summary-pop-row.meta {
+        background: rgba(229, 72, 77, 0.12);
+        color: #c0392b;
+      }
+      .summary-pop-row .time {
+        color: var(--ink-3);
+        font-size: 10px;
+        margin-right: 6px;
+      }
+      .summary-pop-empty {
+        color: var(--ink-3);
+        font-size: 11px;
+        text-align: center;
+        padding: 10px;
+      }
       /* 面板开关按钮(右上角,可交互):圆形液态玻璃(内移避开窗口圆角弧线) */
       #btn-panel {
         position: fixed;
@@ -918,6 +990,9 @@
       <button id="btn-send">发送</button>
     </div>
     <div id="status" class="glass">connecting…</div>
+    <!-- 主页常驻消息条:目标会话最近一条重要消息;点击展开/收起最近对话浮层 -->
+    <div id="summary-bar" class="glass hidden" title="点击查看最近对话"></div>
+    <div id="summary-pop" class="glass hidden"></div>
     <!-- Live2D Cubism Core:定义全局 Live2DCubismCore(Framework 与适配层依赖),必须在模块脚本前加载 -->
     <script src="/pet/live2d/core/live2dcubismcore.js"></script>
     <script type="module" src="/src/main.ts"></script>
