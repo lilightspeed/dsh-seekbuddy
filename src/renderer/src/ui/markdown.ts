@@ -4,10 +4,27 @@
  * 安全纪律:所有用户文本一律经 textContent 写入,元素白名单由本文件代码控制,
  * 绝不 innerHTML 拼接来源文本 —— 无 XSS 面。
  *
- * 覆盖:代码块(```)、行内代码、**粗体**、*斜体*、[文本](链接)、标题、列表、引用。
- * 降级:表格等未支持语法原样显示;链接只显示文本(宠物窗口无导航,不生成 <a>);
- * 未闭合代码块 fence 容忍为"余下全部是代码"。
+ * 覆盖:代码块(```)、行内代码、**粗体**、*斜体*、[文本](链接)、标题、列表、引用、
+ * 表格(连续的管道行 + 分隔行 → <table>;无分隔行的管道行按普通段落降级)。
+ * 降级:链接只显示文本(宠物窗口无导航,不生成 <a>);未闭合代码块 fence 容忍为
+ * "余下全部是代码"。
  */
+
+/** 表格分隔行:`|---|` / `| :---: |` / `|---|:---|`(仅含 - : 空格 |)。 */
+function isTableSepRow(line: string): boolean {
+  return /^\s*\|?[\s:|-]+\|?\s*$/.test(line) && line.includes('-')
+}
+
+/** 表格数据行:以 | 开头且含第二个 |(分隔行也满足,渲染时按分隔行划分)。 */
+function isTableRow(line: string): boolean {
+  return /^\s*\|/.test(line) && line.includes('|', 1)
+}
+
+/** 表格行 → 单元格文本:去首尾 |,按未转义的 | 切分并 trim。 */
+function splitTableRow(row: string): string[] {
+  const inner = row.trim().replace(/^\|/, '').replace(/\|$/, '')
+  return inner.split('|').map((cell) => cell.trim())
+}
 
 /** 行内解析:依次识别 `code`、**bold**、*italic*、[text](url),其余原样。 */
 function appendInline(parent: Node, text: string): void {
@@ -92,6 +109,57 @@ export function markdownToDom(text: string): DocumentFragment {
       p.appendChild(mark)
       appendInline(p, list[2] ?? '')
       frag.appendChild(p)
+      i++
+      continue
+    }
+    // 表格:连续管道行;含分隔行 → <table>(首个分隔行上方为表头),
+    // 无分隔行 → 按普通段落逐行降级(避免把普通 "| 文本" 误渲染成表格)。
+    if (isTableRow(line)) {
+      const rows: string[] = [line]
+      while (i + 1 < lines.length && isTableRow(lines[i + 1] ?? '')) {
+        i++
+        rows.push(lines[i] ?? '')
+      }
+      const sepAt = rows.findIndex(isTableSepRow)
+      if (sepAt < 0) {
+        for (const r of rows) {
+          const p = document.createElement('p')
+          p.className = 'md-para'
+          appendInline(p, r)
+          frag.appendChild(p)
+        }
+      } else {
+        const table = document.createElement('table')
+        const headRows = rows.slice(0, sepAt)
+        const bodyRows = rows.slice(sepAt + 1)
+        if (headRows.length > 0) {
+          const thead = document.createElement('thead')
+          for (const r of headRows) {
+            const tr = document.createElement('tr')
+            for (const cell of splitTableRow(r)) {
+              const th = document.createElement('th')
+              appendInline(th, cell)
+              tr.appendChild(th)
+            }
+            thead.appendChild(tr)
+          }
+          table.appendChild(thead)
+        }
+        if (bodyRows.length > 0) {
+          const tbody = document.createElement('tbody')
+          for (const r of bodyRows) {
+            const tr = document.createElement('tr')
+            for (const cell of splitTableRow(r)) {
+              const td = document.createElement('td')
+              appendInline(td, cell)
+              tr.appendChild(td)
+            }
+            tbody.appendChild(tr)
+          }
+          table.appendChild(tbody)
+        }
+        frag.appendChild(table)
+      }
       i++
       continue
     }
