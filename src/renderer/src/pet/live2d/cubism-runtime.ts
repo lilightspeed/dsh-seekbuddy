@@ -75,6 +75,13 @@ const EXPRESSION_PARAM_IDS = [
   'ParamAngleY',
   'ParamMouthFormOpen',
   'ParamArmRChange',
+  /** 思考表情(0039)驱动:困惑(ParamDizzy/ParamIrisStyle/ParamBlush)、恍然大悟
+   *  (ParamSymbolExclamation/ParamMouthFormClose)——停止后需平滑回归待机基准。 */
+  'ParamDizzy',
+  'ParamIrisStyle',
+  'ParamBlush',
+  'ParamSymbolExclamation',
+  'ParamMouthFormClose',
 ] as const
 /** 表情复位平滑速度(1/s):≈0.3s 内基本回归待机。 */
 const EXPRESSION_RESET_SPEED = 10

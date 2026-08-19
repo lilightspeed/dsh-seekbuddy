@@ -43,6 +43,9 @@ function sanitizeConfigUpdate(patch: PetConfigUpdate | undefined): PetConfigUpda
   if (patch?.petDragStrength !== undefined) out.petDragStrength = toFinite(patch.petDragStrength)
   if (patch?.petShowHitMesh !== undefined) out.petShowHitMesh = Boolean(patch.petShowHitMesh)
   if (patch?.petPatStrength !== undefined) out.petPatStrength = toFinite(patch.petPatStrength)
+  // 思考表情阈值(0039,秒):toFinite 收敛
+  if (patch?.petThinkExclaimAfterSec !== undefined) out.petThinkExclaimAfterSec = toFinite(patch.petThinkExclaimAfterSec)
+  if (patch?.petThinkDizzyAfterSec !== undefined) out.petThinkDizzyAfterSec = toFinite(patch.petThinkDizzyAfterSec)
   return out
 }
 

@@ -64,6 +64,9 @@ export class PetConfigStore {
     if (patch.petDragStrength !== undefined) next.pet.dragStrength = clamp(patch.petDragStrength, 0, 1)
     if (patch.petShowHitMesh !== undefined) next.pet.showHitMesh = Boolean(patch.petShowHitMesh)
     if (patch.petPatStrength !== undefined) next.pet.patStrength = clamp(patch.petPatStrength, 0, 8)
+    // 思考表情阈值(0039):A 0..600s,B 0.1..600s;A>=B 由 animator 归一,不在此强改
+    if (patch.petThinkExclaimAfterSec !== undefined) next.pet.thinkExclaimAfterSec = clamp(patch.petThinkExclaimAfterSec, 0, 600)
+    if (patch.petThinkDizzyAfterSec !== undefined) next.pet.thinkDizzyAfterSec = clamp(patch.petThinkDizzyAfterSec, 0.1, 600)
     if (patch.voiceEnabled !== undefined) next.voice.enabled = Boolean(patch.voiceEnabled)
     if (patch.launchAtLogin !== undefined) next.launchAtLogin = Boolean(patch.launchAtLogin)
     if (patch.targetSessionId !== undefined) {
@@ -117,6 +120,8 @@ export class PetConfigStore {
           if (typeof raw.pet.dragStrength === 'number') next.pet.dragStrength = clamp(raw.pet.dragStrength, 0, 1)
           if (typeof raw.pet.showHitMesh === 'boolean') next.pet.showHitMesh = raw.pet.showHitMesh
           if (typeof raw.pet.patStrength === 'number') next.pet.patStrength = clamp(raw.pet.patStrength, 0, 8)
+          if (typeof raw.pet.thinkExclaimAfterSec === 'number') next.pet.thinkExclaimAfterSec = clamp(raw.pet.thinkExclaimAfterSec, 0, 600)
+          if (typeof raw.pet.thinkDizzyAfterSec === 'number') next.pet.thinkDizzyAfterSec = clamp(raw.pet.thinkDizzyAfterSec, 0.1, 600)
         }
         if (typeof raw.voice?.enabled === 'boolean') next.voice.enabled = raw.voice.enabled
         if (typeof raw.launchAtLogin === 'boolean') next.launchAtLogin = raw.launchAtLogin

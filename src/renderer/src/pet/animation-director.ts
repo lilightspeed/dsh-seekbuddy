@@ -7,7 +7,8 @@ import type { AnimationChannel, Live2dRuntime } from './live2d/runtime.ts'
  * - 同通道互斥:每通道最多一个 active 动画;跨通道(未来 action + expression)并存;
  * - 优先级仲裁:新请求 priority > 当前动画才允许打断,否则幂等忽略;
  * - 生命周期:starting → playing ⇄ frozen(hold) → ending,自然结束/打断均回调 onEnd;
- * - Gate 状态门控:锁定通道 = 立即停止 + 拒绝新请求(如 thinking 锁表情);
+ * - Gate 状态门控:锁定通道 = 立即停止 + 拒绝新请求(0039 起 thinking 放开 expression,
+ *   供困惑表情叠加;happy/sad/talking 等瞬时态锁表情);
  * - autoBlink 接管:动画播放期间按 spec.autoBlink 关/开自动眨眼(0037g 续摸坑由导演统一保证)。
  *
  * 物理互斥(同通道 start 前 stop)由 runtime 兜底,见 Live2dRuntime.playMotion。
@@ -135,7 +136,7 @@ export function createAnimationDirector(runtime: Live2dRuntime): AnimationDirect
   }
 
   function request(spec: AnimationSpec): void {
-    // 1. Gate:所在通道被锁(如 thinking 锁表情)→ 忽略
+    // 1. Gate:所在通道被锁(如 happy/sad/talking 锁表情)→ 忽略
     if (gates.has(spec.channel)) return
     const cur = active.get(spec.channel)
 

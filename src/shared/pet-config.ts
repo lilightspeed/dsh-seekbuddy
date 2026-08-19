@@ -51,6 +51,17 @@ export interface PetPetSettings {
    * 只影响按住期间,松开立即恢复。
    */
   patStrength: number
+  /**
+   * 思考表情阈值 A(秒,0039):一次思考的时长 ≥ A 时,思考结束播放
+   * "恍然大悟"(Expression_think_exclaim)表情一次;时长 < A 则直接正常结束。
+   */
+  thinkExclaimAfterSec: number
+  /**
+   * 思考表情阈值 B(秒,0039,应 > A):思考时长 > B 时,思考期间循环播放
+   * "困惑"(Expression_think_dizzy1)表情,直到思考结束再播放"恍然大悟"。
+   * 运行时对 A/B 做 min/max 归一,顺序填反也不会破坏逻辑。
+   */
+  thinkDizzyAfterSec: number
 }
 
 export interface PetConfig {
@@ -84,6 +95,9 @@ export const DEFAULT_PET_CONFIG: PetConfig = {
     dragStrength: 1,
     showHitMesh: false,
     patStrength: 1,
+    // 思考表情阈值(0039):≥5s 结束思考时恍然大悟;>15s 思考期间循环困惑
+    thinkExclaimAfterSec: 5,
+    thinkDizzyAfterSec: 15,
   },
   voice: { enabled: true },
   launchAtLogin: false,
@@ -117,4 +131,8 @@ export interface PetConfigUpdate {
   petShowHitMesh?: boolean
   /** 摸头力度(0037n/0037q,0..8)。 */
   petPatStrength?: number
+  /** 思考表情阈值 A(秒,0039):思考结束播放"恍然大悟"的最短时长。 */
+  petThinkExclaimAfterSec?: number
+  /** 思考表情阈值 B(秒,0039):思考期间循环"困惑"的最短时长。 */
+  petThinkDizzyAfterSec?: number
 }

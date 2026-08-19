@@ -6,7 +6,7 @@ import type { AnimationSpec } from './animation-director.ts'
  * runtime 需要的 file/loop 映射由本表派生注入(见 MOTION_FILES)。
  */
 /** 动画逻辑 id(新增动画在此扩展 union;索引访问带 noUncheckedIndexedAccess 下不返回 undefined)。 */
-type AnimationId = 'pat-head' | 'sad' | 'thinking'
+type AnimationId = 'pat-head' | 'sad' | 'thinking' | 'think-dizzy' | 'think-exclaim'
 
 /** 动画注册表 —— 全部动画的单点登记处(doc/09 §3.2),详见各条目注释。 */
 export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
@@ -68,6 +68,36 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
     file: 'Motion_think.motion3.json',
     priority: 1,
     holdEnd: true,
+    autoBlink: false,
+  },
+  /**
+   * 困惑表情(0039):思考时长 > 阈值 B 时,思考期间**循环播放**,直到思考结束。
+   * - channel: expression —— 与 action 通道的思考姿态(Motion_think holdEnd)并存,
+   *   素材驱动的 ParamDizzy/IrisStyle/Blush/MouthOpenY/FormClose 与思考姿态参数不相交
+   * - loop: true —— 长时间思考持续晕眩感;ParamDizzy 曲线 0.1→0.9 循环点跳变由 V2
+   *   correctEndPoint + loop fade-in 平滑(坑 4)
+   * - 思考结束时由 animator 离开 thinking 的门控(expression 锁)停止并平滑复位
+   */
+  'think-dizzy': {
+    id: 'think-dizzy',
+    channel: 'expression',
+    file: 'Expression_think_dizzy1.motion3.json',
+    loop: true,
+    priority: 1,
+    autoBlink: false,
+  },
+  /**
+   * 恍然大悟表情(0039):思考时长 ≥ 阈值 A 时,思考结束**播放一次**。
+   * - channel: action —— 思考结束瞬间思考姿态已 stop(复位),恍然大悟独占身体通道;
+   *   驱动 ParamAngleY(摇头)/ParamSymbolExclamation(感叹号)/眼睛/嘴,与表情通道无关
+   * - 非循环,素材 2.9s 自然结束自动复位;happy 态(2.5s)内播完,余尾由 idle 切换截断复位
+   */
+  'think-exclaim': {
+    id: 'think-exclaim',
+    channel: 'action',
+    file: 'Expression_think_exclaim.motion3.json',
+    priority: 1,
+    durationMs: 3500,
     autoBlink: false,
   },
 }

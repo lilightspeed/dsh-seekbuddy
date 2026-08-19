@@ -91,6 +91,25 @@ function createLive2dAnimatorWithRuntime(
   let pointer: { x: number; y: number } | null = null
   let loaded = false
   let unsubscribeCursor: (() => void) | undefined
+  /**
+   * 思考表情(0039):本次思考开始时刻(performance.now,ms);离开 thinking 时算时长。
+   * 0 = 从未进入 thinking(时长判定前先进入才会写入)。
+   */
+  let thinkingStartedAt = 0
+  /** 思考表情阈值 A(秒,设置面板可调):思考时长 ≥ A → 结束播放"恍然大悟"。 */
+  let thinkExclaimAfterSec = DEFAULT_PET_CONFIG.pet.thinkExclaimAfterSec
+  /** 思考表情阈值 B(秒,设置面板可调):思考时长 > B → 期间循环"困惑"。 */
+  let thinkDizzyAfterSec = DEFAULT_PET_CONFIG.pet.thinkDizzyAfterSec
+  /**
+   * 阈值归一(0039):设置里 A/B 可任意填,按 min/max 归一保证"A=较短(恍然大悟)、
+   * B=较长(困惑)"的语义不因填反而破坏(填反时两个阈值互换角色)。
+   */
+  function thinkThresholds(): { a: number; b: number } {
+    return {
+      a: Math.min(thinkExclaimAfterSec, thinkDizzyAfterSec),
+      b: Math.max(thinkExclaimAfterSec, thinkDizzyAfterSec),
+    }
+  }
 
   /**
    * 动画导演(doc/09):集中仲裁表情/动作动画 —— 同通道互斥、优先级打断、hold 冻结、
@@ -329,19 +348,30 @@ function createLive2dAnimatorWithRuntime(
   }
   window.addEventListener('pointermove', onPointerMove)
 
-  function applyState(next: PetState): void {
+  function applyState(prev: PetState | null, next: PetState): void {
     follower.setEnabled(shouldFollow(next))
-    // 表情只在 idle 生效:状态离开 idle → 锁 expression 通道(导演立即停止 + 拒绝新请求)
-    director.setGate('expression', next !== 'idle')
+    // 表情通道门控:idle 与 thinking 放开(思考期间播放思考表情叠加:困惑循环,0039),
+    // 其余瞬时态(happy/sad/talking)锁定 —— 进入即停掉进行中的表情并拒绝新请求
+    director.setGate('expression', next !== 'idle' && next !== 'thinking')
     // 状态级眨眼控制(thinking 关);动画期间的眨眼由导演按 spec.autoBlink 接管,二者互不冲突
     runtime.setAutoBlink(next !== 'thinking')
-    // 思考动作(0038):DSH 工作(thinking)→ 播放 Motion_think 一遍并保持末尾姿态
-    // (低头思考 + 抬手,holdEnd 由运行时维持,见 animation-registry thinking 条目);
-    // 离开 thinking → 停止 action 通道,姿态参数平滑复位回待机。
-    // 视角跟随已在 thinking 时关闭(shouldFollow),拖拽反馈(setDrag)不受状态影响照常生效。
     if (next === 'thinking') {
+      // 进入思考:记录开始时刻;门控放开后主动停掉可能的摸头/难过表情(保证通道干净);
+      // action 通道同时清掉上一轮"恍然大悟"的余尾(否则同优先级会挡住思考动作的请求);
+      // 播放思考动作(Motion_think,holdEnd 保持末尾姿态,见 animation-registry thinking 条目)。
+      // 视角跟随已在 thinking 时关闭(shouldFollow),拖拽反馈(setDrag)不受状态影响照常生效。
+      thinkingStartedAt = performance.now()
+      director.stopChannel('expression')
+      director.stopChannel('action')
       director.request(ANIMATIONS['thinking'])
+    } else if (prev === 'thinking') {
+      // 离开思考:停止思考姿态(参数平滑复位回待机)→ 思考时长 ≥ 阈值 A 时,
+      // 播放"恍然大悟"表情一次;困惑表情由门控(expression 锁)在本切换时停止并复位
+      director.stopChannel('action')
+      const elapsedSec = (performance.now() - thinkingStartedAt) / 1000
+      if (elapsedSec >= thinkThresholds().a) director.request(ANIMATIONS['think-exclaim'])
     } else {
+      // 常规状态切换:action 通道无动画时为空操作(离开 thinking 的 stop 在上一分支处理)
       director.stopChannel('action')
     }
   }
@@ -362,7 +392,12 @@ function createLive2dAnimatorWithRuntime(
       dragStrength: clamp01(settings.dragStrength),
       showHitMesh: Boolean(settings.showHitMesh),
       patStrength: clamp(settings.patStrength, 0, 8),
+      thinkExclaimAfterSec: clamp(settings.thinkExclaimAfterSec, 0, 600),
+      thinkDizzyAfterSec: clamp(settings.thinkDizzyAfterSec, 0, 600),
     }
+    // 外层独立变量供 applyState/tick 闭包读取(思考表情阈值,0039):必须同步更新
+    thinkExclaimAfterSec = petSettings.thinkExclaimAfterSec
+    thinkDizzyAfterSec = petSettings.thinkDizzyAfterSec
     // 外层独立变量供 onCursor 闭包读取(增益计算):必须同步更新,否则滑块调了不生效(0035)
     dragStrength = petSettings.dragStrength
     // 网格可视化开关(0037):立即显示/隐藏
@@ -376,7 +411,7 @@ function createLive2dAnimatorWithRuntime(
     () => {
       loaded = true
       console.info(`[live2d] 动画器启用 Live2D:${modelUrl}`)
-      applyState(state)
+      applyState(null, state)
     },
     (error: unknown) => {
       console.error(`[live2d] 模型加载失败:${modelUrl}`, error)
@@ -385,8 +420,9 @@ function createLive2dAnimatorWithRuntime(
 
   return {
     play(next: PetState): void {
+      const prev = state
       state = next
-      if (loaded) applyState(next)
+      if (loaded) applyState(prev, next)
     },
     tick(deltaSeconds: number): void {
       // 按住摸头力度增益平滑(0037o):按下缓升、松开缓降——headMax 突变会让
@@ -439,6 +475,12 @@ function createLive2dAnimatorWithRuntime(
       runtime.update(deltaSeconds)
       // 导演推进:hold 冻结判定/兜底超时/自然结束检测(在 update 之后读最新 elapsed)
       director.tick()
+      // 0039 长时间思考 → 困惑表情(循环):思考时长超过阈值 B 时播放,直到思考结束。
+      // 重复请求由导演幂等忽略(同 id 在播);离开 thinking 时门控(expression 锁)停止并复位。
+      if (state === 'thinking' && thinkingStartedAt > 0) {
+        const elapsedSec = (performance.now() - thinkingStartedAt) / 1000
+        if (elapsedSec > thinkThresholds().b) director.request(ANIMATIONS['think-dizzy'])
+      }
     },
     applyPetSettings,
     dispose(): void {

@@ -295,6 +295,9 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     if (petDrag && document.activeElement !== petDrag) petDrag.value = String(Math.round(p.dragStrength * 100))
     if (petPatStrength && document.activeElement !== petPatStrength) petPatStrength.value = String(Math.round(p.patStrength * 100))
     if (petShowHitMesh) petShowHitMesh.checked = p.showHitMesh
+    // 思考表情阈值(0039):输入框正在编辑时不回填,避免打断输入
+    if (thinkAInput && document.activeElement !== thinkAInput) thinkAInput.value = String(p.thinkExclaimAfterSec)
+    if (thinkBInput && document.activeElement !== thinkBInput) thinkBInput.value = String(p.thinkDizzyAfterSec)
     refreshPetLabels()
   }
 
@@ -380,6 +383,9 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
   const petPatStrength = document.querySelector<HTMLInputElement>('#pet-pat-strength')
   const petPatStrengthVal = document.querySelector<HTMLSpanElement>('#pet-pat-strength-val')
   const petShowHitMesh = document.querySelector<HTMLInputElement>('#pet-show-hitmesh')
+  // 思考表情阈值(0039):数字输入,秒;change 时落盘(见下方事件绑定)
+  const thinkAInput = document.querySelector<HTMLInputElement>('#set-think-a')
+  const thinkBInput = document.querySelector<HTMLInputElement>('#set-think-b')
   const petSliders: Array<HTMLInputElement | null> = [petX, petY, petScale, petHead, petEye, petPupilSensitivity, petPupilMax, petDeadZone, petDistance, petResponse, petDrag, petPatStrength]
 
   /** 从滑块值构造宠物设置补丁(扁平 pet* 键,全量 11 项 + 网格开关)。 */
@@ -433,6 +439,17 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
   // 点击判定网格开关:即时应用并落盘(与其他宠物设置一致走防抖)
   petShowHitMesh?.addEventListener('change', () => {
     hooks.onPetSettingsChange?.({ petShowHitMesh: petShowHitMesh.checked })
+  })
+  // 思考表情阈值(0039):数字输入,change(失焦/回车)时应用并落盘,clamp 与主进程一致
+  thinkAInput?.addEventListener('change', () => {
+    const a = Number(thinkAInput?.value)
+    if (!Number.isFinite(a)) return
+    hooks.onPetSettingsChange?.({ petThinkExclaimAfterSec: Math.min(600, Math.max(0, a)) })
+  })
+  thinkBInput?.addEventListener('change', () => {
+    const b = Number(thinkBInput?.value)
+    if (!Number.isFinite(b)) return
+    hooks.onPetSettingsChange?.({ petThinkDizzyAfterSec: Math.min(600, Math.max(0.1, b)) })
   })
 
   // ---- B2 雷达 tab:全会话活动(运行中/完成/出错),点击设目标 ----

@@ -91,7 +91,7 @@ export interface AnimationSpec {
 
 `director.request(spec)` 的判定顺序(同通道内):
 
-1. **Gate 检查**:所在通道被锁(如 thinking 状态锁 expression)→ 忽略(可选记 `pending`,解锁后补播,当前未实现)。
+1. **Gate 检查**:所在通道被锁(0039 起 thinking 放开 expression 供困惑表情叠加;happy/sad/talking 等瞬时态锁表情)→ 忽略(可选记 `pending`,解锁后补播,当前未实现)。
 2. **同 id 已在播** → 幂等忽略;若 `restartOnRepeat: true` 且动画已自然结束(导演尚未清理)→ 立即重播(续摸语义)。
 3. **同通道有别的动画**:
    - 新动画 `priority >` 当前 → **打断**:`stopChannel`(触发复位 + onEnd)→ 播新的。
@@ -117,7 +117,7 @@ idle → starting → playing ⇄ frozen(hold 暂停) → ending(复位) → idl
   离开 thinking 显式 `stopChannel('action')` 才进 `ending` 复位。
 - `ending`:`runtime.stopChannel(channel)` 内部做表情参数指数平滑复位(0037 已有的 `expressionReset` 机制保留在 runtime);完成后回调 `onEnd('finished' | 'interrupted')` → animator 借此恢复自动眨眼、清理交互状态。
 
-**Gate(状态门控)**:`director.setGate(channel, locked)` —— 取代现在 `applyState` 里散落的 `next !== 'idle' → stopMotion()`。状态机 `play('thinking')` 时锁 expression 并 stop,回 idle 解锁。
+**Gate(状态门控)**:`director.setGate(channel, locked)` —— 取代现在 `applyState` 里散落的 `next !== 'idle' → stopMotion()`。0039 起 `applyState` 只在 **idle 与 thinking 放开 expression**(thinking 期间播放困惑表情叠加),happy/sad/talking 等瞬时态锁 expression(进入即 stop 表情并拒绝新请求);离开 thinking 时由 animator 显式 `stopChannel('action')` 停思考姿态。
 
 ### 3.5 两层互斥保证
 
