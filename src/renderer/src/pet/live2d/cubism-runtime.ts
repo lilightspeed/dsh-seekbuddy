@@ -337,6 +337,10 @@ class CubismRuntime implements Live2dRuntime {
   private motionQueue: CubismMotionQueueManager | null = null
   /** motion 播放用的累计时间(秒,单调递增,作为 doUpdateMotion 的 userTimeSeconds)。 */
   private motionTime = 0
+  /** 当前 motion 开始播放时的全局时间(0037l,计算已播时长用)。 */
+  private motionStartTime = 0
+  /** motion 暂停(0037l):暂停时不推进 motionTime 也不驱动曲线,动画定格当前帧。 */
+  private motionPaused = false
   /** 已解析的 motion 缓存(逻辑名 → 实例;null 表示解析失败,不再重试)。 */
   private readonly motionCache = new Map<string, CubismMotion | null>()
   /** 当前正在播放(或正在淡出)的 motion 逻辑名;null = 无。 */
@@ -806,7 +810,8 @@ class CubismRuntime implements Live2dRuntime {
     // setParameterValueByIndex(见 CubismMotion.doUpdateParameters),因此在这里
     // (load 之后、视角跟随之前)更新只覆盖有曲线的表情参数,不碰头部/眼珠视角参数;
     // 写完后进入 save 快照,物理/渲染正常走。眨眼由 autoBlink=false 让位(motion 接管眼睛)。
-    if (this.motionQueue) {
+    // 暂停(0037l)时冻结时间与曲线驱动:按住摸头时动画定格在闭眼保持帧,松开后继续。
+    if (this.motionQueue && !this.motionPaused) {
       this.motionTime += deltaSeconds
       this.motionQueue.doUpdateMotion(model, this.motionTime)
     }
@@ -922,8 +927,10 @@ class CubismRuntime implements Live2dRuntime {
     // 重播时旧表情淡出、新表情淡入,平滑切换。
     this.motionQueue.startMotion(motion, false)
     this.currentMotionName = name
-    // 新动画接管:取消待处理的复位
+    // 新动画接管:取消待处理的复位,记录起点(已播时长 = motionTime - motionStartTime)
     this.expressionReset = null
+    this.motionStartTime = this.motionTime
+    this.motionPaused = false
     console.info(`[live2d] playMotion("${name}") 开始`)
   }
 
@@ -952,8 +959,19 @@ class CubismRuntime implements Live2dRuntime {
   stopMotion(): void {
     if (!this.motionQueue) return
     this.currentMotionName = null
+    this.motionPaused = false
     this.motionQueue.stopAllMotions()
     this.beginExpressionReset()
+  }
+
+  /** 暂停/恢复 motion 时间推进(0037l):暂停期间动画定格当前帧,恢复后从冻结处继续。 */
+  setMotionPaused(paused: boolean): void {
+    this.motionPaused = paused
+  }
+
+  /** 当前 motion 已播时长(秒,从本 motion 起点计);无播放中的 motion 返回 -1。 */
+  getMotionElapsed(): number {
+    return this.currentMotionName ? this.motionTime - this.motionStartTime : -1
   }
 
   playExpression(name: string): void {
@@ -971,6 +989,7 @@ class CubismRuntime implements Live2dRuntime {
     this.motionQueue = null
     this.motionCache.clear()
     this.currentMotionName = null
+    this.motionPaused = false
     this.expressionReset = null
     if (this.breath) CubismBreath.delete(this.breath)
     this.breath = null

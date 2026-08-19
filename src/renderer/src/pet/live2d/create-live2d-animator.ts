@@ -125,11 +125,19 @@ function createLive2dAnimatorWithRuntime(
   const PAT_HEAD_OFFSET_RATIO = 0.18
   /** 一次摸头播放时长(ms,兜底):动画 3.83s 自然结束后运行时自动复位,此值仅兜底。 */
   const PAT_PLAY_MS = 4000
+  /** 按住摸头(0037l):按下后动画播到闭眼保持点(秒)冻结定格,松开/移出再继续。
+   *  素材曲线:0~0.33s 闭眼,0.33~1.20s 保持(闭眼+微笑+泛红),1.20s 起睁眼复位。
+   *  取 0.45s = 闭眼完全到位后立刻冻结,留足保持窗口。 */
+  const PAT_HOLD_TIME = 0.45
   const PAT_MOTION = 'pat-head'
   /** 摸头表情是否在播放。 */
   let patActive = false
   /** 本次摸头已播放时长(ms);再次点击重置。 */
   let patPlayMs = 0
+  /** 按住模式(0037l):按下且命中判定区域为 true;松开或移出区域解除。 */
+  let holdActive = false
+  /** 已冻结:动画已定格在闭眼保持帧(松开/移出后解除)。 */
+  let holdFrozen = false
   /** 头部点击区:no-drag 透明矩形(与命中区域一致),点击触发摸头。 */
   const hitEl = document.createElement('div')
   hitEl.id = 'pet-head-hit'
@@ -186,20 +194,47 @@ function createLive2dAnimatorWithRuntime(
     }
   }
 
-  /** 点击头部:触发摸头(未在摸则开始,已在摸则续摸重置计时);非 idle 忽略。
-   *  有 hitarea 网格时做精确命中(旧格式 Id 网格点包含),否则 overlay 矩形内即触发。
-   *  播放中重复点击:playMotion 幂等(同 motion 忽略),仅续摸;动画自然结束后
-   *  currentMotionName 已清,再次点击会重新播放。**每次触发都关眨眼**(0037:
-   *  动画结束后复位会恢复眨眼,续摸/重播若不重关,眨眼会覆盖 motion 的闭眼)。 */
-  function triggerPat(x: number, y: number): void {
+  /**
+   * 按下摸头(0037l):idle + 命中判定区域 → 播放摸头并进入按住模式。
+   * 动画播到闭眼保持点后由 tick 冻结(定格闭眼),松开或鼠标移出判定区域才继续。
+   * 播放中重复按下:playMotion 幂等(同 motion 忽略);动画结束后再按会重播。
+   * **每次触发都关眨眼**(0037:动画结束后复位会恢复眨眼,续摸/重播若不重关,
+   * 眨眼会覆盖 motion 的闭眼)。
+   */
+  function onPatDown(x: number, y: number): void {
     if (state !== 'idle') return
-    if (runtime.hitTestPoint && !runtime.hitTestPoint(x, y)) return
+    // 命中判定:无 hitarea(undefined)回落为 overlay 区域即命中
+    if (runtime.hitTestPoint && runtime.hitTestPoint(x, y) === false) return
+    holdActive = true
+    holdFrozen = false
     if (!patActive) patActive = true
     runtime.setAutoBlink(false)
     runtime.playMotion(PAT_MOTION)
     patPlayMs = 0
   }
-  hitEl.addEventListener('click', (e) => triggerPat(e.clientX, e.clientY))
+
+  /** 松开鼠标或移出判定区域:解除冻结,动画从保持帧继续播放到自然结束复位。 */
+  function releasePatHold(): void {
+    if (!holdActive) return
+    holdActive = false
+    holdFrozen = false
+    runtime.setMotionPaused?.(false)
+  }
+
+  /** 按住期间指针移动:移出判定区域 → 解除冻结继续播放。 */
+  function onPatPointerMove(e: PointerEvent): void {
+    if (!holdActive) return
+    if (runtime.hitTestPoint && runtime.hitTestPoint(e.clientX, e.clientY) === false) releasePatHold()
+  }
+
+  // pointer capture:按住期间指针事件(含移出区域/窗口外松开)全部路由到 hitEl,
+  // 保证"松开"事件不漏;移出窗口也不怕——capture 会把 pointerup 送回 hitEl。
+  hitEl.addEventListener('pointerdown', (e) => {
+    hitEl.setPointerCapture(e.pointerId)
+    onPatDown(e.clientX, e.clientY)
+  })
+  hitEl.addEventListener('pointermove', onPatPointerMove)
+  hitEl.addEventListener('pointerup', () => releasePatHold())
 
   /**
    * 写入当前光标(窗口局部坐标,原样透传)。
@@ -235,6 +270,8 @@ function createLive2dAnimatorWithRuntime(
     // 摸头只在 idle 生效:状态离开 idle(工作/瞬时反馈态)立即淡出摸头表情
     if (next !== 'idle' && patActive) {
       patActive = false
+      holdActive = false
+      holdFrozen = false
       runtime.stopMotion()
     }
     patPlayMs = 0
@@ -284,8 +321,17 @@ function createLive2dAnimatorWithRuntime(
     },
     tick(deltaSeconds: number): void {
       if (pointer) follower.update(deltaSeconds, pointer, anchor())
-      // 摸头播放计时:播满一轮淡出停止;再次点击(triggerPat)会重置计时续摸
-      if (patActive) {
+      // 按住摸头(0037l):动画播到闭眼保持点 → 冻结定格;松开/移出由事件解除
+      if (holdActive && !holdFrozen) {
+        const elapsed = runtime.getMotionElapsed?.() ?? -1
+        if (elapsed >= PAT_HOLD_TIME) {
+          holdFrozen = true
+          runtime.setMotionPaused?.(true)
+        }
+      }
+      // 摸头播放计时:播满一轮淡出停止;再次点击(triggerPat)会重置计时续摸。
+      // 冻结(闭眼保持)期间暂停计时——定格时不计入播放时长。
+      if (patActive && !holdFrozen) {
         patPlayMs += deltaSeconds * 1000
         if (patPlayMs >= PAT_PLAY_MS) {
           patActive = false
