@@ -118,9 +118,9 @@ function createLive2dAnimatorWithRuntime(
    * #stage 是 drag 区域会吞掉 renderer 鼠标事件(0016),故叠一个 no-drag 透明
    * 圆形点击区(#pet-head-hit)捕获点击;位置每帧跟随头部锚点。
    */
-  /** 头部点击区半径(px)。 */
+  /** 头部点击区半径(px;素材导出 HitAreas 时由运行时按 hitarea 计算覆盖)。 */
   const PAT_HIT_RADIUS = 52
-  /** 头部相对模型中心锚点(anchor,窗口 positionX/Y)的向上偏移(窗口高度比例)。 */
+  /** 头部相对模型中心锚点(anchor,窗口 positionX/Y)的向上偏移(窗口高度比例;仅 HitAreas 缺失时回退)。 */
   const PAT_HEAD_OFFSET_RATIO = 0.18
   /** 一次摸头播放时长(ms):素材单循环 3.83s,播满一轮后淡出;期间再点续摸。 */
   const PAT_PLAY_MS = 4000
@@ -138,10 +138,15 @@ function createLive2dAnimatorWithRuntime(
     'transform: translate(-50%, -50%); background: transparent;'
   document.body.appendChild(hitEl)
 
-  /** 头部锚点 = 模型中心锚点上方偏移(窗口高度比例,随窗口/位置实时变化)。 */
-  function headAnchor(): { x: number; y: number } {
+  /**
+   * 头部锚点:优先取运行时按 model3.json HitAreas 算出的精确位置(用户工程里
+   * HitHeadArea 导出后自动生效);素材未导出时回退"模型中心锚点上方偏移"估算。
+   */
+  function headAnchor(): { x: number; y: number; radius: number } {
+    const hit = runtime.getHeadPoint?.()
+    if (hit) return hit
     const a = anchor()
-    return { x: a.x, y: a.y - window.innerHeight * PAT_HEAD_OFFSET_RATIO }
+    return { x: a.x, y: a.y - window.innerHeight * PAT_HEAD_OFFSET_RATIO, radius: PAT_HIT_RADIUS }
   }
 
   /** 点击头部:触发摸头(未在摸则开始,已在摸则续摸重置计时);非 idle 忽略。 */
@@ -246,10 +251,12 @@ function createLive2dAnimatorWithRuntime(
           runtime.setAutoBlink(true)
         }
       }
-      // 头部点击区跟随宠物位置(窗口/位置/大小变化实时适配)
+      // 头部点击区跟随宠物位置(hitarea 精确位置或估算;窗口/位置/大小变化实时适配)
       const h = headAnchor()
       hitEl.style.left = `${h.x}px`
       hitEl.style.top = `${h.y}px`
+      hitEl.style.width = `${h.radius * 2}px`
+      hitEl.style.height = `${h.radius * 2}px`
       runtime.setViewLook(follower.look())
       // 拖动反馈:指数平滑趋近目标(停止拖动后目标为 0 → 参数回中,物理余韵自然衰减)
       const k = 1 - Math.exp(-DRAG_SMOOTHING * deltaSeconds)

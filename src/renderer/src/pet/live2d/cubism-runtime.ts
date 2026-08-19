@@ -52,6 +52,30 @@ const MOTION_FADE_OUT_SECONDS = 0.35
  */
 const MOTION_FADE_IN_SECONDS = 0.15
 
+/** model3.json 的 HitAreas 条目(运行时自行解析坐标;SDK 的 CubismModelSettingJson 只暴露 Id/Name)。 */
+interface ModelHitArea {
+  name: string
+  /** 画布归一化坐标(0..1,原点左上,X 右 Y 下)。 */
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** 从 model3.json buffer 提取 HitAreas(解析失败/无定义返回空数组)。 */
+function parseHitAreas(settingBuf: ArrayBuffer): ModelHitArea[] {
+  try {
+    const json = JSON.parse(new TextDecoder().decode(settingBuf)) as {
+      HitAreas?: { Name?: string; X?: number; Y?: number; Width?: number; Height?: number }[]
+    }
+    return (json.HitAreas ?? [])
+      .filter((h) => h.Name && typeof h.X === 'number' && typeof h.Y === 'number')
+      .map((h) => ({ name: h.Name!, x: h.X!, y: h.Y!, width: h.Width ?? 0, height: h.Height ?? 0 }))
+  } catch {
+    return []
+  }
+}
+
 /**
  * 未拖动时恢复"角度驱动头发"(0036)。
  *
@@ -232,6 +256,8 @@ class CubismRuntime implements Live2dRuntime {
   private readonly motionCache = new Map<string, CubismMotion | null>()
   /** 当前正在播放(或正在淡出)的 motion 逻辑名;null = 无。 */
   private currentMotionName: string | null = null
+  /** model3.json 声明的 HitAreas(画布归一化坐标;素材未导出则为空)。 */
+  private hitAreas: ModelHitArea[] = []
   private ready = false
   private disposed = false
   private viewMatrix = new CubismViewMatrix()
@@ -301,6 +327,66 @@ class CubismRuntime implements Live2dRuntime {
     this.rebuildView()
   }
 
+  /**
+   * 构建渲染用投影矩阵(与 update() 渲染路径完全一致):
+   * projection(适配) × viewMatrix(位置/缩放) × modelMatrix(画布→NDC)。
+   * 同时用于坐标反查(如 HitArea → 屏幕),保证与画出来的位置一致。
+   */
+  private buildProjectionMatrix(): CubismMatrix44 {
+    const userModel = this.userModel
+    const model = userModel?.getModel()
+    if (!userModel || !model) return new CubismMatrix44()
+    const { width, height } = this.canvas
+    const projection = new CubismMatrix44()
+    const modelMatrix = userModel.getModelMatrix()
+    if (model.getCanvasWidth() > 1.0 && width < height) {
+      // 横长模型 + 竖窗:按模型宽度适配
+      modelMatrix.setWidth(2.0)
+      projection.scale(1.0, width / height)
+    } else {
+      projection.scale(height / width, 1.0)
+    }
+    projection.multiplyByMatrix(this.viewMatrix)
+    projection.multiplyByMatrix(modelMatrix)
+    return projection
+  }
+
+  /** 模型画布坐标(原点在画布中心,像素单位) → 窗口 CSS px(NDC → 屏幕)。 */
+  private modelPointToScreen(cx: number, cy: number): { x: number; y: number } {
+    const projection = this.buildProjectionMatrix()
+    // 投影矩阵无旋转(仅 scale+translate),transformX/Y 只取对角+平移即完整变换
+    const nx = projection.transformX(cx)
+    const ny = projection.transformY(cy)
+    return {
+      x: ((nx + 1) / 2) * this.canvas.clientWidth,
+      y: ((1 - ny) / 2) * this.canvas.clientHeight,
+    }
+  }
+
+  /**
+   * 头部 hitarea 的屏幕位置与命中半径(0037)。
+   * 素材 model3.json 声明 HitAreas 时按 Name 含 "head" 的条目计算(画布归一化
+   * 坐标 → 画布中心像素 → 投影矩阵 → 屏幕);未导出则返回 null,调用方回退估算。
+   */
+  getHeadPoint(): { x: number; y: number; radius: number } | null {
+    const model = this.userModel?.getModel()
+    if (!model) return null
+    const head = this.hitAreas.find((h) => h.name.toLowerCase().includes('head'))
+    if (!head) return null
+    const canvasW = model.getCanvasWidth()
+    const canvasH = model.getCanvasHeight()
+    if (canvasW <= 0 || canvasH <= 0) return null
+    // 左上原点归一化 → 画布中心像素(原点中心,Y 向上)
+    const hx = head.x + head.width / 2
+    const hy = head.y + head.height / 2
+    const center = this.modelPointToScreen((hx - 0.5) * canvasW, (0.5 - hy) * canvasH)
+    // 半径:hitarea 宽高(画布归一化)取对角一半,经投影映射到屏幕 px
+    const halfDiag = Math.hypot(head.width * canvasW, head.height * canvasH) / 2
+    const p = this.modelPointToScreen(0, halfDiag)
+    const radius = Math.hypot(p.x - center.x, p.y - center.y)
+    return { x: center.x, y: center.y, radius: Math.max(24, radius) }
+  }
+
   loadModel(url: string): Promise<void> {
     if (this.disposed) return Promise.resolve()
     return this.loadModelInternal(url)
@@ -312,6 +398,7 @@ class CubismRuntime implements Live2dRuntime {
     // model3.json
     const settingBuf = await fetchArrayBuffer(url)
     const setting = new CubismModelSettingJson(settingBuf, settingBuf.byteLength)
+    this.hitAreas = parseHitAreas(settingBuf)
 
     // moc(打开一致性校验,与官方示例一致;moc3 版本 6 由 Core 06.00.0001 支持)
     const mocName = setting.getModelFileName()
@@ -597,17 +684,7 @@ class CubismRuntime implements Live2dRuntime {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
     const { width, height } = this.canvas
-    const projection = new CubismMatrix44()
-    const modelMatrix = userModel.getModelMatrix()
-    if (model.getCanvasWidth() > 1.0 && width < height) {
-      // 横长模型 + 竖窗:按模型宽度适配
-      modelMatrix.setWidth(2.0)
-      projection.scale(1.0, width / height)
-    } else {
-      projection.scale(height / width, 1.0)
-    }
-    projection.multiplyByMatrix(this.viewMatrix)
-    projection.multiplyByMatrix(modelMatrix)
+    const projection = this.buildProjectionMatrix()
 
     const renderer = userModel.getRenderer()
     renderer.setMvpMatrix(projection)
@@ -657,6 +734,10 @@ class CubismRuntime implements Live2dRuntime {
         instance.setLoop(meta.Meta?.Loop ?? false)
         // 素材未写 FadeInTime 时 SDK 默认 1.0s,表情渐入太慢(看起来没反应),压短
         instance.setFadeInTime(MOTION_FADE_IN_SECONDS)
+        // 关键:不 setEffectIds 时 _eyeBlinkParameterIds/_lipSyncParameterIds 为 null,
+        // doUpdateParameters 首帧就抛 null.length TypeError → 动画器 tick 崩溃、模型
+        // 定格"完全静止"(0037 实测)。本模型 EyeBlink/LipSync 组为空,传空数组即可。
+        instance.setEffectIds([], [])
         motion = instance
       } catch (error) {
         console.error(`[live2d] motion 加载失败:${file}`, error)

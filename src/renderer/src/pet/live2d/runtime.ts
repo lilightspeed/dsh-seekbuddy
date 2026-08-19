@@ -47,6 +47,11 @@ export interface Live2dRuntime {
   playMotion(name: string): void
   /** 停止当前动作(fade out 平滑回归,未实现可忽略)。 */
   stopMotion(): void
+  /**
+   * 头部 hitarea 的屏幕位置与命中半径(点击摸头用;素材未导出 HitAreas 返回 null,
+   * 调用方回退估算)。可选:占位/测试实现可不提供。
+   */
+  getHeadPoint?(): { x: number; y: number; radius: number } | null
   /** 切表情(exp3;后续里程碑,未实现可忽略)。 */
   playExpression(name: string): void
   /** 释放 canvas / WebGL 上下文 / 事件监听。 */
