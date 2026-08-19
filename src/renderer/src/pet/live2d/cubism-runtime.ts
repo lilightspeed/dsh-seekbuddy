@@ -52,28 +52,48 @@ const MOTION_FADE_OUT_SECONDS = 0.35
  */
 const MOTION_FADE_IN_SECONDS = 0.15
 
-/** model3.json 的 HitAreas 条目(运行时自行解析坐标;SDK 的 CubismModelSettingJson 只暴露 Id/Name)。 */
+/** model3.json 的 HitAreas 条目(运行时自行解析;SDK 的 CubismModelSettingJson 只暴露 Id/Name)。 */
 interface ModelHitArea {
+  /** Id:新格式引用画布区域,旧格式引用 moc3 里的触碰检测网格(drawable)。 */
+  id: string
   name: string
-  /** 画布归一化坐标(0..1,原点左上,X 右 Y 下)。 */
-  x: number
-  y: number
-  width: number
-  height: number
+  /** 画布归一化坐标(0..1,原点左上);旧格式(仅 Id/Name)为 undefined。 */
+  x?: number
+  y?: number
+  width?: number
+  height?: number
 }
 
-/** 从 model3.json buffer 提取 HitAreas(解析失败/无定义返回空数组)。 */
+/** 从 model3.json buffer 提取 HitAreas(兼容新旧格式;解析失败/无定义返回空数组)。 */
 function parseHitAreas(settingBuf: ArrayBuffer): ModelHitArea[] {
   try {
     const json = JSON.parse(new TextDecoder().decode(settingBuf)) as {
-      HitAreas?: { Name?: string; X?: number; Y?: number; Width?: number; Height?: number }[]
+      HitAreas?: { Id?: string; Name?: string; X?: number; Y?: number; Width?: number; Height?: number }[]
     }
-    return (json.HitAreas ?? [])
-      .filter((h) => h.Name && typeof h.X === 'number' && typeof h.Y === 'number')
-      .map((h) => ({ name: h.Name!, x: h.X!, y: h.Y!, width: h.Width ?? 0, height: h.Height ?? 0 }))
+    return (json.HitAreas ?? []).map((h) => {
+      // exactOptionalPropertyTypes:可选属性不能赋显式 undefined,条件写入
+      const area: ModelHitArea = { id: h.Id ?? '', name: h.Name ?? '' }
+      if (typeof h.X === 'number') area.x = h.X
+      if (typeof h.Y === 'number') area.y = h.Y
+      if (typeof h.Width === 'number') area.width = h.Width
+      if (typeof h.Height === 'number') area.height = h.Height
+      return area
+    })
   } catch {
     return []
   }
+}
+
+/** 屏幕空间的多边形点包含测试(射线法)。 */
+function pointInPolygon(x: number, y: number, pts: { x: number; y: number }[]): boolean {
+  let inside = false
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const pi = pts[i]
+    const pj = pts[j]
+    if (!pi || !pj) continue
+    if (pi.y > y !== pj.y > y && x < ((pj.x - pi.x) * (y - pi.y)) / (pj.y - pi.y) + pi.x) inside = !inside
+  }
+  return inside
 }
 
 /**
@@ -256,8 +276,11 @@ class CubismRuntime implements Live2dRuntime {
   private readonly motionCache = new Map<string, CubismMotion | null>()
   /** 当前正在播放(或正在淡出)的 motion 逻辑名;null = 无。 */
   private currentMotionName: string | null = null
-  /** model3.json 声明的 HitAreas(画布归一化坐标;素材未导出则为空)。 */
+  /** model3.json 声明的 HitAreas(素材未导出则为空)。 */
   private hitAreas: ModelHitArea[] = []
+  /** 头部 hitarea 命中网格(屏幕坐标);视图矩阵变化(外观/窗口)时清空重算。 */
+  private headMeshCache: { points: { x: number; y: number }[]; center: { x: number; y: number }; radius: number } | null =
+    null
   private ready = false
   private disposed = false
   private viewMatrix = new CubismViewMatrix()
@@ -319,6 +342,8 @@ class CubismRuntime implements Live2dRuntime {
     const ty = 1 - 2 * this.appearance.positionY
     view.translateRelative(tx, ty)
     this.viewMatrix = view
+    // 视图变化 → 命中网格需按新投影重算
+    this.headMeshCache = null
   }
 
   setAppearance(appearance: Live2dAppearance): void {
@@ -364,27 +389,99 @@ class CubismRuntime implements Live2dRuntime {
   }
 
   /**
-   * 头部 hitarea 的屏幕位置与命中半径(0037)。
-   * 素材 model3.json 声明 HitAreas 时按 Name 含 "head" 的条目计算(画布归一化
-   * 坐标 → 画布中心像素 → 投影矩阵 → 屏幕);未导出则返回 null,调用方回退估算。
+   * 计算头部 hitarea 的屏幕命中网格(0037)。
+   * 匹配 Name/Id 含 "head" 的 HitArea,优先取 Id 引用的 moc3 触碰检测网格(drawable,
+   * 旧格式,最贴合轮廓);无网格则用矩形坐标(新格式)生成四角;都没有则无缓存。
    */
-  getHeadPoint(): { x: number; y: number; radius: number } | null {
+  private computeHeadMesh(): void {
     const model = this.userModel?.getModel()
-    if (!model) return null
-    const head = this.hitAreas.find((h) => h.name.toLowerCase().includes('head'))
-    if (!head) return null
-    const canvasW = model.getCanvasWidth()
-    const canvasH = model.getCanvasHeight()
-    if (canvasW <= 0 || canvasH <= 0) return null
-    // 左上原点归一化 → 画布中心像素(原点中心,Y 向上)
-    const hx = head.x + head.width / 2
-    const hy = head.y + head.height / 2
-    const center = this.modelPointToScreen((hx - 0.5) * canvasW, (0.5 - hy) * canvasH)
-    // 半径:hitarea 宽高(画布归一化)取对角一半,经投影映射到屏幕 px
-    const halfDiag = Math.hypot(head.width * canvasW, head.height * canvasH) / 2
-    const p = this.modelPointToScreen(0, halfDiag)
-    const radius = Math.hypot(p.x - center.x, p.y - center.y)
-    return { x: center.x, y: center.y, radius: Math.max(24, radius) }
+    if (!model) {
+      this.headMeshCache = null
+      return
+    }
+    const head = this.hitAreas.find(
+      (h) => h.name.toLowerCase().includes('head') || h.id.toLowerCase().includes('head'),
+    )
+    if (!head) {
+      this.headMeshCache = null
+      return
+    }
+
+    // 1) 旧格式:Id 引用触碰检测网格(drawable)—— 顶点多边形(最贴合)
+    if (head.id) {
+      const drawableIndex = model.getDrawableIndex(this.id(head.id))
+      if (drawableIndex >= 0) {
+        const positions = model.getDrawableVertexPositions(drawableIndex)
+        const points: { x: number; y: number }[] = []
+        for (let i = 0; i < positions.length; i += 2) {
+          const px = positions[i] ?? 0
+          const py = positions[i + 1] ?? 0
+          points.push(this.modelPointToScreen(px, py))
+        }
+        if (points.length >= 3) {
+          this.headMeshCache = this.makeHeadMesh(points)
+          return
+        }
+      }
+    }
+
+    // 2) 新格式:矩形坐标(画布归一化 → 屏幕四角)
+    if (typeof head.x === 'number' && typeof head.y === 'number') {
+      const canvasW = model.getCanvasWidth()
+      const canvasH = model.getCanvasHeight()
+      if (canvasW > 0 && canvasH > 0) {
+        const w = head.width ?? 0
+        const h = head.height ?? 0
+        const points = [
+          this.modelPointToScreen((head.x - 0.5) * canvasW, (0.5 - head.y) * canvasH),
+          this.modelPointToScreen((head.x + w - 0.5) * canvasW, (0.5 - head.y) * canvasH),
+          this.modelPointToScreen((head.x + w - 0.5) * canvasW, (0.5 - (head.y + h)) * canvasH),
+          this.modelPointToScreen((head.x - 0.5) * canvasW, (0.5 - (head.y + h)) * canvasH),
+        ]
+        this.headMeshCache = this.makeHeadMesh(points)
+        return
+      }
+    }
+
+    this.headMeshCache = null
+  }
+
+  /** 顶点列表 → 命中网格(包围盒中心 + 半对角线半径,保底 24px)。 */
+  private makeHeadMesh(points: { x: number; y: number }[]): {
+    points: { x: number; y: number }[]
+    center: { x: number; y: number }
+    radius: number
+  } {
+    let minX = Infinity
+    let minY = Infinity
+    let maxX = -Infinity
+    let maxY = -Infinity
+    for (const p of points) {
+      minX = Math.min(minX, p.x)
+      minY = Math.min(minY, p.y)
+      maxX = Math.max(maxX, p.x)
+      maxY = Math.max(maxY, p.y)
+    }
+    return {
+      points,
+      center: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 },
+      radius: Math.max(24, Math.hypot(maxX - minX, maxY - minY) / 2),
+    }
+  }
+
+  /** 头部 hitarea 的屏幕位置与命中半径(点击区 overlay 定位用);无 hitarea 返回 null。 */
+  getHeadPoint(): { x: number; y: number; radius: number } | null {
+    if (!this.headMeshCache) this.computeHeadMesh()
+    const mesh = this.headMeshCache
+    return mesh ? { ...mesh.center, radius: mesh.radius } : null
+  }
+
+  /** 屏幕坐标是否命中头部 hitarea 网格(点击摸头精确判定);无 hitarea 返回 undefined 由调用方回落。 */
+  hitTestPoint(x: number, y: number): boolean | undefined {
+    if (!this.headMeshCache) this.computeHeadMesh()
+    const mesh = this.headMeshCache
+    if (!mesh) return undefined
+    return pointInPolygon(x, y, mesh.points)
   }
 
   loadModel(url: string): Promise<void> {
@@ -782,6 +879,7 @@ class CubismRuntime implements Live2dRuntime {
     this.motionQueue = null
     this.motionCache.clear()
     this.currentMotionName = null
+    this.headMeshCache = null
     if (this.breath) CubismBreath.delete(this.breath)
     this.breath = null
     if (this.eyeBlink) CubismEyeBlink.delete(this.eyeBlink)

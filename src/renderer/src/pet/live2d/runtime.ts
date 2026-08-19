@@ -52,6 +52,11 @@ export interface Live2dRuntime {
    * 调用方回退估算)。可选:占位/测试实现可不提供。
    */
   getHeadPoint?(): { x: number; y: number; radius: number } | null
+  /**
+   * 屏幕坐标是否命中头部 hitarea 网格(旧格式 Id 引用的触碰检测网格做点包含测试)。
+   * 无 hitarea 返回 undefined(调用方回落为 overlay 圆内即命中)。
+   */
+  hitTestPoint?(x: number, y: number): boolean | undefined
   /** 切表情(exp3;后续里程碑,未实现可忽略)。 */
   playExpression(name: string): void
   /** 释放 canvas / WebGL 上下文 / 事件监听。 */

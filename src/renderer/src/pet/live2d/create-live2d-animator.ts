@@ -149,9 +149,11 @@ function createLive2dAnimatorWithRuntime(
     return { x: a.x, y: a.y - window.innerHeight * PAT_HEAD_OFFSET_RATIO, radius: PAT_HIT_RADIUS }
   }
 
-  /** 点击头部:触发摸头(未在摸则开始,已在摸则续摸重置计时);非 idle 忽略。 */
-  function triggerPat(): void {
+  /** 点击头部:触发摸头(未在摸则开始,已在摸则续摸重置计时);非 idle 忽略。
+   *  有 hitarea 网格时做精确命中(旧格式 Id 网格点包含),否则 overlay 圆内即触发。 */
+  function triggerPat(x: number, y: number): void {
     if (state !== 'idle') return
+    if (runtime.hitTestPoint && !runtime.hitTestPoint(x, y)) return
     if (!patActive) {
       patActive = true
       runtime.playMotion(PAT_MOTION)
@@ -160,7 +162,7 @@ function createLive2dAnimatorWithRuntime(
     }
     patPlayMs = 0
   }
-  hitEl.addEventListener('click', triggerPat)
+  hitEl.addEventListener('click', (e) => triggerPat(e.clientX, e.clientY))
 
   /**
    * 写入当前光标(窗口局部坐标,原样透传)。
