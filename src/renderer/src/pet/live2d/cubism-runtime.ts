@@ -274,8 +274,12 @@ export interface CubismRuntimeOptions {
   appearance: Live2dAppearance
   /** motion 逻辑名 → 素材文件/循环配置;由 animation-registry 派生注入(0037s 单点配置)。
    *  holdEnd(0038):非循环动画播完后保持末尾姿态(思考),由运行时捕获曲线末帧参数持续恢复。
-   *  fadeInSeconds(0043):覆盖默认淡入(0 = 禁用;循环贴纸必须禁用,见 AnimationSpec 注释)。 */
-  motions?: Record<string, { file: string; loop: boolean; holdEnd?: boolean; fadeInSeconds?: number }>
+   *  fadeInSeconds(0043):覆盖默认淡入(0 = 禁用;循环贴纸必须禁用,见 AnimationSpec 注释)。
+   *  files(0044):同动画的候选素材(随机变体),每次播放随机选一,按实际文件分别缓存。 */
+  motions?: Record<
+    string,
+    { file: string; loop: boolean; holdEnd?: boolean; fadeInSeconds?: number; files?: string[] }
+  >
 }
 
 /** 创建 Cubism 运行时;WebGL2 不可用时返回 null(调用方回落占位动画)。 */
@@ -421,8 +425,16 @@ class CubismRuntime implements Live2dRuntime {
   private readonly motionCache = new Map<string, CubismMotion | null>()
   /** 各通道当前正在播放(或正在异步加载)的 motion 逻辑名;无 = 该通道空闲。 */
   private readonly currentMotion = new Map<AnimationChannel, string>()
-  /** motion 素材配置(逻辑名 → file/loop/fadeIn),构造注入(0037s/0043)。 */
-  private readonly motions: Record<string, { file: string; loop: boolean; holdEnd?: boolean; fadeInSeconds?: number }>
+  /** motion 素材配置(逻辑名 → file/loop/fadeIn/files),构造注入(0037s/0043/0044)。 */
+  private readonly motions: Record<
+    string,
+    { file: string; loop: boolean; holdEnd?: boolean; fadeInSeconds?: number; files?: string[] }
+  >
+  /**
+   * 各通道当前实际播放的素材文件(0044):随机变体(恍然大悟)每次播放可能不同,
+   * motion 缓存按**文件**而非逻辑名缓存;hold-end 捕获用文件查 paramIds。
+   */
+  private readonly currentFile = new Map<AnimationChannel, string>()
   /**
    * hold-end 动作的"曲线末帧"参数值(0038):每个通道一份,记录该通道 motion 最近一次
    * 写入的曲线参数值。播放期间每帧随 doUpdateMotion 更新;motion 自然结束后(思考)
@@ -467,7 +479,10 @@ class CubismRuntime implements Live2dRuntime {
     gl: WebGL2RenderingContext,
     host: HTMLElement,
     appearance: Live2dAppearance,
-    motions: Record<string, { file: string; loop: boolean; holdEnd?: boolean; fadeInSeconds?: number }>,
+    motions: Record<
+      string,
+      { file: string; loop: boolean; holdEnd?: boolean; fadeInSeconds?: number; files?: string[] }
+    >,
   ) {
     this.canvas = canvas
     this.gl = gl
@@ -976,8 +991,11 @@ class CubismRuntime implements Live2dRuntime {
         if (!wasWriting) continue
         const name = this.currentMotion.get(ch)
         if (!name || !this.motions[name]?.holdEnd) continue
-        // 捕获该通道 motion 刚写入的曲线参数值(在视角跟随/物理之前,值仍属 motion)
-        const ids = this.motionParamIds.get(name)
+        // 捕获该通道 motion 刚写入的曲线参数值(在视角跟随/物理之前,值仍属 motion);
+        // paramIds 按实际播放的文件查(0044:随机变体各自解析)
+        const file = this.currentFile.get(ch)
+        if (!file) continue
+        const ids = this.motionParamIds.get(file)
         if (!ids || ids.size === 0) continue
         const frame = this.motionFrameParams.get(ch) ?? new Map<string, number>()
         for (const id of ids) {
@@ -1110,6 +1128,16 @@ class CubismRuntime implements Live2dRuntime {
     void this.startMotion(name, channel)
   }
 
+  /**
+   * 从素材配置挑出本次播放的文件(0044):配置了候选列表(files)则每次播放随机选一
+   * (同动画的相似变体,如"恍然大悟"的 Exclaim / Exclaim1),否则用默认 `file`。
+   */
+  private pickMotionFile(config: { file: string; files?: string[] }): string {
+    const choices = config.files
+    if (!choices || choices.length === 0) return config.file
+    return choices[Math.floor(Math.random() * choices.length)] ?? config.file
+  }
+
   private async startMotion(name: string, channel: AnimationChannel): Promise<void> {
     const config = this.motions[name]
     if (!config) {
@@ -1117,18 +1145,21 @@ class CubismRuntime implements Live2dRuntime {
       this.currentMotion.delete(channel)
       return
     }
+    // 0044:随机变体 —— 配置了候选素材(files)时每次播放随机选一个文件
+    const file = this.pickMotionFile(config)
 
-    let motion = this.motionCache.get(name)
-    let paramIds = this.motionParamIds.get(name)
+    // 缓存按实际文件分开(两套"恍然大悟"素材各自解析一份)
+    let motion = this.motionCache.get(file)
+    let paramIds = this.motionParamIds.get(file)
     if (motion === undefined || paramIds === undefined) {
       try {
-        const buf = await fetchArrayBuffer(MOTION_BASE_URL + config.file)
+        const buf = await fetchArrayBuffer(MOTION_BASE_URL + file)
         // SDK 5-r.5 的 CubismMotion.create 不读 json 的 Loop 字段(见 SDK 源码,
         // create 内 _loop 赋值被注释),按素材配置显式 setLoop。
         const instance = CubismMotion.create(buf, buf.byteLength)
         instance.setLoop(config.loop)
         // 素材未写 FadeInTime 时 SDK 默认 1.0s,表情渐入太慢(看起来没反应),压短到 0.15s;
-        // 循环贴纸(思考气泡,0042)配置 fadeInSeconds:0 覆盖 —— 淡入会从当前参数值混合起播
+        // 循环贴纸(思考气泡,0043)配置 fadeInSeconds:0 覆盖 —— 淡入会从当前参数值混合起播
         // (前几帧闪出中间帧状态:点点参数 0.5 = 全部点点),且循环点重设淡入造成周期性闪动,
         // 曲线直写则骤显骤灭,与素材"气泡非淡入淡出"一致。
         instance.setFadeInTime(config.fadeInSeconds ?? MOTION_FADE_IN_SECONDS)
@@ -1146,16 +1177,17 @@ class CubismRuntime implements Live2dRuntime {
         // 曲线驱动的参数 id 集(0037u):新动画接管时只保留其曲线"不覆盖"的复位参数
         paramIds = parseMotionParamIds(buf)
       } catch (error) {
-        console.error(`[live2d] motion 加载失败:${config.file}`, error)
+        console.error(`[live2d] motion 加载失败:${file}`, error)
         motion = null
         paramIds = new Set()
       }
-      this.motionCache.set(name, motion)
-      this.motionParamIds.set(name, paramIds)
+      this.motionCache.set(file, motion)
+      this.motionParamIds.set(file, paramIds)
     }
     if (!motion || this.disposed) {
       if (!motion) {
         this.currentMotion.delete(channel)
+        this.currentFile.delete(channel)
         this.pendingSeek.delete(channel)
       }
       return
@@ -1165,6 +1197,8 @@ class CubismRuntime implements Live2dRuntime {
       this.pendingSeek.delete(channel)
       return
     }
+    // 记录本次实际播放的文件(hold-end 捕获 / 调试用)
+    this.currentFile.set(channel, file)
 
     // 物理互斥(doc/09 §3.5):同通道 start 前先停旧动画 —— 即使绕过仲裁层直接
     // 调用,同一通道也不可能两条动画并行(0037s 修"两个动画重叠"的直接手段)。
@@ -1236,6 +1270,7 @@ class CubismRuntime implements Live2dRuntime {
     const queue = this.motionQueues.get(channel)
     const hadMotion = this.currentMotion.has(channel) || queue !== undefined
     this.currentMotion.delete(channel)
+    this.currentFile.delete(channel)
     this.motionStartTimes.delete(channel)
     this.motionFrameParams.delete(channel)
     this.pendingSeek.delete(channel)
@@ -1342,6 +1377,7 @@ class CubismRuntime implements Live2dRuntime {
     this.motionCache.clear()
     this.motionParamIds.clear()
     this.currentMotion.clear()
+    this.currentFile.clear()
     this.motionStartTimes.clear()
     this.motionFrameParams.clear()
     this.pendingSeek.clear()

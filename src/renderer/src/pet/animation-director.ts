@@ -22,6 +22,12 @@ export interface AnimationSpec {
   channel: AnimationChannel
   /** 素材文件名(motion3.json,runtime 解析用)。 */
   file: string
+  /**
+   * 候选素材列表(0044):配置后,每次播放从 `file` + `files` 中**随机选一个**素材文件
+   * (同动画的相似变体,如"恍然大悟"的 Expression_think_exclaim / Exclaim1)。
+   * runtime 按实际文件分别缓存;缺省 = 始终播放 `file`。
+   */
+  files?: string[]
   /** 是否循环;默认 false(素材曲线首尾对齐前一律非循环,见 0037)。 */
   loop?: boolean
   /**
