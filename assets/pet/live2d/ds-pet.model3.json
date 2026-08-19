@@ -24,6 +24,10 @@
 		{
 			"Id": "HitAreaHead",
 			"Name": ""
+		},
+		{
+			"Id": "HitAreaBody",
+			"Name": ""
 		}
 	]
 }

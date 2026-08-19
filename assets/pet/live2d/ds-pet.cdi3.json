@@ -140,6 +140,11 @@
 			"Id": "ParamTear",
 			"GroupId": "",
 			"Name": "流泪"
+		},
+		{
+			"Id": "Param",
+			"GroupId": "",
+			"Name": "生气"
 		}
 	],
 	"ParameterGroups": [],
