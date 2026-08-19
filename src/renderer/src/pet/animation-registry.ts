@@ -6,7 +6,7 @@ import type { AnimationSpec } from './animation-director.ts'
  * runtime 需要的 file/loop 映射由本表派生注入(见 MOTION_FILES)。
  */
 /** 动画逻辑 id(新增动画在此扩展 union;索引访问带 noUncheckedIndexedAccess 下不返回 undefined)。 */
-type AnimationId = 'pat-head' | 'sad'
+type AnimationId = 'pat-head' | 'sad' | 'thinking'
 
 /** 动画注册表 —— 全部动画的单点登记处(doc/09 §3.2),详见各条目注释。 */
 export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
@@ -52,9 +52,32 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
     durationMs: 3500,
     autoBlink: false,
   },
+  /**
+   * 思考动作(0038):DSH 工作时(状态机 thinking)由 animator 请求播放。
+   * - channel: action —— 身体/姿态类动作(右手抬起 + 低头),与表情(expression)互不干扰;
+   *   素材同时驱动眉毛/眼睛/嘴部曲线,gate 只拦 expression 通道的请求,不拦运行时曲线写入
+   * - 非循环(素材 Meta.Loop=true 但按 0037 教训统一强制非循环):播一遍后 **保持末尾姿态**
+   *   (holdEnd,低头思考 + 抬手),由 runtime 捕获曲线末帧参数持续恢复,直到离开 thinking
+   * - 不设 durationMs:hold-end 是常驻姿态,不能由导演兜底超时停止(离开 thinking 时 animator
+   *   显式 stopChannel('action') 复位)
+   * - autoBlink false:思考时眼睛/眉毛由 motion 接管
+   */
+  thinking: {
+    id: 'thinking',
+    channel: 'action',
+    file: 'Motion_think.motion3.json',
+    priority: 1,
+    holdEnd: true,
+    autoBlink: false,
+  },
 }
 
-/** runtime 需要的 file/loop 映射(由 ANIMATIONS 派生,单点配置,0037s)。 */
-export const MOTION_FILES: Record<string, { file: string; loop: boolean }> = Object.fromEntries(
-  Object.entries(ANIMATIONS).map(([id, spec]) => [id, { file: spec.file, loop: spec.loop ?? false }]),
+/** runtime 需要的 file/loop/holdEnd 映射(由 ANIMATIONS 派生,单点配置,0037s)。 */
+export const MOTION_FILES: Record<string, { file: string; loop: boolean; holdEnd?: boolean }> = Object.fromEntries(
+  Object.entries(ANIMATIONS).map(([id, spec]) => {
+    const entry: { file: string; loop: boolean; holdEnd?: boolean } = { file: spec.file, loop: spec.loop ?? false }
+    // exactOptionalPropertyTypes:可选属性不能赋显式 undefined,条件写入
+    if (spec.holdEnd !== undefined) entry.holdEnd = spec.holdEnd
+    return [id, entry]
+  }),
 )

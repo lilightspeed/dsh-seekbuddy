@@ -327,6 +327,9 @@ async function boot(): Promise<void> {
         // 运行中集合同样进入新代:清空后用会话列表快照播种(覆盖"连接时已在跑"的回合)
         runningSessions.clear()
         seedRunningSessions()
+        // 0038:连接时已有回合在跑(turn-start 不会重放)→ 补发 DSH_WORKING 进入思考,
+        // 回合结束由 turn-end 事件正常复位(宠物重启/重连后仍能反映 DSH 工作状态)
+        if (runningSessions.size > 0) actor.send({ type: 'DSH_WORKING' })
         void panel.refreshSessions()
         // 浮层缓冲属旧代事件,重置并重拉当前目标会话基线(refreshSessions 后
         // onTargetChange 若目标变化会再触发一次 resetSummary,幂等)
@@ -422,6 +425,8 @@ async function boot(): Promise<void> {
       connText = state.connection
       renderHistoryButton()
       seedRunningSessions()
+      // 0038:启动时已有回合在跑(turn-start 不会重放)→ 补发 DSH_WORKING 进入思考
+      if (runningSessions.size > 0) actor.send({ type: 'DSH_WORKING' })
       void panel.refreshSessions()
     }
   })

@@ -70,6 +70,11 @@ const EXPRESSION_PARAM_IDS = [
   'ParamTear',
   /** sad 表情(0037r)驱动嘴部;摸头不涉及但复位无害。 */
   'ParamMouthOpenY',
+  /** 思考动作(0038)驱动:低头(ParamAngleY)、张嘴(ParamMouthFormOpen)、抬手(ParamArmRChange)。
+   *  它们不在"表情"语义内,但 hold-end 结束(离开 thinking)后同样需要平滑回归待机基准。 */
+  'ParamAngleY',
+  'ParamMouthFormOpen',
+  'ParamArmRChange',
 ] as const
 /** 表情复位平滑速度(1/s):≈0.3s 内基本回归待机。 */
 const EXPRESSION_RESET_SPEED = 10
@@ -255,8 +260,9 @@ export interface CubismRuntimeOptions {
   modelUrl: string
   /** 初始外观(位置/大小);之后由 setAppearance 实时调整(0017)。 */
   appearance: Live2dAppearance
-  /** motion 逻辑名 → 素材文件/循环配置;由 animation-registry 派生注入(0037s 单点配置)。 */
-  motions?: Record<string, { file: string; loop: boolean }>
+  /** motion 逻辑名 → 素材文件/循环配置;由 animation-registry 派生注入(0037s 单点配置)。
+   *  holdEnd(0038):非循环动画播完后保持末尾姿态(思考),由运行时捕获曲线末帧参数持续恢复。 */
+  motions?: Record<string, { file: string; loop: boolean; holdEnd?: boolean }>
 }
 
 /** 创建 Cubism 运行时;WebGL2 不可用时返回 null(调用方回落占位动画)。 */
@@ -395,7 +401,14 @@ class CubismRuntime implements Live2dRuntime {
   /** 各通道当前正在播放(或正在异步加载)的 motion 逻辑名;无 = 该通道空闲。 */
   private readonly currentMotion = new Map<AnimationChannel, string>()
   /** motion 素材配置(逻辑名 → file/loop),构造注入(0037s)。 */
-  private readonly motions: Record<string, { file: string; loop: boolean }>
+  private readonly motions: Record<string, { file: string; loop: boolean; holdEnd?: boolean }>
+  /**
+   * hold-end 动作的"曲线末帧"参数值(0038):每个通道一份,记录该通道 motion 最近一次
+   * 写入的曲线参数值。播放期间每帧随 doUpdateMotion 更新;motion 自然结束后(思考)
+   * 保持末帧值,由 update() 在物理/视角跟随之后恢复 —— 低头/抬手/表情姿态定格在
+   * 动画末尾,而不是被跟随与物理清零。stopChannel 清除(离开 thinking 时平滑复位)。
+   */
+  private readonly motionFrameParams = new Map<AnimationChannel, Map<string, number>>()
   /**
    * 表情复位进行中:停止 motion 后把表情参数指数平滑拉回模型默认(待机基准)。
    * 带 id 便于"新动画 start 时只保留其曲线不驱动的参数继续复位"(0037u:避免
@@ -433,7 +446,7 @@ class CubismRuntime implements Live2dRuntime {
     gl: WebGL2RenderingContext,
     host: HTMLElement,
     appearance: Live2dAppearance,
-    motions: Record<string, { file: string; loop: boolean }>,
+    motions: Record<string, { file: string; loop: boolean; holdEnd?: boolean }>,
   ) {
     this.canvas = canvas
     this.gl = gl
@@ -910,16 +923,38 @@ class CubismRuntime implements Live2dRuntime {
         }
       }
       for (const [ch, queue] of this.motionQueues) {
+        // 0038 hold-end 捕获:本帧队列里是否还有未结束 entry —— 决定了 doUpdateMotion
+        // 是否会写曲线(含"最后一帧":SDK 在 time≥duration 时仍按末尾点求值并写入,然后
+        // 才标记 finished 并清出队列)。必须先查再播,结束后的常驻帧不能覆盖已捕获的末帧。
+        const wasWriting = queue.getCubismMotionQueueEntries().some((e) => e && !e.isFinished())
         queue.doUpdateMotion(model, this.channelTime(ch))
+        if (!wasWriting) continue
+        const name = this.currentMotion.get(ch)
+        if (!name || !this.motions[name]?.holdEnd) continue
+        // 捕获该通道 motion 刚写入的曲线参数值(在视角跟随/物理之前,值仍属 motion)
+        const ids = this.motionParamIds.get(name)
+        if (!ids || ids.size === 0) continue
+        const frame = this.motionFrameParams.get(ch) ?? new Map<string, number>()
+        for (const id of ids) {
+          const index = model.getParameterIndex(this.id(id))
+          if (index >= 0) frame.set(id, model.getParameterValueByIndex(index))
+        }
+        this.motionFrameParams.set(ch, frame)
       }
     }
     // 非循环动画播完(队列清空)自动复位表情,无需等 stopChannel(0037):
-    // 摸头动画自然结束 → 表情停在结尾值 → 平滑拉回待机,避免残留
+    // 摸头动画自然结束 → 表情停在结尾值 → 平滑拉回待机,避免残留。
+    // hold-end(0038,思考)例外:播完**保持末尾姿态**,不清 currentMotion(导演因此
+    // 认为该通道仍活跃、条目不被清理),也不复位;等 animator 离开 thinking 时
+    // stopChannel 才整体复位。
     for (const channel of [...this.currentMotion.keys()]) {
       const queue = this.motionQueues.get(channel)
       if (queue?.isFinished()) {
+        const name = this.currentMotion.get(channel)
+        if (name && this.motions[name]?.holdEnd) continue
         this.currentMotion.delete(channel)
         this.motionStartTimes.delete(channel)
+        this.motionFrameParams.delete(channel)
         this.beginExpressionReset()
       }
     }
@@ -950,6 +985,22 @@ class CubismRuntime implements Live2dRuntime {
     // 物理输出 ParamDragY→ParamAngleY 会覆盖视角跟随的 headY(上下转头),
     // 这里把 headY 增量叠加回去:拖动点头(物理)与鼠标转头(跟随)共存。
     if (this.pendingLook) this.addViewHeadYDelta(model, this.pendingLook.headY)
+    // 0038 hold-end 姿态恢复(思考):motion 曲线末帧的参数值在物理/视角跟随之后重新写回,
+    // 让低头/抬手/表情定格在动画末尾,不被跟随(ParamAngleY)与物理(ParamAngleY/Z)清零。
+    // 拖动中例外:ParamAngleY/Z 保留物理输出(拖拽宠物的点头/摇晃效果),松开后回到思考姿态。
+    const dragging =
+      this.pendingDrag !== null && Math.abs(this.pendingDrag.x) + Math.abs(this.pendingDrag.y) >= DRAG_BLEND_DEADZONE
+    for (const [ch, frame] of this.motionFrameParams) {
+      if (!this.currentMotion.has(ch)) {
+        this.motionFrameParams.delete(ch)
+        continue
+      }
+      for (const [id, value] of frame) {
+        if (dragging && (id === 'ParamAngleY' || id === 'ParamAngleZ')) continue
+        const index = model.getParameterIndex(this.id(id))
+        if (index >= 0) model.setParameterValueByIndex(index, value)
+      }
+    }
     // 核心更新:参数 → 网格
     model.update()
 
@@ -1114,6 +1165,7 @@ class CubismRuntime implements Live2dRuntime {
     const hadMotion = this.currentMotion.has(channel) || queue !== undefined
     this.currentMotion.delete(channel)
     this.motionStartTimes.delete(channel)
+    this.motionFrameParams.delete(channel)
     this.pendingSeek.delete(channel)
     this.motionRate.delete(channel)
     this.motionPaused = false
@@ -1219,6 +1271,7 @@ class CubismRuntime implements Live2dRuntime {
     this.motionParamIds.clear()
     this.currentMotion.clear()
     this.motionStartTimes.clear()
+    this.motionFrameParams.clear()
     this.pendingSeek.clear()
     this.motionRate.clear()
     this.channelTimeOffset.clear()

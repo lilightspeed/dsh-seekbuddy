@@ -335,6 +335,15 @@ function createLive2dAnimatorWithRuntime(
     director.setGate('expression', next !== 'idle')
     // 状态级眨眼控制(thinking 关);动画期间的眨眼由导演按 spec.autoBlink 接管,二者互不冲突
     runtime.setAutoBlink(next !== 'thinking')
+    // 思考动作(0038):DSH 工作(thinking)→ 播放 Motion_think 一遍并保持末尾姿态
+    // (低头思考 + 抬手,holdEnd 由运行时维持,见 animation-registry thinking 条目);
+    // 离开 thinking → 停止 action 通道,姿态参数平滑复位回待机。
+    // 视角跟随已在 thinking 时关闭(shouldFollow),拖拽反馈(setDrag)不受状态影响照常生效。
+    if (next === 'thinking') {
+      director.request(ANIMATIONS['thinking'])
+    } else {
+      director.stopChannel('action')
+    }
   }
 
   /** 应用宠物外观与跟随手感(设置面板实时调用,0017):就地更新 follower 配置 + 重建视图。 */

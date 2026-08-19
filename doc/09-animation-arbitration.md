@@ -70,6 +70,10 @@ export interface AnimationSpec {
   restartOnRepeat?: boolean
   /** 播放模式:one-shot 播完自动复位 / hold 按住冻结松开继续 / persistent 常驻待机表情。 */
   mode?: 'oneshot' | 'hold' | 'persistent'
+  /** hold-end(0038,思考):非循环动画播完后**保持末尾姿态**,不复位不结束 —— 直到外部显式
+   *  stopChannel。由 runtime 捕获曲线末帧参数持续恢复(防视角跟随/物理覆盖);导演因
+   *  `isChannelActive` 持续为 true 而保留条目。**不要**同时设 durationMs(会兜底强停)。 */
+  holdEnd?: boolean
   /** hold 模式的冻结时刻(秒,素材曲线上的"保持点",如摸头闭眼 0.45s)。 */
   holdAt?: number
   /** 兜底播放时长(ms);素材无自然结束信号时由 director 兜底 stop。 */
@@ -108,6 +112,9 @@ idle → starting → playing ⇄ frozen(hold 暂停) → ending(复位) → idl
 - `starting`:等 runtime 异步解析素材;解析失败 → 直接回 idle。
 - `playing`:每帧 tick 检查 `runtime.isChannelActive(channel)`,素材自然播完(队列空)→ `ending`。
 - `frozen`:hold 模式按住冻结(`runtime.setMotionPaused(true)`),松开恢复。
+- **hold-end 例外(0038)**:`holdEnd` 动画(思考)自然播完后 runtime 仍保持 `isChannelActive=true`
+  (不清 currentMotion、不复位),姿态定格在曲线末帧 —— 生命周期停在 `playing`,直到 animator
+  离开 thinking 显式 `stopChannel('action')` 才进 `ending` 复位。
 - `ending`:`runtime.stopChannel(channel)` 内部做表情参数指数平滑复位(0037 已有的 `expressionReset` 机制保留在 runtime);完成后回调 `onEnd('finished' | 'interrupted')` → animator 借此恢复自动眨眼、清理交互状态。
 
 **Gate(状态门控)**:`director.setGate(channel, locked)` —— 取代现在 `applyState` 里散落的 `next !== 'idle' → stopMotion()`。状态机 `play('thinking')` 时锁 expression 并 stop,回 idle 解锁。

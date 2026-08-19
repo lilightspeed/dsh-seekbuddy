@@ -12,143 +12,251 @@
 			"Name": "角度 Y"
 		},
 		{
-			"Id": "ParamEyeBallX",
-			"GroupId": "",
-			"Name": "眼珠转动X"
-		},
-		{
-			"Id": "ParamEyeBallY",
-			"GroupId": "",
-			"Name": "眼珠转动Y"
-		},
-		{
-			"Id": "ParamEyeForm",
-			"GroupId": "",
-			"Name": "双眼神态"
-		},
-		{
-			"Id": "ParamTailRoot",
-			"GroupId": "",
-			"Name": "尾巴根摆动"
-		},
-		{
-			"Id": "ParamTailTip",
-			"GroupId": "",
-			"Name": "尾巴尖摆动"
-		},
-		{
-			"Id": "ParamDragX",
-			"GroupId": "",
-			"Name": "左右拖动宠物"
-		},
-		{
-			"Id": "ParamDragY",
-			"GroupId": "",
-			"Name": "上下拖动宠物"
-		},
-		{
-			"Id": "ParamHairSwayX",
-			"GroupId": "",
-			"Name": "前发左右飘动"
-		},
-		{
-			"Id": "ParamHairSwayY",
-			"GroupId": "",
-			"Name": "前发上下飘动"
-		},
-		{
-			"Id": "ParamAngleZ",
-			"GroupId": "",
-			"Name": "角度 Z"
-		},
-		{
-			"Id": "ParamEyeLOpen",
-			"GroupId": "",
-			"Name": "左眼 开闭"
-		},
-		{
-			"Id": "ParamEyeROpen",
-			"GroupId": "",
-			"Name": "右眼 开闭"
-		},
-		{
-			"Id": "ParamEyeLSmile",
-			"GroupId": "",
-			"Name": "左眼 微笑"
-		},
-		{
-			"Id": "ParamEyeRSmile",
-			"GroupId": "",
-			"Name": "右眼 微笑"
-		},
-		{
-			"Id": "ParamPupilSize",
-			"GroupId": "",
-			"Name": "瞳孔收缩"
-		},
-		{
 			"Id": "ParamBrowLAngle",
-			"GroupId": "",
+			"GroupId": "ParamGroup2",
 			"Name": "左眉 角度"
 		},
 		{
 			"Id": "ParamBrowRAngle",
-			"GroupId": "",
+			"GroupId": "ParamGroup2",
 			"Name": "右眉 角度"
 		},
 		{
 			"Id": "ParamBrowLY",
-			"GroupId": "",
+			"GroupId": "ParamGroup2",
 			"Name": "左眉 上下"
 		},
 		{
 			"Id": "ParamBrowRY",
-			"GroupId": "",
+			"GroupId": "ParamGroup2",
 			"Name": "右眉 上下"
 		},
 		{
+			"Id": "ParamAngry",
+			"GroupId": "ParamGroup3",
+			"Name": "生气"
+		},
+		{
+			"Id": "ParamDizzy",
+			"GroupId": "ParamGroup3",
+			"Name": "思绪混乱"
+		},
+		{
+			"Id": "ParamBubbleEllipsis",
+			"GroupId": "ParamGroup3",
+			"Name": "省略号气泡(点动效)"
+		},
+		{
+			"Id": "ParamBubbleEllipsis2",
+			"GroupId": "ParamGroup3",
+			"Name": "省略号气泡(气泡)"
+		},
+		{
+			"Id": "ParamSymbolExclamation",
+			"GroupId": "ParamGroup3",
+			"Name": "感叹号"
+		},
+		{
+			"Id": "ParamStickerLightbulb",
+			"GroupId": "ParamGroup3",
+			"Name": "灯泡贴纸"
+		},
+		{
+			"Id": "ParamSymbolZzz",
+			"GroupId": "ParamGroup3",
+			"Name": "ZZZ"
+		},
+		{
+			"Id": "ParamEmotionConfused",
+			"GroupId": "ParamGroup3",
+			"Name": "困惑"
+		},
+		{
+			"Id": "ParamBreathSigh",
+			"GroupId": "ParamGroup3",
+			"Name": "叹气"
+		},
+		{
+			"Id": "ParamSymbolQuestion",
+			"GroupId": "ParamGroup3",
+			"Name": "???"
+		},
+		{
+			"Id": "ParamTeasrs",
+			"GroupId": "ParamGroup",
+			"Name": "流泪"
+		},
+		{
+			"Id": "ParamEyeBallX",
+			"GroupId": "ParamGroup",
+			"Name": "眼珠转动X"
+		},
+		{
+			"Id": "ParamEyeBallY",
+			"GroupId": "ParamGroup",
+			"Name": "眼珠转动Y"
+		},
+		{
+			"Id": "ParamPupilSize",
+			"GroupId": "ParamGroup",
+			"Name": "瞳孔收缩"
+		},
+		{
+			"Id": "ParamEyeLOpen",
+			"GroupId": "ParamGroup",
+			"Name": "左眼 开闭"
+		},
+		{
+			"Id": "ParamEyeROpen",
+			"GroupId": "ParamGroup",
+			"Name": "右眼 开闭"
+		},
+		{
+			"Id": "ParamEyeLSmile",
+			"GroupId": "ParamGroup",
+			"Name": "左眼 微笑"
+		},
+		{
+			"Id": "ParamEyeRSmile",
+			"GroupId": "ParamGroup",
+			"Name": "右眼 微笑"
+		},
+		{
+			"Id": "ParamEyeForm",
+			"GroupId": "ParamGroup",
+			"Name": "双眼神态"
+		},
+		{
+			"Id": "ParamIrisStyle",
+			"GroupId": "ParamGroup",
+			"Name": "切换虹膜样式"
+		},
+		{
+			"Id": "ParamMouthOpenY",
+			"GroupId": "ParamGroup5",
+			"Name": "闭上嘴巴"
+		},
+		{
+			"Id": "ParamMouthFormOpen",
+			"GroupId": "ParamGroup5",
+			"Name": "嘴巴形状切换(闭嘴)"
+		},
+		{
+			"Id": "ParamMouthFormClose",
+			"GroupId": "ParamGroup5",
+			"Name": "嘴巴形状切换(张嘴)"
+		},
+		{
+			"Id": "ParamArmRChange",
+			"GroupId": "ParamGroup6",
+			"Name": "右手动作转换(待机->思考)"
+		},
+		{
+			"Id": "ParamAngleZ",
+			"GroupId": "ParamGroup6",
+			"Name": "角度 Z"
+		},
+		{
+			"Id": "ParamBlush",
+			"GroupId": "ParamGroup6",
+			"Name": "红晕"
+		},
+		{
 			"Id": "ParamBreath",
-			"GroupId": "",
+			"GroupId": "ParamGroup4",
 			"Name": "呼吸"
 		},
 		{
 			"Id": "ParamBackHairUp",
-			"GroupId": "",
+			"GroupId": "ParamGroup4",
 			"Name": "后发上"
 		},
 		{
 			"Id": "ParamBackHairDown",
-			"GroupId": "",
+			"GroupId": "ParamGroup4",
 			"Name": "后发下"
 		},
 		{
 			"Id": "ParamBackHairSwing",
-			"GroupId": "",
+			"GroupId": "ParamGroup4",
 			"Name": "后发上下"
 		},
 		{
-			"Id": "ParamCheek",
-			"GroupId": "",
-			"Name": "红晕"
+			"Id": "ParamTailRoot",
+			"GroupId": "ParamGroup4",
+			"Name": "尾巴根摆动"
 		},
 		{
-			"Id": "ParamMouthOpenY",
-			"GroupId": "",
-			"Name": "闭上嘴巴"
+			"Id": "ParamTailTip",
+			"GroupId": "ParamGroup4",
+			"Name": "尾巴尖摆动"
 		},
 		{
-			"Id": "ParamTear",
-			"GroupId": "",
-			"Name": "流泪"
+			"Id": "ParamDragX",
+			"GroupId": "ParamGroup4",
+			"Name": "左右拖动宠物"
 		},
 		{
-			"Id": "Param",
-			"GroupId": "",
-			"Name": "生气"
+			"Id": "ParamDragY",
+			"GroupId": "ParamGroup4",
+			"Name": "上下拖动宠物"
+		},
+		{
+			"Id": "ParamHairSwayX",
+			"GroupId": "ParamGroup4",
+			"Name": "前发左右飘动"
+		},
+		{
+			"Id": "ParamHairSwayY",
+			"GroupId": "ParamGroup4",
+			"Name": "前发上下飘动"
 		}
 	],
-	"ParameterGroups": [],
+	"ParameterGroups": [
+		{
+			"Id": "ParamGroup2",
+			"GroupId": "",
+			"Name": "眉毛"
+		},
+		{
+			"Id": "ParamGroup3",
+			"GroupId": "",
+			"Name": "贴纸"
+		},
+		{
+			"Id": "ParamGroup",
+			"GroupId": "",
+			"Name": "眼睛"
+		},
+		{
+			"Id": "ParamGroup5",
+			"GroupId": "",
+			"Name": "嘴巴"
+		},
+		{
+			"Id": "ParamGroup6",
+			"GroupId": "",
+			"Name": "身体动作"
+		},
+		{
+			"Id": "ParamGroup4",
+			"GroupId": "",
+			"Name": "非手动"
+		}
+	],
 	"Parts": [
+		{
+			"Id": "Part2",
+			"Name": "Dizzy"
+		},
+		{
+			"Id": "Part3",
+			"Name": "TH_Cloud_Dots"
+		},
+		{
+			"Id": "Part",
+			"Name": "thinking.psd"
+		},
 		{
 			"Id": "PartEyeMask",
 			"Name": "眼睛蒙版"

@@ -29,6 +29,13 @@ export interface AnimationSpec {
   restartOnRepeat?: boolean
   /** 播放模式:oneshot 播完自动复位 / hold 按住冻结松开继续 / persistent 常驻待机表情。 */
   mode?: 'oneshot' | 'hold' | 'persistent'
+  /**
+   * hold-end(0038):非循环动画播完后**保持末尾姿态**,不复位、不结束 —— 直到动画被外部
+   * 显式停止(如思考动作随 DSH 工作状态离开 thinking 时 animator stopChannel)。
+   * 由 runtime 实现(捕获曲线末帧参数持续恢复,防视角跟随/物理覆盖),导演只需因
+   * runtime.isChannelActive 持续为 true 而保留条目;**不要**同时设置 durationMs(会兜底强停)。
+   */
+  holdEnd?: boolean
   /** hold 模式的冻结时刻(秒,素材曲线上的"保持点",如摸头闭眼 0.45s)。 */
   holdAt?: number
   /** 0037w:按住时把动画加速播到保持帧的倍率(>1)。>1 时按下瞬间以该倍速快速
