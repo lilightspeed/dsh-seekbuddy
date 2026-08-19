@@ -376,6 +376,14 @@ class CubismRuntime implements Live2dRuntime {
    * 缓慢回落以保留拖动余韵。
    */
   private dragBlend = 0
+  /**
+   * hold-end 姿态的拖动物理混合权重(0040,按轴):ParamAngleY 只被 ParamDragY 物理
+   * 驱动、ParamAngleZ 只被 ParamDragX 物理驱动,故权重按**对应轴**的拖动强度计算 ——
+   * 拖动思考中的宠物时,低头(ParamAngleY)让位给拖动物理(点头),停止后平滑回归;
+   * 按轴区分保证纯水平拖动(ParamDragY≈0)不会冲掉思考的低头姿态。
+   */
+  private holdDragBlendY = 0
+  private holdDragBlendZ = 0
   /** motion 播放队列(按通道,0037s):每通道独立队列,同通道物理互斥。 */
   private readonly motionQueues = new Map<AnimationChannel, CubismMotionQueueManager>()
   /** motion 播放用的累计时间(秒,单调递增,作为 doUpdateMotion 的 userTimeSeconds)。 */
@@ -825,6 +833,12 @@ class CubismRuntime implements Live2dRuntime {
     this.setParam(model, this.paramIndex.pupil, look.pupilContract)
   }
 
+  /** 指数趋近一步(帧率无关):speed 取 attack/release,current 向 target 平滑移动。 */
+  private blendStep(current: number, target: number, deltaSeconds: number): number {
+    const speed = target > current ? DRAG_BLEND_ATTACK : DRAG_BLEND_RELEASE
+    return current + (target - current) * (1 - Math.exp(-speed * deltaSeconds))
+  }
+
   /**
    * 拖动混合权重:按本帧拖动输入强度平滑 —— 开始拖动快速上升(切入拖动物理),
    * 停止拖动缓慢回落(角度驱动接管,同时保留物理余韵)。
@@ -832,10 +846,28 @@ class CubismRuntime implements Live2dRuntime {
   private updateDragBlend(deltaSeconds: number): void {
     if (!this.pendingDrag) return
     const mag = Math.abs(this.pendingDrag.x) + Math.abs(this.pendingDrag.y)
-    const target = mag >= DRAG_BLEND_DEADZONE ? 1 : 0
-    const speed = target > this.dragBlend ? DRAG_BLEND_ATTACK : DRAG_BLEND_RELEASE
-    const k = 1 - Math.exp(-speed * deltaSeconds)
-    this.dragBlend += (target - this.dragBlend) * k
+    this.dragBlend = this.blendStep(this.dragBlend, mag >= DRAG_BLEND_DEADZONE ? 1 : 0, deltaSeconds)
+  }
+
+  /**
+   * hold-end 姿态的拖动物理混合权重(0040,按轴):ParamAngleY 只被 ParamDragY 物理
+   * 驱动、ParamAngleZ 只被 ParamDragX 物理驱动,权重按对应轴拖动强度计算。起效快、
+   * 回落慢(与 dragBlend 同构):拖动开始姿态**逐渐**让位给物理输出(无瞬间跳变),
+   * 停止后平滑回归思考姿态 —— 替代早期"拖动时整体跳过 ParamAngleY/Z"的二进制切换
+   * (拖动瞬间头部从低头跳到物理默认 ≈0 的"瞬间上台")。
+   */
+  private updateHoldPoseBlend(deltaSeconds: number): void {
+    if (!this.pendingDrag) return
+    this.holdDragBlendY = this.blendStep(
+      this.holdDragBlendY,
+      Math.abs(this.pendingDrag.y) >= DRAG_BLEND_DEADZONE ? 1 : 0,
+      deltaSeconds,
+    )
+    this.holdDragBlendZ = this.blendStep(
+      this.holdDragBlendZ,
+      Math.abs(this.pendingDrag.x) >= DRAG_BLEND_DEADZONE ? 1 : 0,
+      deltaSeconds,
+    )
   }
 
   /**
@@ -987,6 +1019,8 @@ class CubismRuntime implements Live2dRuntime {
     this.scheduler?.onLateUpdate(model, deltaSeconds)
     // 拖动混合权重:拖动中 → 1(头发由拖动物理输出),停止 → 0(角度物理接管)
     this.updateDragBlend(deltaSeconds)
+    // hold-end 姿态的拖动物理混合权重(0040):拖动中思考姿态的角度让位给物理输出
+    this.updateHoldPoseBlend(deltaSeconds)
     // 未拖动时,把被拖动 Setting5/6 清零的角度驱动头发输出重放回来(0036)
     this.restoreHairFromAnglePhysics(model)
     // 物理输出 ParamDragY→ParamAngleY 会覆盖视角跟随的 headY(上下转头),
@@ -994,18 +1028,26 @@ class CubismRuntime implements Live2dRuntime {
     if (this.pendingLook) this.addViewHeadYDelta(model, this.pendingLook.headY)
     // 0038 hold-end 姿态恢复(思考):motion 曲线末帧的参数值在物理/视角跟随之后重新写回,
     // 让低头/抬手/表情定格在动画末尾,不被跟随(ParamAngleY)与物理(ParamAngleY/Z)清零。
-    // 拖动中例外:ParamAngleY/Z 保留物理输出(拖拽宠物的点头/摇晃效果),松开后回到思考姿态。
-    const dragging =
-      this.pendingDrag !== null && Math.abs(this.pendingDrag.x) + Math.abs(this.pendingDrag.y) >= DRAG_BLEND_DEADZONE
+    // ParamAngleY/Z 按对应拖动轴的 holdDragBlend 权重与物理输出混合(0040):拖动中姿态
+    // 逐渐让位给拖动物理(点头/摇晃),停止后平滑回归思考姿态 —— 替代早期"拖动时整体
+    // 跳过"的二进制切换(拖动开始瞬间物理输出尚未建立,头部从低头 -15 跳到 ≈0 的"瞬间
+    // 上台";纯水平拖动也会误触发)。
     for (const [ch, frame] of this.motionFrameParams) {
       if (!this.currentMotion.has(ch)) {
         this.motionFrameParams.delete(ch)
         continue
       }
       for (const [id, value] of frame) {
-        if (dragging && (id === 'ParamAngleY' || id === 'ParamAngleZ')) continue
         const index = model.getParameterIndex(this.id(id))
-        if (index >= 0) model.setParameterValueByIndex(index, value)
+        if (index < 0) continue
+        if (id === 'ParamAngleY' || id === 'ParamAngleZ') {
+          // 当前值 = 物理输出;weight=0 → 思考姿态,=1 → 物理输出,中间平滑过渡
+          const weight = id === 'ParamAngleY' ? this.holdDragBlendY : this.holdDragBlendZ
+          const current = model.getParameterValueByIndex(index)
+          model.setParameterValueByIndex(index, current * weight + value * (1 - weight))
+        } else {
+          model.setParameterValueByIndex(index, value)
+        }
       }
     }
     // 核心更新:参数 → 网格
