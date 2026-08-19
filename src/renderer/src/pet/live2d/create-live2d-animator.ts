@@ -150,16 +150,18 @@ function createLive2dAnimatorWithRuntime(
   }
 
   /** 点击头部:触发摸头(未在摸则开始,已在摸则续摸重置计时);非 idle 忽略。
-   *  有 hitarea 网格时做精确命中(旧格式 Id 网格点包含),否则 overlay 圆内即触发。 */
+   *  有 hitarea 网格时做精确命中(旧格式 Id 网格点包含),否则 overlay 圆内即触发。
+   *  播放中重复点击:playMotion 幂等(同 motion 忽略),仅续摸;动画自然结束后
+   *  currentMotionName 已清,再次点击会重新播放。 */
   function triggerPat(x: number, y: number): void {
     if (state !== 'idle') return
     if (runtime.hitTestPoint && !runtime.hitTestPoint(x, y)) return
     if (!patActive) {
       patActive = true
-      runtime.playMotion(PAT_MOTION)
-      // motion 接管眼睛(闭眼享受),自动眨眼让位;停止后由 applyState/计时恢复
+      // motion 接管眼睛(闭眼享受),自动眨眼让位;停止/结束后由运行时恢复
       runtime.setAutoBlink(false)
     }
+    runtime.playMotion(PAT_MOTION)
     patPlayMs = 0
   }
   hitEl.addEventListener('click', (e) => triggerPat(e.clientX, e.clientY))

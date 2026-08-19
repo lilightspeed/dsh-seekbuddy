@@ -96,11 +96,11 @@
 
 ### 4.1 摸头反馈(0037,已接入)
 
-- 素材:`Expression_pat_head.motion3.json`(3.83s,Loop=true —— 眯眼 + 闭眼 + 微笑 + 脸颊泛红)。
+- 素材:`Expression_pat_head.motion3.json`(3.83s,素材 Loop=true —— 眯眼 + 闭眼 + 微笑 + 脸颊泛红)。
   以"表情动作"方式从动画时间轴导出,格式是 motion3(非 exp3)。
-- 接入:`cubism-runtime.ts` 的 `MOTION_FILES` 注册逻辑名 → 文件名,`playMotion('pat-head')` 播放;
-  SDK 5-r.5 的 `CubismMotion.create` **不读 json 的 Loop 字段**(create 内赋值被注释),运行时
-  按 json `Meta.Loop` 显式 `setLoop`;motion 内部不做 load/save,只 set 有曲线的参数,
+- 接入:`cubism-runtime.ts` 的 `MOTION_FILES` 注册逻辑名 → 素材配置(含 loop),`playMotion('pat-head')` 播放;
+  SDK 5-r.5 的 `CubismMotion.create` **不读 json 的 Loop 字段**(create 内赋值被注释),按配置
+  `setLoop`;**摸头强制非循环**(见坑 3);motion 内部不做 load/save,只 set 有曲线的参数,
   插在每帧 load 之后、视角跟随之前 —— 只覆盖表情参数,不碰头部/眼珠视角。
 - 触发:`create-live2d-animator.ts` —— idle(未工作)时**点击头部点击区**触发
   (`#pet-head-hit`,no-drag 透明圆,定位用)。**命中判定优先用 HitArea 网格**:
@@ -108,20 +108,24 @@
   经 `buildProjectionMatrix` 映射到屏幕做**射线法点包含测试**(`hitTestPoint`,最贴合
   轮廓);无网格回退新格式矩形坐标,再无则"锚点上方 0.18 窗口高 + 52px"估算。
   Editor 流程:`建模 → 图形网格 → 创建触碰检测用途的图形网格` → 编辑纹理集 → 导出。
-  播放 PAT_PLAY_MS(4s,约一个循环)后停止,期间再次点击续摸;状态离开 idle 立即停止
-  (`stopMotion` = stopAllMotions + 表情参数**指数平滑拉回模型默认**,速度 10/s ≈0.3s
-  回归待机 —— **SDK fadeOut 拉向当前值而非默认值,会残留摸头表情,弃用**)。播放期间
-  `setAutoBlink(false)` 让眨眼让位(motion 接管眼睛)。素材未写 FadeInTime 时 SDK
-  默认 1.0s 渐入(看起来没反应),运行时压到 0.15s。
+  动画**非循环播一遍(3.83s)自然结束 → 运行时检测队列清空自动平滑复位**;期间再次
+  点击续摸(播放中幂等、已结束重新播放);状态离开 idle 立即停止(`stopMotion` =
+  stopAllMotions + 表情参数**指数平滑拉回模型默认**,速度 10/s ≈0.3s 回归待机 ——
+  **SDK fadeOut 拉向当前值而非默认值,会残留摸头表情,弃用**)。播放期间
+  `setAutoBlink(false)` 让眨眼让位(motion 接管眼睛);复位时恢复。素材未写 FadeInTime
+  时 SDK 默认 1.0s 渐入(看起来没反应),运行时压到 0.15s。
 - **必踩坑 1:`CubismMotion.create` 后必须 `setEffectIds([], [])`**(0037 实测)——不调
   时 `_eyeBlinkParameterIds` 为 null,`doUpdateParameters` 首帧抛 `null.length`
   TypeError → 动画器 tick 崩溃、模型定格"完全静止"。本模型 EyeBlink/LipSync 组为
   空,传空数组即可;若素材加了 Effect 组,改为传 model3.json Groups 里的 Ids。
 - **必踩坑 2:表情停止后残留**(0037 实测)——每帧 save 快照已含 motion 写的表情值,
-  SDK fadeOut 拉向"当前值"→ 摸头表情残留。停止 = 立即清队列 + 运行时平滑复位
+  SDK fadeOut 拉向"当前值"→ 摸头表情残留。停止/自然结束 = 立即清队列 + 运行时平滑复位
   (`expressionReset`,`EXPRESSION_PARAM_IDS` 覆盖摸头曲线 10 参 + ParamTear)。
+- **必踩坑 3:loop 动画循环点跳变**(0037 实测)——摸头曲线首尾不一致(`EyeLSmile`
+  0s=0 / 3.833s=1),loop 循环点处表情闪没重来(V2 correctEndPoint + loop fade-in
+  只能平滑无法消除)。**摸头强制非循环**,播完自然结束自动复位,无循环点。
 - `Expression_sad.motion3.json`(2.03s,Loop=true,带 `ParamTear` 眼泪)已导出但**未接入**,
-  等状态机 sad 态映射时用(注册进 `MOTION_FILES` 即可)。
+  等状态机 sad 态映射时用(注册进 `MOTION_FILES` 即可;若曲线首尾一致可开 loop)。
 
 ## 5. 待办 / 备忘
 

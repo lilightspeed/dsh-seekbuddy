@@ -34,13 +34,15 @@ import type { Live2dAppearance, Live2dRuntime } from './runtime.ts'
 const SHADER_PATH = '/pet/live2d/shaders/'
 
 /**
- * motion 逻辑名 → 素材文件名(assets/pet/live2d/ 下,publicDir 相对 URL 根)。
- * 素材以 `Expression_*.motion3.json` 命名(动画时间轴导出的"表情动作",Loop 由 json 控制),
- * 运行时按逻辑名播放,调用方不感知文件名。
+ * motion 逻辑名 → 素材配置(assets/pet/live2d/ 下,publicDir 相对 URL 根)。
+ * 素材以 `Expression_*.motion3.json` 命名(动画时间轴导出的"表情动作")。
+ * `loop`:素材 json 的 Meta.Loop 虽为 true,但摸头曲线首尾不一致(EyeLSmile
+ * 0s=0 / 3.833s=1),循环点处表情闪没重来(V2 correctEndPoint 只能平滑不能消除,
+ * 0037 实测)—— 强制非循环,播一遍自然结束 + 运行时自动平滑复位,最干净。
  */
-const MOTION_FILES: Record<string, string> = {
-  /** 摸头反馈:眯眼 + 闭眼 + 微笑 + 脸颊泛红(鼠标在头部停留时播放,循环)。 */
-  'pat-head': 'Expression_pat_head.motion3.json',
+const MOTION_FILES: Record<string, { file: string; loop: boolean }> = {
+  /** 摸头反馈:眯眼 + 闭眼 + 微笑 + 脸颊泛红。 */
+  'pat-head': { file: 'Expression_pat_head.motion3.json', loop: false },
 }
 /** motion 基础 URL(publicDir=assets)。 */
 const MOTION_BASE_URL = '/pet/live2d/'
@@ -775,6 +777,12 @@ class CubismRuntime implements Live2dRuntime {
       this.motionTime += deltaSeconds
       this.motionQueue.doUpdateMotion(model, this.motionTime)
     }
+    // 非循环动画播完(队列清空)自动复位表情,无需等 stopMotion(0037):
+    // 摸头动画自然结束 → 表情停在结尾值 → 平滑拉回待机,避免残留
+    if (this.currentMotionName && this.motionQueue?.isFinished()) {
+      this.currentMotionName = null
+      this.beginExpressionReset()
+    }
     // 表情复位:停止 motion 后每帧把表情参数指数拉回模型默认(待机基准)。
     // 不能依赖 SDK fadeOut——它拉向"当前值",而当前值快照已含 motion 表情 → 残留。
     if (this.expressionReset) {
@@ -847,8 +855,8 @@ class CubismRuntime implements Live2dRuntime {
   }
 
   private async startMotion(name: string): Promise<void> {
-    const file = MOTION_FILES[name]
-    if (!file) {
+    const config = MOTION_FILES[name]
+    if (!config) {
       console.warn(`[live2d] playMotion("${name}") 未知 motion 名(未在 MOTION_FILES 注册)`)
       return
     }
@@ -857,12 +865,11 @@ class CubismRuntime implements Live2dRuntime {
     let motion = this.motionCache.get(name)
     if (motion === undefined) {
       try {
-        const buf = await fetchArrayBuffer(MOTION_BASE_URL + file)
+        const buf = await fetchArrayBuffer(MOTION_BASE_URL + config.file)
         // SDK 5-r.5 的 CubismMotion.create 不读 json 的 Loop 字段(见 SDK 源码,
-        // create 内 _loop 赋值被注释),需按 json 元数据显式 setLoop。
-        const meta = JSON.parse(new TextDecoder().decode(buf)) as { Meta?: { Loop?: boolean } }
+        // create 内 _loop 赋值被注释),按 MOTION_FILES 配置显式 setLoop。
         const instance = CubismMotion.create(buf, buf.byteLength)
-        instance.setLoop(meta.Meta?.Loop ?? false)
+        instance.setLoop(config.loop)
         // 素材未写 FadeInTime 时 SDK 默认 1.0s,表情渐入太慢(看起来没反应),压短
         instance.setFadeInTime(MOTION_FADE_IN_SECONDS)
         // 关键:不 setEffectIds 时 _eyeBlinkParameterIds/_lipSyncParameterIds 为 null,
@@ -871,7 +878,7 @@ class CubismRuntime implements Live2dRuntime {
         instance.setEffectIds([], [])
         motion = instance
       } catch (error) {
-        console.error(`[live2d] motion 加载失败:${file}`, error)
+        console.error(`[live2d] motion 加载失败:${config.file}`, error)
         motion = null
       }
       this.motionCache.set(name, motion)
@@ -888,22 +895,32 @@ class CubismRuntime implements Live2dRuntime {
   }
 
   /**
-   * 停止当前表情动作:立即清队列(不再写参数),并开始把表情参数指数平滑拉回
-   * 模型默认值(待机基准)。SDK fadeOut 拉向"当前值"而非默认值,会残留摸头表情,
-   * 故弃用,由运行时自行复位(0037)。
+   * 开始表情复位:把表情参数指数平滑拉回模型默认(待机基准)。
+   * 收集 EXPRESSION_PARAM_IDS 中模型存在的参数索引;模型未就绪则跳过。
    */
-  stopMotion(): void {
-    if (!this.motionQueue) return
-    this.currentMotionName = null
-    this.motionQueue.stopAllMotions()
+  private beginExpressionReset(): void {
     const model = this.userModel?.getModel()
     if (!model) return
+    // 复位 = 摸头结束 = idle:恢复自动眨眼(motion 不再接管眼睛)
+    this.setAutoBlink(true)
     const indices: number[] = []
     for (const id of EXPRESSION_PARAM_IDS) {
       const index = model.getParameterIndex(this.id(id))
       if (index >= 0) indices.push(index)
     }
     if (indices.length > 0) this.expressionReset = { indices }
+  }
+
+  /**
+   * 停止当前表情动作:立即清队列(不再写参数),并开始把表情参数指数平滑拉回
+   * 模型默认值(待机基准)。SDK fadeOut 拉向"当前值"而非默认值,会残留摸头表情,
+   * 故弃用,由运行时自行复位(0037)。非循环动画播完也会自动复位(见 update())。
+   */
+  stopMotion(): void {
+    if (!this.motionQueue) return
+    this.currentMotionName = null
+    this.motionQueue.stopAllMotions()
+    this.beginExpressionReset()
   }
 
   playExpression(name: string): void {
