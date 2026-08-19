@@ -16,7 +16,7 @@ import { CubismUpdateScheduler } from '@live2d/framework/motion/cubismupdatesche
 import { CubismPhysics } from '@live2d/framework/physics/cubismphysics'
 import { CubismWebGLOffscreenManager } from '@live2d/framework/rendering/cubismoffscreenmanager'
 import { PARAM_HEAD, PARAM_EYE, PARAM_BODY, PARAM_MANUAL, PARAM_EXPRESSION, PARAM_DRAG, PARAM_BACK_HAIR, PARAM_HAIR_SWAY, type ViewLook } from './parameters.ts'
-import type { Live2dAppearance, Live2dRuntime } from './runtime.ts'
+import type { Live2dAppearance, Live2dRuntime, AnimationChannel } from './runtime.ts'
 
 /**
  * Cubism SDK for Web 5-r.5 的 Live2dRuntime 实现 —— 独立 WebGL2 canvas 自绘(doc/08 §4 结论)。
@@ -26,6 +26,8 @@ import type { Live2dAppearance, Live2dRuntime } from './runtime.ts'
  * - 异步加载 model3.json → moc → physics → 纹理,构建 UpdateScheduler(物理 + 呼吸);
  * - 每帧:写视角跟随参数(含瞳孔收缩 0..1)→ scheduler 跑物理(后发随头部角度自动摆动)→ model.update → 渲染;
  * - 视角跟随参数用归一化 -1..1 输入(瞳孔通道 0..1),内部按参数实际 min/max/default 映射(见 setViewLook)。
+ * - motion 播放按通道(doc/09):每通道独立 CubismMotionQueueManager,start 前先停同通道
+ *   旧动画(物理互斥,杜绝两条动画并行重叠);素材配置由构造注入(animation-registry 单点)。
  *
  * 许可与版本见 vendor/live2d/README.md;接入流程见 runtime.ts 顶部注释。
  */
@@ -34,18 +36,13 @@ import type { Live2dAppearance, Live2dRuntime } from './runtime.ts'
 const SHADER_PATH = '/pet/live2d/shaders/'
 
 /**
- * motion 逻辑名 → 素材配置(assets/pet/live2d/ 下,publicDir 相对 URL 根)。
+ * motion 素材配置由构造注入(animation-registry 单点配置,0037s)——本类只按
+ * 逻辑名查 file/loop,不持有业务元数据(priority/channel 等归 registry/director)。
  * 素材以 `Expression_*.motion3.json` 命名(动画时间轴导出的"表情动作")。
  * `loop`:素材 json 的 Meta.Loop 虽为 true,但摸头曲线首尾不一致(EyeLSmile
  * 0s=0 / 3.833s=1),循环点处表情闪没重来(V2 correctEndPoint 只能平滑不能消除,
  * 0037 实测)—— 强制非循环,播一遍自然结束 + 运行时自动平滑复位,最干净。
  */
-const MOTION_FILES: Record<string, { file: string; loop: boolean }> = {
-  /** 摸头反馈:眯眼 + 闭眼 + 微笑 + 脸颊泛红。 */
-  'pat-head': { file: 'Expression_pat_head.motion3.json', loop: false },
-  /** sad 表情(0037r):点击身体 HitAreaBody 触发;曲线首尾一致,仍按非循环播一遍自动复位。 */
-  sad: { file: 'Expression_sad.motion3.json', loop: false },
-}
 /** motion 基础 URL(publicDir=assets)。 */
 const MOTION_BASE_URL = '/pet/live2d/'
 /**
@@ -258,6 +255,8 @@ export interface CubismRuntimeOptions {
   modelUrl: string
   /** 初始外观(位置/大小);之后由 setAppearance 实时调整(0017)。 */
   appearance: Live2dAppearance
+  /** motion 逻辑名 → 素材文件/循环配置;由 animation-registry 派生注入(0037s 单点配置)。 */
+  motions?: Record<string, { file: string; loop: boolean }>
 }
 
 /** 创建 Cubism 运行时;WebGL2 不可用时返回 null(调用方回落占位动画)。 */
@@ -281,7 +280,7 @@ export function createCubismRuntime(options: CubismRuntimeOptions): Live2dRuntim
   }
   options.host.appendChild(canvas)
 
-  return new CubismRuntime(canvas, gl, options.host, { ...options.appearance })
+  return new CubismRuntime(canvas, gl, options.host, { ...options.appearance }, options.motions ?? {})
 }
 
 async function fetchArrayBuffer(url: string): Promise<ArrayBuffer> {
@@ -344,18 +343,20 @@ class CubismRuntime implements Live2dRuntime {
    * 缓慢回落以保留拖动余韵。
    */
   private dragBlend = 0
-  /** motion 播放队列(摸头反馈等;未播放过为 null)。 */
-  private motionQueue: CubismMotionQueueManager | null = null
+  /** motion 播放队列(按通道,0037s):每通道独立队列,同通道物理互斥。 */
+  private readonly motionQueues = new Map<AnimationChannel, CubismMotionQueueManager>()
   /** motion 播放用的累计时间(秒,单调递增,作为 doUpdateMotion 的 userTimeSeconds)。 */
   private motionTime = 0
-  /** 当前 motion 开始播放时的全局时间(0037l,计算已播时长用)。 */
-  private motionStartTime = 0
+  /** 各通道当前 motion 开始播放时的全局时间(0037l,计算已播时长用)。 */
+  private readonly motionStartTimes = new Map<AnimationChannel, number>()
   /** motion 暂停(0037l):暂停时不推进 motionTime 也不驱动曲线,动画定格当前帧。 */
   private motionPaused = false
   /** 已解析的 motion 缓存(逻辑名 → 实例;null 表示解析失败,不再重试)。 */
   private readonly motionCache = new Map<string, CubismMotion | null>()
-  /** 当前正在播放(或正在淡出)的 motion 逻辑名;null = 无。 */
-  private currentMotionName: string | null = null
+  /** 各通道当前正在播放(或正在异步加载)的 motion 逻辑名;无 = 该通道空闲。 */
+  private readonly currentMotion = new Map<AnimationChannel, string>()
+  /** motion 素材配置(逻辑名 → file/loop),构造注入(0037s)。 */
+  private readonly motions: Record<string, { file: string; loop: boolean }>
   /** 表情复位进行中:停止 motion 后把表情参数指数平滑拉回模型默认(待机基准)。 */
   private expressionReset: { indices: number[] } | null = null
   /** model3.json 声明的 HitAreas(素材未导出则为空)。 */
@@ -387,11 +388,13 @@ class CubismRuntime implements Live2dRuntime {
     gl: WebGL2RenderingContext,
     host: HTMLElement,
     appearance: Live2dAppearance,
+    motions: Record<string, { file: string; loop: boolean }>,
   ) {
     this.canvas = canvas
     this.gl = gl
     this.host = host
     this.appearance = clampAppearance(appearance)
+    this.motions = motions
     this.frameBuffer = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null
     this.resize()
     window.addEventListener('resize', this.onResize)
@@ -851,15 +854,22 @@ class CubismRuntime implements Live2dRuntime {
     // (load 之后、视角跟随之前)更新只覆盖有曲线的表情参数,不碰头部/眼珠视角参数;
     // 写完后进入 save 快照,物理/渲染正常走。眨眼由 autoBlink=false 让位(motion 接管眼睛)。
     // 暂停(0037l)时冻结时间与曲线驱动:按住摸头时动画定格在闭眼保持帧,松开后继续。
-    if (this.motionQueue && !this.motionPaused) {
+    // 多通道(0037s):每通道独立队列,共享同一 motionTime 基准(各通道起点记在 motionStartTimes)。
+    if (!this.motionPaused) {
       this.motionTime += deltaSeconds
-      this.motionQueue.doUpdateMotion(model, this.motionTime)
+      for (const queue of this.motionQueues.values()) {
+        queue.doUpdateMotion(model, this.motionTime)
+      }
     }
-    // 非循环动画播完(队列清空)自动复位表情,无需等 stopMotion(0037):
+    // 非循环动画播完(队列清空)自动复位表情,无需等 stopChannel(0037):
     // 摸头动画自然结束 → 表情停在结尾值 → 平滑拉回待机,避免残留
-    if (this.currentMotionName && this.motionQueue?.isFinished()) {
-      this.currentMotionName = null
-      this.beginExpressionReset()
+    for (const channel of [...this.currentMotion.keys()]) {
+      const queue = this.motionQueues.get(channel)
+      if (queue?.isFinished()) {
+        this.currentMotion.delete(channel)
+        this.motionStartTimes.delete(channel)
+        this.beginExpressionReset()
+      }
     }
     // 表情复位:停止 motion 后每帧把表情参数指数拉回模型默认(待机基准)。
     // 不能依赖 SDK fadeOut——它拉向"当前值",而当前值快照已含 motion 表情 → 残留。
@@ -919,33 +929,35 @@ class CubismRuntime implements Live2dRuntime {
   }
 
   /**
-   * 播放一个表情动作(motion3,按逻辑名查 MOTION_FILES)。
-   * 素材 json 的 Loop 字段决定是否循环(摸头动画 Loop=true,停止须显式 stopMotion)。
-   * 异步加载与解析,结果缓存;同一 motion 已在播时忽略重复调用。
+   * 播放一个表情动作(motion3,按逻辑名查注入的素材配置,0037s)。
+   * channel 指定通道:同通道 start 前先停旧动画(物理互斥,杜绝并行重叠)。
+   * 异步加载与解析,结果缓存;同一 channel 同一 motion 已在播时忽略重复调用。
    */
-  playMotion(name: string): void {
+  playMotion(name: string, channel: AnimationChannel): void {
     if (this.disposed || !this.ready) {
       console.warn(`[live2d] playMotion("${name}") 跳过:运行时未就绪`)
       return
     }
-    if (this.currentMotionName === name) return
-    void this.startMotion(name)
+    // 同步登记:异步加载期间 isChannelActive 即返回 true,幂等检查同时生效
+    if (this.currentMotion.get(channel) === name) return
+    this.currentMotion.set(channel, name)
+    void this.startMotion(name, channel)
   }
 
-  private async startMotion(name: string): Promise<void> {
-    const config = MOTION_FILES[name]
+  private async startMotion(name: string, channel: AnimationChannel): Promise<void> {
+    const config = this.motions[name]
     if (!config) {
-      console.warn(`[live2d] playMotion("${name}") 未知 motion 名(未在 MOTION_FILES 注册)`)
+      console.warn(`[live2d] playMotion("${name}") 未知 motion 名(未在 registry 注册)`)
+      this.currentMotion.delete(channel)
       return
     }
-    if (!this.motionQueue) this.motionQueue = new CubismMotionQueueManager()
 
     let motion = this.motionCache.get(name)
     if (motion === undefined) {
       try {
         const buf = await fetchArrayBuffer(MOTION_BASE_URL + config.file)
         // SDK 5-r.5 的 CubismMotion.create 不读 json 的 Loop 字段(见 SDK 源码,
-        // create 内 _loop 赋值被注释),按 MOTION_FILES 配置显式 setLoop。
+        // create 内 _loop 赋值被注释),按素材配置显式 setLoop。
         const instance = CubismMotion.create(buf, buf.byteLength)
         instance.setLoop(config.loop)
         // 素材未写 FadeInTime 时 SDK 默认 1.0s,表情渐入太慢(看起来没反应),压短
@@ -961,17 +973,33 @@ class CubismRuntime implements Live2dRuntime {
       }
       this.motionCache.set(name, motion)
     }
-    if (!motion || this.disposed) return
+    if (!motion || this.disposed) {
+      if (!motion) this.currentMotion.delete(channel)
+      return
+    }
+    // 加载期间被 stopChannel / 换了新动画 → 放弃本次 start(避免过期动画抢播)
+    if (this.currentMotion.get(channel) !== name) return
 
-    // startMotion 会对已在队列的旧 entry 自动设 fadeOut(motion 自身 fadeOutTime),
-    // 重播时旧表情淡出、新表情淡入,平滑切换。
-    this.motionQueue.startMotion(motion, false)
-    this.currentMotionName = name
-    // 新动画接管:取消待处理的复位,记录起点(已播时长 = motionTime - motionStartTime)
+    // 物理互斥(doc/09 §3.5):同通道 start 前先停旧动画 —— 即使绕过仲裁层直接
+    // 调用,同一通道也不可能两条动画并行(0037s 修"两个动画重叠"的直接手段)。
+    const queue = this.getMotionQueue(channel)
+    queue.stopAllMotions()
+    queue.startMotion(motion, false)
+    // 新动画接管:取消待处理的复位,记录起点(已播时长 = motionTime - motionStartTimes[channel])
     this.expressionReset = null
-    this.motionStartTime = this.motionTime
+    this.motionStartTimes.set(channel, this.motionTime)
     this.motionPaused = false
-    console.info(`[live2d] playMotion("${name}") 开始`)
+    console.info(`[live2d] playMotion("${name}") 开始(channel=${channel})`)
+  }
+
+  /** 按通道懒创建 motion 队列(0037s)。 */
+  private getMotionQueue(channel: AnimationChannel): CubismMotionQueueManager {
+    let queue = this.motionQueues.get(channel)
+    if (!queue) {
+      queue = new CubismMotionQueueManager()
+      this.motionQueues.set(channel, queue)
+    }
+    return queue
   }
 
   /**
@@ -992,16 +1020,23 @@ class CubismRuntime implements Live2dRuntime {
   }
 
   /**
-   * 停止当前表情动作:立即清队列(不再写参数),并开始把表情参数指数平滑拉回
+   * 停止某通道当前动画:立即清队列(不再写参数),并开始把表情参数指数平滑拉回
    * 模型默认值(待机基准)。SDK fadeOut 拉向"当前值"而非默认值,会残留摸头表情,
    * 故弃用,由运行时自行复位(0037)。非循环动画播完也会自动复位(见 update())。
    */
-  stopMotion(): void {
-    if (!this.motionQueue) return
-    this.currentMotionName = null
+  stopChannel(channel: AnimationChannel): void {
+    const queue = this.motionQueues.get(channel)
+    const hadMotion = this.currentMotion.has(channel) || queue !== undefined
+    this.currentMotion.delete(channel)
+    this.motionStartTimes.delete(channel)
     this.motionPaused = false
-    this.motionQueue.stopAllMotions()
-    this.beginExpressionReset()
+    queue?.stopAllMotions()
+    if (hadMotion) this.beginExpressionReset()
+  }
+
+  /** 该通道当前是否有动画在播(含异步加载中);结束/复位中返回 false。 */
+  isChannelActive(channel: AnimationChannel): boolean {
+    return this.currentMotion.has(channel)
   }
 
   /** 暂停/恢复 motion 时间推进(0037l):暂停期间动画定格当前帧,恢复后从冻结处继续。 */
@@ -1009,9 +1044,10 @@ class CubismRuntime implements Live2dRuntime {
     this.motionPaused = paused
   }
 
-  /** 当前 motion 已播时长(秒,从本 motion 起点计);无播放中的 motion 返回 -1。 */
-  getMotionElapsed(): number {
-    return this.currentMotionName ? this.motionTime - this.motionStartTime : -1
+  /** 某通道当前 motion 已播时长(秒,从本 motion 起点计);无播放中的 motion 返回 -1。 */
+  getMotionElapsed(channel: AnimationChannel): number {
+    const start = this.motionStartTimes.get(channel)
+    return this.currentMotion.has(channel) && start !== undefined ? this.motionTime - start : -1
   }
 
   playExpression(name: string): void {
@@ -1025,10 +1061,11 @@ class CubismRuntime implements Live2dRuntime {
     window.removeEventListener('resize', this.onResize)
     this.scheduler?.release()
     this.scheduler = null
-    this.motionQueue?.release()
-    this.motionQueue = null
+    for (const queue of this.motionQueues.values()) queue.release()
+    this.motionQueues.clear()
     this.motionCache.clear()
-    this.currentMotionName = null
+    this.currentMotion.clear()
+    this.motionStartTimes.clear()
     this.motionPaused = false
     this.expressionReset = null
     if (this.breath) CubismBreath.delete(this.breath)

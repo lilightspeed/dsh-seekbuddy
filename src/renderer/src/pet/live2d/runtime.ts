@@ -11,6 +11,14 @@ export interface Live2dAppearance {
 }
 
 /**
+ * 动画通道(0037s,doc/09):按"参数作用域"分组 —— 同通道互斥、跨通道并存。
+ * - expression:脸部表情参数,同一时刻最多一个(摸头/sad)。
+ * - action:身体/位移类参数(未来:走路/跳跃),同一时刻最多一个;可与 expression 并存。
+ * 新增动画只扩 union + registry 条目,仲裁/播放代码零改动。
+ */
+export type AnimationChannel = 'expression' | 'action'
+
+/**
  * Live2D 运行时适配层 —— 官方 Cubism SDK for Web 的唯一接缝(doc/08 §4)。
  *
  * 当前未 vendor SDK,默认无运行时注册;createLive2dAnimator 检测不到注册时
@@ -43,17 +51,23 @@ export interface Live2dRuntime {
   setAppearance(appearance: Live2dAppearance): void
   /** 开关自动眨眼 / 呼吸(idle 开,thinking 关)。 */
   setAutoBlink(on: boolean): void
-  /** 播动作(motion3;按逻辑名,运行时自行映射素材文件)。 */
-  playMotion(name: string): void
-  /** 停止当前动作(fade out 平滑回归,未实现可忽略)。 */
-  stopMotion(): void
+  /**
+   * 播动作(motion3;按逻辑名,运行时自行映射素材文件)。
+   * channel 指定通道:同通道 start 前强制 stop 旧动画(物理互斥,见 doc/09 §3.5),
+   * 跨通道(未来 action + expression)互不干扰。
+   */
+  playMotion(name: string, channel: AnimationChannel): void
+  /** 停止某通道当前动画(参数平滑复位回归待机);该通道无动画时无操作。 */
+  stopChannel(channel: AnimationChannel): void
+  /** 该通道当前是否有动画在播(含异步加载中);结束/复位中返回 false。 */
+  isChannelActive(channel: AnimationChannel): boolean
   /**
    * 暂停/恢复 motion 时间推进(0037l):暂停时不推进 motion 时钟也不驱动曲线,
    * 动画定格在当前帧;恢复后从冻结处继续播放。可选:占位/测试实现可不提供。
    */
   setMotionPaused?(paused: boolean): void
-  /** 当前 motion 已播放秒数(从本 motion 起点计);无播放中的 motion 返回 -1。 */
-  getMotionElapsed?(): number
+  /** 某通道当前 motion 已播放秒数(从本 motion 起点计);无播放中的 motion 返回 -1。 */
+  getMotionElapsed?(channel: AnimationChannel): number
   /**
    * 头部 hitarea 的屏幕包围盒(点击区 overlay 定位用,与命中区域一致;素材未导出
    * HitAreas 返回 null,调用方回退估算)。可选:占位/测试实现可不提供。

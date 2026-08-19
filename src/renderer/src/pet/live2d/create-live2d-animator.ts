@@ -249,7 +249,7 @@ function createLive2dAnimatorWithRuntime(
     // 力度增益由 tick 每帧平滑爬升(0037o),不在按下瞬间跳变
     if (!patActive) patActive = true
     runtime.setAutoBlink(false)
-    runtime.playMotion(PAT_MOTION)
+    runtime.playMotion(PAT_MOTION, 'expression')
     patPlayMs = 0
   }
 
@@ -302,7 +302,7 @@ function createLive2dAnimatorWithRuntime(
       runtime.setMotionPaused?.(false)
     }
     runtime.setAutoBlink(false)
-    runtime.playMotion('sad')
+    runtime.playMotion('sad', 'expression')
   }
   bodyHitEl.addEventListener('pointerdown', (e) => onBodyDown(e.clientX, e.clientY))
 
@@ -342,7 +342,7 @@ function createLive2dAnimatorWithRuntime(
       patActive = false
       holdActive = false
       holdFrozen = false
-      runtime.stopMotion()
+      runtime.stopChannel('expression')
     }
     patPlayMs = 0
     runtime.setAutoBlink(next !== 'thinking')
@@ -413,7 +413,7 @@ function createLive2dAnimatorWithRuntime(
       if (pointer) follower.update(deltaSeconds, pointer, followAnchor)
       // 按住摸头(0037l):动画播到闭眼保持点 → 冻结定格;松开/移出由事件解除
       if (holdActive && !holdFrozen) {
-        const elapsed = runtime.getMotionElapsed?.() ?? -1
+        const elapsed = runtime.getMotionElapsed?.('expression') ?? -1
         if (elapsed >= PAT_HOLD_TIME) {
           holdFrozen = true
           runtime.setMotionPaused?.(true)
@@ -425,7 +425,7 @@ function createLive2dAnimatorWithRuntime(
         patPlayMs += deltaSeconds * 1000
         if (patPlayMs >= PAT_PLAY_MS) {
           patActive = false
-          runtime.stopMotion()
+          runtime.stopChannel('expression')
           runtime.setAutoBlink(true)
         }
       }
