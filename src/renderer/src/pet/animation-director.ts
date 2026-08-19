@@ -33,7 +33,7 @@ export interface AnimationSpec {
   holdAt?: number
   /** 0037w:按住时把动画加速播到保持帧的倍率(>1)。>1 时按下瞬间以该倍速快速
    *  走完"闭眼过程"再在 holdAt 冻结——有过程但不拖沓(替代 0037v 的瞬移跳变);
-   *  缺省/≤1 = 原速自然播放到 holdAt 再冻结。 */
+   *  缺省/≤1 = 按素材原速播放到 holdAt 再冻结(闭眼时长与素材关键帧一致,摸头默认)。 */
   holdSeekRate?: number
   /** 0037w:按下时动画已播过保持帧(续摸/播放中再按)则先回跳到该秒数(闭眼起点
    *  附近),再按 holdSeekRate 加速闭眼到 holdAt;缺省 0(从头)。 */
@@ -148,11 +148,12 @@ export function createAnimationDirector(runtime: Live2dRuntime): AnimationDirect
       if (holding) {
         // 按住:记录状态,由 tick 在 holdAt 处冻结
         holdState.set(channel, true)
-        // 0037w:"鼠标过来摸头就(快速)闭眼享受"——按下瞬间让动画以 holdSeekRate 倍速
-        // 快速走完闭眼过程到保持帧(有过程、不瞬移跳变),再由 tick 在 holdAt 冻结。
-        // 动画已播过保持帧(续摸/播放中再按)先回跳到 holdRewindTo 闭眼起点重新闭眼,
-        // 保证"播放中按下也能转回保持帧";素材未加载(elapsed=-1)时倍速先生效,
-        // 播放后立即按加速时间线走。缺省 holdSeekRate(≤1)= 0037l 原速自然播放语义。
+        // 0037w:"鼠标过来摸头就闭眼享受"——按下后动画从 0 以素材原速走完闭眼过程
+        // 到保持帧(闭眼时长与素材关键帧一致),再由 tick 在 holdAt 冻结;若配置了
+        // holdSeekRate>1 才加速(其他动画可选)。动画已播过保持帧(续摸/播放中再按)
+        // 先回跳到 holdRewindTo 闭眼起点重新闭眼,保证"播放中按下也能转回保持帧";
+        // 素材未加载(elapsed=-1)时按下后照常从起点原速播放。缺省 holdSeekRate(≤1)
+        // = 0037l 原速自然播放语义。
         if (entry.spec.mode === 'hold' && (entry.spec.holdAt ?? 0) > 0) {
           const holdAt = entry.spec.holdAt ?? 0
           const elapsed = runtime.getMotionElapsed?.(channel) ?? -1

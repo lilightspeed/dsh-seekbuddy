@@ -13,9 +13,10 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
   /**
    * 摸头反馈(0037 系列):点击头部 HitAreaHead 触发。
    * - mode: hold —— 按住时动画冻结在闭眼保持帧(holdAt=0.45s),松开继续播完自然复位
-   * - holdSeekRate: 4 —— 按下瞬间以 4 倍速快速走完 0→0.45s 的闭眼过程再冻结
-   *   ("闭眼享受"有过程、不瞬移跳变,0037w);已播过保持帧(续摸)先回跳
-   *   holdRewindTo=0.1s 闭眼起点再加速,保证"播放中按下也能转回保持帧"
+   * - 闭眼过程按素材原速播放(0037w 修正):按下后动画从 0 以素材速度走完
+   *   "开始→闭眼"(≈0.33s),到 holdAt 冻结——闭眼时长与素材关键帧一致,
+   *   不加速不瞬移;已播过保持帧(续摸/播放中再按)先回跳 holdRewindTo=0.1s
+   *   闭眼起点再原速闭眼,保证"播放中按下也能转回保持帧"
    * - durationMs: 4000 兜底(素材 3.83s 自然结束,此值仅防异常)
    * - priority 默认 0:可被 sad(1) 打断
    */
@@ -25,7 +26,6 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
     file: 'Expression_pat_head.motion3.json',
     mode: 'hold',
     holdAt: 0.45,
-    holdSeekRate: 4,
     holdRewindTo: 0.1,
     durationMs: 4000,
     autoBlink: false,
