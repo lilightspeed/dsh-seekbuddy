@@ -139,11 +139,13 @@ function createLive2dAnimatorWithRuntime(
     'background: transparent;'
   document.body.appendChild(hitEl)
 
-  /** 点击判定网格可视化(0037):SVG polygon 画命中网格轮廓,设置面板开关控制(默认隐藏)。 */
+  /** 点击判定网格可视化(0037):SVG polygon 画命中网格轮廓,设置面板开关控制(默认隐藏)。
+   *  注意:svg 是替换元素,position:fixed + inset:0 不会拉伸尺寸,必须显式给宽高,
+   *  否则默认 300×150 画布会把屏幕坐标的网格裁掉(0037j)。 */
   const meshSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
   meshSvg.setAttribute(
     'style',
-    'position: fixed; inset: 0; z-index: 3; pointer-events: none; display: none;',
+    'position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; z-index: 3; pointer-events: none; display: none;',
   )
   const meshPoly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon')
   meshPoly.setAttribute('fill', 'rgba(77, 107, 254, 0.18)')
