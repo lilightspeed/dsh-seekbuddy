@@ -129,10 +129,6 @@ function createLive2dAnimatorWithRuntime(
    *  素材曲线:0~0.33s 闭眼,0.33~1.20s 保持(闭眼+微笑+泛红),1.20s 起睁眼复位。
    *  取 0.45s = 闭眼完全到位后立刻冻结,留足保持窗口。 */
   const PAT_HOLD_TIME = 0.45
-  /** 摸头按住期间的头部晃动增益(0037m):headMax 幅度 ×1.5 + 头部跟手速度 ×1.4。
-   *  仅按住鼠标期间生效(按下放大、松开立即恢复),体现"按住摸头时头部晃动"。 */
-  const PAT_SHAKE_HEAD_MULTIPLIER = 1.5
-  const PAT_SHAKE_SMOOTH_MULTIPLIER = 1.4
   const PAT_MOTION = 'pat-head'
   /** 摸头表情是否在播放。 */
   let patActive = false
@@ -144,18 +140,21 @@ function createLive2dAnimatorWithRuntime(
   let holdFrozen = false
 
   /**
-   * 按住摸头期间的头部灵敏度(0037m):true = 放大(headMax ×1.5、smoothing.head ×1.4),
-   * false = 恢复 petSettings 基准。基于基准重新计算,设置面板调整不受影响。
+   * 按住摸头期间的头部灵敏度(0037m/0037n):true = 按"摸头力度"增益放大
+   * (patStrength 0..2:幅度 ×(1+0.5s)、跟手 ×(1+0.4s);0 = 不放大,1 = 默认
+   * 1.5×/1.4×,2 = 2.0×/1.8×),false = 恢复 petSettings 基准。
+   * 基于基准重新计算,设置面板调整不受影响。
    */
   function applyPatShake(enabled: boolean): void {
     const base = toFollowerConfig(petSettings)
+    const s = petSettings.patStrength
     Object.assign(
       followerConfig,
       enabled
         ? {
             ...base,
-            headMax: base.headMax * PAT_SHAKE_HEAD_MULTIPLIER,
-            smoothing: { ...base.smoothing, head: base.smoothing.head * PAT_SHAKE_SMOOTH_MULTIPLIER },
+            headMax: base.headMax * (1 + s * 0.5),
+            smoothing: { ...base.smoothing, head: base.smoothing.head * (1 + s * 0.4) },
           }
         : base,
     )
@@ -320,6 +319,7 @@ function createLive2dAnimatorWithRuntime(
       pupilMax: clamp01(settings.pupilMax),
       dragStrength: clamp01(settings.dragStrength),
       showHitMesh: Boolean(settings.showHitMesh),
+      patStrength: clamp(settings.patStrength, 0, 2),
     }
     // 外层独立变量供 onCursor 闭包读取(增益计算):必须同步更新,否则滑块调了不生效(0035)
     dragStrength = petSettings.dragStrength

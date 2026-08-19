@@ -44,6 +44,12 @@ export interface PetPetSettings {
   dragStrength: number
   /** 显示点击判定网格(摸头触发范围可视化,0037;默认关)。 */
   showHitMesh: boolean
+  /**
+   * 摸头力度(0037m/0037n,0..2,1 = 默认):按住摸头期间头部视线跟随的
+   * X/Y 角度灵敏度增益 —— 0 = 不放大,1 = 幅度 ×1.5 + 跟手 ×1.4(当前默认),
+   * 2 = 幅度 ×2.0 + 跟手 ×1.8。只影响按住期间,松开立即恢复。
+   */
+  patStrength: number
 }
 
 export interface PetConfig {
@@ -76,6 +82,7 @@ export const DEFAULT_PET_CONFIG: PetConfig = {
     pupilMax: 1,
     dragStrength: 1,
     showHitMesh: false,
+    patStrength: 1,
   },
   voice: { enabled: true },
   launchAtLogin: false,
@@ -107,4 +114,6 @@ export interface PetConfigUpdate {
   petDragStrength?: number
   /** 显示点击判定网格(0037)。 */
   petShowHitMesh?: boolean
+  /** 摸头力度(0037n,0..2)。 */
+  petPatStrength?: number
 }
