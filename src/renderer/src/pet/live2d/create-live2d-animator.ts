@@ -145,6 +145,13 @@ function createLive2dAnimatorWithRuntime(
    */
   const PAT_SHAKE_SPEED = 6
   let patShakeLevel = 0
+  /**
+   * 按住摸头锚点(0037o):按住期间视线跟随以"头部判定区域中心"为参照——鼠标按在
+   * 方框正中心时目标≈0(不偏移),按在四周时头部轻柔朝鼠标方向转;松开平滑回
+   * 模型中心。锚点同样指数平滑,避免按下瞬间目标跳变。
+   */
+  const PAT_ANCHOR_SMOOTH = 10
+  let followAnchor: { x: number; y: number } | null = null
   /** 头部点击区:no-drag 透明矩形(与命中区域一致),点击触发摸头。 */
   const hitEl = document.createElement('div')
   hitEl.id = 'pet-head-hit'
@@ -339,7 +346,17 @@ function createLive2dAnimatorWithRuntime(
       followerConfig.headMax = shakeBase.headMax * (1 + patShakeLevel * 0.5)
       followerConfig.smoothing = { ...shakeBase.smoothing, head: shakeBase.smoothing.head * (1 + patShakeLevel * 0.4) }
 
-      if (pointer) follower.update(deltaSeconds, pointer, anchor())
+      // 按住摸头锚点(0037o):按住 → 平滑移到头部判定区域中心(中心按下不偏移),
+      // 松开 → 平滑回模型中心;同样指数趋近避免目标跳变。
+      const headBox = headAnchor()
+      const anchorGoal = holdActive
+        ? { x: headBox.x + headBox.width / 2, y: headBox.y + headBox.height / 2 }
+        : anchor()
+      if (!followAnchor) followAnchor = { ...anchorGoal }
+      followAnchor.x += (anchorGoal.x - followAnchor.x) * (1 - Math.exp(-PAT_ANCHOR_SMOOTH * deltaSeconds))
+      followAnchor.y += (anchorGoal.y - followAnchor.y) * (1 - Math.exp(-PAT_ANCHOR_SMOOTH * deltaSeconds))
+
+      if (pointer) follower.update(deltaSeconds, pointer, followAnchor)
       // 按住摸头(0037l):动画播到闭眼保持点 → 冻结定格;松开/移出由事件解除
       if (holdActive && !holdFrozen) {
         const elapsed = runtime.getMotionElapsed?.() ?? -1
