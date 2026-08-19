@@ -103,18 +103,23 @@
   按 json `Meta.Loop` 显式 `setLoop`;motion 内部不做 load/save,只 set 有曲线的参数,
   插在每帧 load 之后、视角跟随之前 —— 只覆盖表情参数,不碰头部/眼珠视角。
 - 触发:`create-live2d-animator.ts` —— idle(未工作)时**点击头部点击区**触发
-  (`#pet-head-hit`,no-drag 透明圆)。**点击区位置优先取运行时按 model3.json HitAreas
-  算出的精确坐标**(Name 含 "head" 的条目,画布归一化坐标 → 投影矩阵 → 屏幕,0037;
-  **需在 Cubism Editor 里把 HitHeadArea 导出为 Hit Area** —— 当前素材未导出,回退
-  "模型中心锚点上方 innerHeight×0.18、半径 52px"的估算);播放 PAT_PLAY_MS(4s,
-  约一个循环)后淡出停止,期间再次点击续摸;状态离开 idle 立即淡出(`stopMotion`
-  设 0.35s fadeOut,避免表情参数硬切跳变)。播放期间 `setAutoBlink(false)` 让眨眼
-  让位(motion 接管眼睛)。素材未写 FadeInTime 时 SDK 默认 1.0s 渐入(看起来没反应),
-  运行时压到 0.15s。
-- **必踩坑:`CubismMotion.create` 后必须 `setEffectIds([], [])`**(0037 实测)——不调
+  (`#pet-head-hit`,no-drag 透明圆,定位用)。**命中判定优先用 HitArea 网格**:
+  运行时按 model3.json HitAreas(旧格式 Id 引用 moc3 触碰检测网格 drawable)取顶点,
+  经 `buildProjectionMatrix` 映射到屏幕做**射线法点包含测试**(`hitTestPoint`,最贴合
+  轮廓);无网格回退新格式矩形坐标,再无则"锚点上方 0.18 窗口高 + 52px"估算。
+  Editor 流程:`建模 → 图形网格 → 创建触碰检测用途的图形网格` → 编辑纹理集 → 导出。
+  播放 PAT_PLAY_MS(4s,约一个循环)后停止,期间再次点击续摸;状态离开 idle 立即停止
+  (`stopMotion` = stopAllMotions + 表情参数**指数平滑拉回模型默认**,速度 10/s ≈0.3s
+  回归待机 —— **SDK fadeOut 拉向当前值而非默认值,会残留摸头表情,弃用**)。播放期间
+  `setAutoBlink(false)` 让眨眼让位(motion 接管眼睛)。素材未写 FadeInTime 时 SDK
+  默认 1.0s 渐入(看起来没反应),运行时压到 0.15s。
+- **必踩坑 1:`CubismMotion.create` 后必须 `setEffectIds([], [])`**(0037 实测)——不调
   时 `_eyeBlinkParameterIds` 为 null,`doUpdateParameters` 首帧抛 `null.length`
   TypeError → 动画器 tick 崩溃、模型定格"完全静止"。本模型 EyeBlink/LipSync 组为
   空,传空数组即可;若素材加了 Effect 组,改为传 model3.json Groups 里的 Ids。
+- **必踩坑 2:表情停止后残留**(0037 实测)——每帧 save 快照已含 motion 写的表情值,
+  SDK fadeOut 拉向"当前值"→ 摸头表情残留。停止 = 立即清队列 + 运行时平滑复位
+  (`expressionReset`,`EXPRESSION_PARAM_IDS` 覆盖摸头曲线 10 参 + ParamTear)。
 - `Expression_sad.motion3.json`(2.03s,Loop=true,带 `ParamTear` 眼泪)已导出但**未接入**,
   等状态机 sad 态映射时用(注册进 `MOTION_FILES` 即可)。
 

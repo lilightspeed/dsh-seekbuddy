@@ -65,12 +65,14 @@ export const PARAM_MANUAL = {
   browRY: 'ParamBrowRY',
 } as const
 
-/** 表情 / 说话参数(后续里程碑)。 */
+/** 表情 / 说话参数(0037:motion 曲线用,含模型新增的 ParamEyeForm/ParamTear)。 */
 export const PARAM_EXPRESSION = {
   eyeLOpen: 'ParamEyeLOpen',
   eyeROpen: 'ParamEyeROpen',
   eyeLSmile: 'ParamEyeLSmile',
   eyeRSmile: 'ParamEyeRSmile',
+  eyeForm: 'ParamEyeForm',
+  tear: 'ParamTear',
 } as const
 
 /**

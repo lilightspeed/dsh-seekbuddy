@@ -44,13 +44,32 @@ const MOTION_FILES: Record<string, string> = {
 }
 /** motion 基础 URL(publicDir=assets)。 */
 const MOTION_BASE_URL = '/pet/live2d/'
-/** stopMotion 的淡出时长(秒):表情参数经 fade 平滑回归基准,避免硬切跳变。 */
-const MOTION_FADE_OUT_SECONDS = 0.35
 /**
  * motion 起始淡入时长(秒)。素材 json 未写 FadeInTime 时 SDK 默认 1.0s ——
  * 表情渐入太慢会看起来"点了没反应"(加上眨眼被接管,模型近乎静止),这里压到 0.15s。
  */
 const MOTION_FADE_IN_SECONDS = 0.15
+/**
+ * 表情动作涉及的表情参数(停止后需平滑复位回待机基准)。
+ * 摸头动画曲线:EyeForm / EyeLOpen/ROpen / EyeLSmile/RSmile / BrowLAngle/RAngle / BrowLY/RY / Cheek;
+ * 含 ParamTear(后续 sad 素材用)与嘴部(不涉及但复位无害)。SDK 的 fadeOut 拉向"当前值"
+ * (每帧 save 快照已含 motion 值),无法回归待机 → 停止后由运行时指数平滑拉回模型默认值(0037)。
+ */
+const EXPRESSION_PARAM_IDS = [
+  'ParamEyeForm',
+  'ParamEyeLOpen',
+  'ParamEyeROpen',
+  'ParamEyeLSmile',
+  'ParamEyeRSmile',
+  'ParamBrowLAngle',
+  'ParamBrowRAngle',
+  'ParamBrowLY',
+  'ParamBrowRY',
+  'ParamCheek',
+  'ParamTear',
+] as const
+/** 表情复位平滑速度(1/s):≈0.3s 内基本回归待机。 */
+const EXPRESSION_RESET_SPEED = 10
 
 /** model3.json 的 HitAreas 条目(运行时自行解析;SDK 的 CubismModelSettingJson 只暴露 Id/Name)。 */
 interface ModelHitArea {
@@ -276,6 +295,8 @@ class CubismRuntime implements Live2dRuntime {
   private readonly motionCache = new Map<string, CubismMotion | null>()
   /** 当前正在播放(或正在淡出)的 motion 逻辑名;null = 无。 */
   private currentMotionName: string | null = null
+  /** 表情复位进行中:停止 motion 后把表情参数指数平滑拉回模型默认(待机基准)。 */
+  private expressionReset: { indices: number[] } | null = null
   /** model3.json 声明的 HitAreas(素材未导出则为空)。 */
   private hitAreas: ModelHitArea[] = []
   /** 头部 hitarea 命中网格(屏幕坐标);视图矩阵变化(外观/窗口)时清空重算。 */
@@ -754,6 +775,19 @@ class CubismRuntime implements Live2dRuntime {
       this.motionTime += deltaSeconds
       this.motionQueue.doUpdateMotion(model, this.motionTime)
     }
+    // 表情复位:停止 motion 后每帧把表情参数指数拉回模型默认(待机基准)。
+    // 不能依赖 SDK fadeOut——它拉向"当前值",而当前值快照已含 motion 表情 → 残留。
+    if (this.expressionReset) {
+      let done = true
+      for (const index of this.expressionReset.indices) {
+        const def = model.getParameterDefaultValue(index)
+        const cur = model.getParameterValueByIndex(index)
+        const next = cur + (def - cur) * (1 - Math.exp(-EXPRESSION_RESET_SPEED * deltaSeconds))
+        model.setParameterValueByIndex(index, next)
+        if (Math.abs(next - def) > 0.02) done = false
+      }
+      if (done) this.expressionReset = null
+    }
     if (this.pendingLook) this.applyViewLook(model, this.pendingLook)
     // 拖动物理反馈输入(0032):物理演算读参数当前值做归一化,先写再 save,每帧生效
     if (this.pendingDrag) this.applyDrag(model, this.pendingDrag)
@@ -848,20 +882,28 @@ class CubismRuntime implements Live2dRuntime {
     // 重播时旧表情淡出、新表情淡入,平滑切换。
     this.motionQueue.startMotion(motion, false)
     this.currentMotionName = name
+    // 新动画接管:取消待处理的复位
+    this.expressionReset = null
     console.info(`[live2d] playMotion("${name}") 开始`)
   }
 
   /**
-   * 停止当前表情动作:对未结束的队列 entry 设置 fadeOut,表情参数经
-   * MOTION_FADE_OUT_SECONDS 平滑回归基准(直接清队列会把参数钉在最后一帧值)。
+   * 停止当前表情动作:立即清队列(不再写参数),并开始把表情参数指数平滑拉回
+   * 模型默认值(待机基准)。SDK fadeOut 拉向"当前值"而非默认值,会残留摸头表情,
+   * 故弃用,由运行时自行复位(0037)。
    */
   stopMotion(): void {
     if (!this.motionQueue) return
     this.currentMotionName = null
-    const entries = this.motionQueue.getCubismMotionQueueEntries()
-    for (const entry of entries) {
-      if (!entry.isFinished()) entry.setFadeOut(MOTION_FADE_OUT_SECONDS)
+    this.motionQueue.stopAllMotions()
+    const model = this.userModel?.getModel()
+    if (!model) return
+    const indices: number[] = []
+    for (const id of EXPRESSION_PARAM_IDS) {
+      const index = model.getParameterIndex(this.id(id))
+      if (index >= 0) indices.push(index)
     }
+    if (indices.length > 0) this.expressionReset = { indices }
   }
 
   playExpression(name: string): void {
@@ -879,6 +921,7 @@ class CubismRuntime implements Live2dRuntime {
     this.motionQueue = null
     this.motionCache.clear()
     this.currentMotionName = null
+    this.expressionReset = null
     this.headMeshCache = null
     if (this.breath) CubismBreath.delete(this.breath)
     this.breath = null

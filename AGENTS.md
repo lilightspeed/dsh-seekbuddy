@@ -50,6 +50,11 @@ DSH 运行实例默认在 `http://127.0.0.1:3080`(loopback 受信,宠物权限�
 - `apps/pet` 的 tsconfig 继承仓库 base 但**清空 `paths`**:workspace 依赖走 `node_modules` 里已构建的 `lib/types/*.d.ts`;若类型报"找不到模块",先确认对应包构建产物存在(根仓库 `pnpm run build:lib`)。
 - **动画可插拔**:状态机只输出语义状态(`idle/thinking/happy/sad/talking`),`PetAnimator` 接口(`src/renderer/src/pet/animator.ts`)是唯一懂动画后端的层——换 Lottie/Live2D 只加实现类,状态机/事件/UI 零改动。**现役后端是 Live2D**(`createLive2dAnimator`,官方 Cubism SDK + 独立 canvas 自绘,见 `pet/live2d/` 与 `vendor/live2d/README.md`);占位实现是 PixiJS 几何"球宠",WebGL2 不可用时回落。
 - **Live2D 运行时事实**:SDK vendor 在 `vendor/live2d/`(Framework 编译产物走 `@live2d/framework` 别名,Core 全局经 index.html script 引入);着色器在 `assets/pet/live2d/shaders/`;每帧必须按 `loadParameters → 写跟随参数 → saveParameters → 调度器 → model.update` 节奏(加算型更新器如呼吸,缺了会跨帧累加被 clamp 钉死,0019)。
+- **Live2D motion 播放三坑(0037 实测)**:
+  1. `CubismMotion.create` 后**必须 `setEffectIds([], [])`**(本模型 EyeBlink/LipSync 组为空;不调则 `_eyeBlinkParameterIds` 为 null,`doUpdateParameters` 首帧抛 `null.length` TypeError → 动画器 tick 崩溃、模型定格)。若素材加了 Effect 组,传 model3.json Groups 里的 Ids。
+  2. `CubismMotion.create` **不读 json 的 `Loop` 字段**(create 内赋值被注释),须按 `Meta.Loop` 显式 `setLoop`;素材未写 FadeInTime 时默认 1.0s 淡入(表情渐入太慢像没反应),运行时压到 0.15s(`setFadeInTime`)。
+  3. **SDK fadeOut 拉向"当前值"而非默认值**:每帧 save 快照已含 motion 写的表情 → fadeOut 无法回归待机,表情残留。停止须 `stopAllMotions()` 后由运行时把表情参数指数平滑拉回模型默认(`expressionReset`,`EXPRESSION_PARAM_IDS` 见 cubism-runtime.ts)。
+- **HitArea 命中(0037)**:Editor 里 `建模 → 图形网格 → 创建触碰检测用途的图形网格`(红框)→ 编辑纹理集 → 导出 = 标准流程;导出的 `model3.json` HitAreas 是**旧格式**(仅 `Id`/`Name`,Id 引用 moc3 里的触碰检测网格 drawable,**没有 X/Y/Width/Height**——正常,走网格命中而非矩形)。运行时 `parseHitAreas` 兼容新旧格式;`computeHeadMesh` 优先取 Id 对应 drawable 顶点,经 `buildProjectionMatrix`(渲染同款矩阵)映射到屏幕做**射线法点包含测试**(`hitTestPoint`),无网格回退矩形四角/估算。坐标语义:画布归一化左上原点;moc3 画布 `canvasWidth=1` 时渲染/换算走 else 分支适配。另:Name 可留空,匹配按 Name/Id 含 "head"。
 - **视角跟随的光标来自主进程轮询**:`#stage` 整窗是 `-webkit-app-region: drag`,拖拽区域会吞掉 renderer 的鼠标事件(0016)→ 主进程 33ms 轮询 `screen.getCursorScreenPoint()` + 窗口 bounds,经 `pet:cursor` 推给 renderer;**不要**在 renderer 里依赖 pointermove 做跟随。
 - **PixiJS v8 要求 CSP 允许 `unsafe-eval`**(WebGL 着色器生成),renderer 的 CSP 已为此放开;代价是 Electron dev 期的安全警告(打包后消失)。
 - **IPC 参数必须可序列化**:`undefined`/`NaN` 过 IPC 会触发主进程 `Error processing argument at index N, conversion failure` 崩溃。参数合法性在 **preload 边界统一收敛**(`toFinite` / `String`),renderer 与主进程 handler 不要透传原始值。
