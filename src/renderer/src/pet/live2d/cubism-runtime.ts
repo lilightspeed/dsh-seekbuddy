@@ -117,6 +117,13 @@ function pointInPolygon(x: number, y: number, pts: { x: number; y: number }[]): 
   return inside
 }
 
+/** 头部 hitarea 命中网格(屏幕坐标,每次按当前帧变形顶点重算)。 */
+interface HeadMesh {
+  points: { x: number; y: number }[]
+  /** 包围盒(HitAreaHead 是 4 顶点矩形,包围盒即网格本身;overlay 定位用)。 */
+  bounds: { x: number; y: number; width: number; height: number }
+}
+
 /**
  * 未拖动时恢复"角度驱动头发"(0036)。
  *
@@ -301,9 +308,6 @@ class CubismRuntime implements Live2dRuntime {
   private expressionReset: { indices: number[] } | null = null
   /** model3.json 声明的 HitAreas(素材未导出则为空)。 */
   private hitAreas: ModelHitArea[] = []
-  /** 头部 hitarea 命中网格(屏幕坐标);视图矩阵变化(外观/窗口)时清空重算。 */
-  private headMeshCache: { points: { x: number; y: number }[]; center: { x: number; y: number }; radius: number } | null =
-    null
   private ready = false
   private disposed = false
   private viewMatrix = new CubismViewMatrix()
@@ -365,8 +369,6 @@ class CubismRuntime implements Live2dRuntime {
     const ty = 1 - 2 * this.appearance.positionY
     view.translateRelative(tx, ty)
     this.viewMatrix = view
-    // 视图变化 → 命中网格需按新投影重算
-    this.headMeshCache = null
   }
 
   setAppearance(appearance: Live2dAppearance): void {
@@ -414,21 +416,17 @@ class CubismRuntime implements Live2dRuntime {
   /**
    * 计算头部 hitarea 的屏幕命中网格(0037)。
    * 匹配 Name/Id 含 "head" 的 HitArea,优先取 Id 引用的 moc3 触碰检测网格(drawable,
-   * 旧格式,最贴合轮廓);无网格则用矩形坐标(新格式)生成四角;都没有则无缓存。
+   * 旧格式,最贴合轮廓);无网格则用矩形坐标(新格式)生成四角。
+   * **每次调用按当前帧顶点重算**(不缓存):HitAreaHead 网格挂在变形器上,顶点随
+   * 头部角度等参数变化(0037 实测),缓存会与渲染错位 → 触发区域对不上模型。
    */
-  private computeHeadMesh(): void {
+  private computeHeadMesh(): HeadMesh | null {
     const model = this.userModel?.getModel()
-    if (!model) {
-      this.headMeshCache = null
-      return
-    }
+    if (!model) return null
     const head = this.hitAreas.find(
       (h) => h.name.toLowerCase().includes('head') || h.id.toLowerCase().includes('head'),
     )
-    if (!head) {
-      this.headMeshCache = null
-      return
-    }
+    if (!head) return null
 
     // 1) 旧格式:Id 引用触碰检测网格(drawable)—— 顶点多边形(最贴合)
     if (head.id) {
@@ -441,10 +439,7 @@ class CubismRuntime implements Live2dRuntime {
           const py = positions[i + 1] ?? 0
           points.push(this.modelPointToScreen(px, py))
         }
-        if (points.length >= 3) {
-          this.headMeshCache = this.makeHeadMesh(points)
-          return
-        }
+        if (points.length >= 3) return this.makeHeadMesh(points)
       }
     }
 
@@ -461,20 +456,15 @@ class CubismRuntime implements Live2dRuntime {
           this.modelPointToScreen((head.x + w - 0.5) * canvasW, (0.5 - (head.y + h)) * canvasH),
           this.modelPointToScreen((head.x - 0.5) * canvasW, (0.5 - (head.y + h)) * canvasH),
         ]
-        this.headMeshCache = this.makeHeadMesh(points)
-        return
+        return this.makeHeadMesh(points)
       }
     }
 
-    this.headMeshCache = null
+    return null
   }
 
-  /** 顶点列表 → 命中网格(包围盒中心 + 半对角线半径,保底 24px)。 */
-  private makeHeadMesh(points: { x: number; y: number }[]): {
-    points: { x: number; y: number }[]
-    center: { x: number; y: number }
-    radius: number
-  } {
+  /** 顶点列表 → 命中网格(包围盒;HitAreaHead 是 4 顶点矩形,包围盒即网格本身)。 */
+  private makeHeadMesh(points: { x: number; y: number }[]): HeadMesh {
     let minX = Infinity
     let minY = Infinity
     let maxX = -Infinity
@@ -487,22 +477,19 @@ class CubismRuntime implements Live2dRuntime {
     }
     return {
       points,
-      center: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 },
-      radius: Math.max(24, Math.hypot(maxX - minX, maxY - minY) / 2),
+      bounds: { x: minX, y: minY, width: maxX - minX, height: maxY - minY },
     }
   }
 
-  /** 头部 hitarea 的屏幕位置与命中半径(点击区 overlay 定位用);无 hitarea 返回 null。 */
-  getHeadPoint(): { x: number; y: number; radius: number } | null {
-    if (!this.headMeshCache) this.computeHeadMesh()
-    const mesh = this.headMeshCache
-    return mesh ? { ...mesh.center, radius: mesh.radius } : null
+  /** 头部 hitarea 的屏幕包围盒(点击区 overlay 定位用,与命中区域一致);无 hitarea 返回 null。 */
+  getHeadPoint(): { x: number; y: number; width: number; height: number } | null {
+    const mesh = this.computeHeadMesh()
+    return mesh ? { ...mesh.bounds } : null
   }
 
   /** 屏幕坐标是否命中头部 hitarea 网格(点击摸头精确判定);无 hitarea 返回 undefined 由调用方回落。 */
   hitTestPoint(x: number, y: number): boolean | undefined {
-    if (!this.headMeshCache) this.computeHeadMesh()
-    const mesh = this.headMeshCache
+    const mesh = this.computeHeadMesh()
     if (!mesh) return undefined
     return pointInPolygon(x, y, mesh.points)
   }
@@ -939,7 +926,6 @@ class CubismRuntime implements Live2dRuntime {
     this.motionCache.clear()
     this.currentMotionName = null
     this.expressionReset = null
-    this.headMeshCache = null
     if (this.breath) CubismBreath.delete(this.breath)
     this.breath = null
     if (this.eyeBlink) CubismEyeBlink.delete(this.eyeBlink)

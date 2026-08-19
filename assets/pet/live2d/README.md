@@ -103,10 +103,13 @@
   `setLoop`;**摸头强制非循环**(见坑 3);motion 内部不做 load/save,只 set 有曲线的参数,
   插在每帧 load 之后、视角跟随之前 —— 只覆盖表情参数,不碰头部/眼珠视角。
 - 触发:`create-live2d-animator.ts` —— idle(未工作)时**点击头部点击区**触发
-  (`#pet-head-hit`,no-drag 透明圆,定位用)。**命中判定优先用 HitArea 网格**:
+  (`#pet-head-hit`,no-drag 透明**矩形**,与命中区域一致)。**命中判定优先用 HitArea 网格**:
   运行时按 model3.json HitAreas(旧格式 Id 引用 moc3 触碰检测网格 drawable)取顶点,
   经 `buildProjectionMatrix` 映射到屏幕做**射线法点包含测试**(`hitTestPoint`,最贴合
-  轮廓);无网格回退新格式矩形坐标,再无则"锚点上方 0.18 窗口高 + 52px"估算。
+  轮廓);无网格回退新格式矩形坐标,再无则"锚点上方 0.18 窗口高 + 104px"估算。
+  **网格每次按当前帧顶点重算**(0037:HitAreaHead 挂在变形器上,顶点随头部角度变化,
+  缓存会与渲染错位 → overlay/命中区域跟随模型实际位置)。HitAreaHead 是 4 顶点矩形,
+  包围盒即网格本身 → no-drag 区域 = 触发区域 = 模型上的 hitarea。
   Editor 流程:`建模 → 图形网格 → 创建触碰检测用途的图形网格` → 编辑纹理集 → 导出。
   动画**非循环播一遍(3.83s)自然结束 → 运行时检测队列清空自动平滑复位**;期间再次
   点击续摸(播放中幂等、已结束重新播放);状态离开 idle 立即停止(`stopMotion` =

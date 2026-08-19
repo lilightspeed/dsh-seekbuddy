@@ -112,55 +112,59 @@ function createLive2dAnimatorWithRuntime(
   let dragCurrent = { x: 0, y: 0 }
 
   /**
-   * 摸头反馈(点击触发):idle(未工作)时点击头部点击区 → 播放 pat-head 循环表情
-   * PAT_PLAY_MS 后淡出停止,期间再次点击续摸(重置计时);状态离开 idle 立即淡出。
+   * 摸头反馈(点击触发):idle(未工作)时点击头部点击区 → 播放 pat-head 表情一遍
+   * 后自然结束自动复位,期间再次点击续摸(重置计时);状态离开 idle 立即停止。
    * 与瞳孔收缩(0029,快速接近受惊)互补:接近时缩瞳,点击头部时摸头享受。
    * #stage 是 drag 区域会吞掉 renderer 鼠标事件(0016),故叠一个 no-drag 透明
-   * 圆形点击区(#pet-head-hit)捕获点击;位置每帧跟随头部锚点。
+   * 矩形点击区(#pet-head-hit)捕获点击;**矩形 = 命中网格包围盒,与触发区域一致**
+   * (0037:HitAreaHead 是 4 顶点矩形,包围盒即网格本身);无 hitarea 回退估算矩形。
    */
-  /** 头部点击区半径(px;素材导出 HitAreas 时由运行时按 hitarea 计算覆盖)。 */
-  const PAT_HIT_RADIUS = 52
+  /** 头部点击区边长(px;素材导出 HitAreas 时由运行时按 hitarea 包围盒覆盖)。 */
+  const PAT_HIT_SIZE = 104
   /** 头部相对模型中心锚点(anchor,窗口 positionX/Y)的向上偏移(窗口高度比例;仅 HitAreas 缺失时回退)。 */
   const PAT_HEAD_OFFSET_RATIO = 0.18
-  /** 一次摸头播放时长(ms):素材单循环 3.83s,播满一轮后淡出;期间再点续摸。 */
+  /** 一次摸头播放时长(ms,兜底):动画 3.83s 自然结束后运行时自动复位,此值仅兜底。 */
   const PAT_PLAY_MS = 4000
   const PAT_MOTION = 'pat-head'
   /** 摸头表情是否在播放。 */
   let patActive = false
   /** 本次摸头已播放时长(ms);再次点击重置。 */
   let patPlayMs = 0
-  /** 头部点击区:no-drag 透明圆,点击触发摸头。 */
+  /** 头部点击区:no-drag 透明矩形(与命中区域一致),点击触发摸头。 */
   const hitEl = document.createElement('div')
   hitEl.id = 'pet-head-hit'
   hitEl.style.cssText =
-    `position: fixed; z-index: 2; width: ${PAT_HIT_RADIUS * 2}px; height: ${PAT_HIT_RADIUS * 2}px;` +
-    'border-radius: 50%; pointer-events: auto; -webkit-app-region: no-drag;' +
-    'transform: translate(-50%, -50%); background: transparent;'
+    `position: fixed; z-index: 2; width: ${PAT_HIT_SIZE}px; height: ${PAT_HIT_SIZE}px;` +
+    'border-radius: 6px; pointer-events: auto; -webkit-app-region: no-drag;' +
+    'background: transparent;'
   document.body.appendChild(hitEl)
 
   /**
-   * 头部锚点:优先取运行时按 model3.json HitAreas 算出的精确位置(用户工程里
-   * HitHeadArea 导出后自动生效);素材未导出时回退"模型中心锚点上方偏移"估算。
+   * 头部点击区(左上角 + 尺寸):优先取运行时按 model3.json HitAreas 算出的精确
+   * 包围盒(与命中网格一致);素材未导出时回退"模型中心锚点上方偏移"估算。
    */
-  function headAnchor(): { x: number; y: number; radius: number } {
+  function headAnchor(): { x: number; y: number; width: number; height: number } {
     const hit = runtime.getHeadPoint?.()
     if (hit) return hit
     const a = anchor()
-    return { x: a.x, y: a.y - window.innerHeight * PAT_HEAD_OFFSET_RATIO, radius: PAT_HIT_RADIUS }
+    return {
+      x: a.x - PAT_HIT_SIZE / 2,
+      y: a.y - window.innerHeight * PAT_HEAD_OFFSET_RATIO - PAT_HIT_SIZE / 2,
+      width: PAT_HIT_SIZE,
+      height: PAT_HIT_SIZE,
+    }
   }
 
   /** 点击头部:触发摸头(未在摸则开始,已在摸则续摸重置计时);非 idle 忽略。
-   *  有 hitarea 网格时做精确命中(旧格式 Id 网格点包含),否则 overlay 圆内即触发。
+   *  有 hitarea 网格时做精确命中(旧格式 Id 网格点包含),否则 overlay 矩形内即触发。
    *  播放中重复点击:playMotion 幂等(同 motion 忽略),仅续摸;动画自然结束后
-   *  currentMotionName 已清,再次点击会重新播放。 */
+   *  currentMotionName 已清,再次点击会重新播放。**每次触发都关眨眼**(0037:
+   *  动画结束后复位会恢复眨眼,续摸/重播若不重关,眨眼会覆盖 motion 的闭眼)。 */
   function triggerPat(x: number, y: number): void {
     if (state !== 'idle') return
     if (runtime.hitTestPoint && !runtime.hitTestPoint(x, y)) return
-    if (!patActive) {
-      patActive = true
-      // motion 接管眼睛(闭眼享受),自动眨眼让位;停止/结束后由运行时恢复
-      runtime.setAutoBlink(false)
-    }
+    if (!patActive) patActive = true
+    runtime.setAutoBlink(false)
     runtime.playMotion(PAT_MOTION)
     patPlayMs = 0
   }
@@ -259,8 +263,8 @@ function createLive2dAnimatorWithRuntime(
       const h = headAnchor()
       hitEl.style.left = `${h.x}px`
       hitEl.style.top = `${h.y}px`
-      hitEl.style.width = `${h.radius * 2}px`
-      hitEl.style.height = `${h.radius * 2}px`
+      hitEl.style.width = `${h.width}px`
+      hitEl.style.height = `${h.height}px`
       runtime.setViewLook(follower.look())
       // 拖动反馈:指数平滑趋近目标(停止拖动后目标为 0 → 参数回中,物理余韵自然衰减)
       const k = 1 - Math.exp(-DRAG_SMOOTHING * deltaSeconds)

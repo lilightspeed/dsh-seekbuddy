@@ -48,10 +48,10 @@ export interface Live2dRuntime {
   /** 停止当前动作(fade out 平滑回归,未实现可忽略)。 */
   stopMotion(): void
   /**
-   * 头部 hitarea 的屏幕位置与命中半径(点击摸头用;素材未导出 HitAreas 返回 null,
-   * 调用方回退估算)。可选:占位/测试实现可不提供。
+   * 头部 hitarea 的屏幕包围盒(点击区 overlay 定位用,与命中区域一致;素材未导出
+   * HitAreas 返回 null,调用方回退估算)。可选:占位/测试实现可不提供。
    */
-  getHeadPoint?(): { x: number; y: number; radius: number } | null
+  getHeadPoint?(): { x: number; y: number; width: number; height: number } | null
   /**
    * 屏幕坐标是否命中头部 hitarea 网格(旧格式 Id 引用的触碰检测网格做点包含测试)。
    * 无 hitarea 返回 undefined(调用方回落为 overlay 圆内即命中)。
