@@ -273,8 +273,9 @@ export interface CubismRuntimeOptions {
   /** 初始外观(位置/大小);之后由 setAppearance 实时调整(0017)。 */
   appearance: Live2dAppearance
   /** motion 逻辑名 → 素材文件/循环配置;由 animation-registry 派生注入(0037s 单点配置)。
-   *  holdEnd(0038):非循环动画播完后保持末尾姿态(思考),由运行时捕获曲线末帧参数持续恢复。 */
-  motions?: Record<string, { file: string; loop: boolean; holdEnd?: boolean }>
+   *  holdEnd(0038):非循环动画播完后保持末尾姿态(思考),由运行时捕获曲线末帧参数持续恢复。
+   *  fadeInSeconds(0043):覆盖默认淡入(0 = 禁用;循环贴纸必须禁用,见 AnimationSpec 注释)。 */
+  motions?: Record<string, { file: string; loop: boolean; holdEnd?: boolean; fadeInSeconds?: number }>
 }
 
 /** 创建 Cubism 运行时;WebGL2 不可用时返回 null(调用方回落占位动画)。 */
@@ -420,8 +421,8 @@ class CubismRuntime implements Live2dRuntime {
   private readonly motionCache = new Map<string, CubismMotion | null>()
   /** 各通道当前正在播放(或正在异步加载)的 motion 逻辑名;无 = 该通道空闲。 */
   private readonly currentMotion = new Map<AnimationChannel, string>()
-  /** motion 素材配置(逻辑名 → file/loop),构造注入(0037s)。 */
-  private readonly motions: Record<string, { file: string; loop: boolean; holdEnd?: boolean }>
+  /** motion 素材配置(逻辑名 → file/loop/fadeIn),构造注入(0037s/0043)。 */
+  private readonly motions: Record<string, { file: string; loop: boolean; holdEnd?: boolean; fadeInSeconds?: number }>
   /**
    * hold-end 动作的"曲线末帧"参数值(0038):每个通道一份,记录该通道 motion 最近一次
    * 写入的曲线参数值。播放期间每帧随 doUpdateMotion 更新;motion 自然结束后(思考)
@@ -466,7 +467,7 @@ class CubismRuntime implements Live2dRuntime {
     gl: WebGL2RenderingContext,
     host: HTMLElement,
     appearance: Live2dAppearance,
-    motions: Record<string, { file: string; loop: boolean; holdEnd?: boolean }>,
+    motions: Record<string, { file: string; loop: boolean; holdEnd?: boolean; fadeInSeconds?: number }>,
   ) {
     this.canvas = canvas
     this.gl = gl
@@ -1013,7 +1014,15 @@ class CubismRuntime implements Live2dRuntime {
         model.setParameterValueByIndex(index, next)
         if (Math.abs(next - def) > 0.02) done = false
       }
-      if (done) this.expressionReset = null
+      if (done) {
+        // 0043:收尾**钉死到精确默认值** —— 指数趋近在 ±0.02 阈值内停住,贴纸类参数
+        // (如思考气泡 ParamBubbleEllipsis2,default=0)会留下 ~2% 残影(气泡不透明化),
+        // 这里收敛完成后一次性钉到默认(气泡完全隐藏),对平滑参数不可感知。
+        for (const { index } of this.expressionReset.params) {
+          model.setParameterValueByIndex(index, model.getParameterDefaultValue(index))
+        }
+        this.expressionReset = null
+      }
     }
     if (this.pendingLook) this.applyViewLook(model, this.pendingLook)
     // 拖动物理反馈输入(0032):物理演算读参数当前值做归一化,先写再 save,每帧生效
@@ -1118,8 +1127,11 @@ class CubismRuntime implements Live2dRuntime {
         // create 内 _loop 赋值被注释),按素材配置显式 setLoop。
         const instance = CubismMotion.create(buf, buf.byteLength)
         instance.setLoop(config.loop)
-        // 素材未写 FadeInTime 时 SDK 默认 1.0s,表情渐入太慢(看起来没反应),压短
-        instance.setFadeInTime(MOTION_FADE_IN_SECONDS)
+        // 素材未写 FadeInTime 时 SDK 默认 1.0s,表情渐入太慢(看起来没反应),压短到 0.15s;
+        // 循环贴纸(思考气泡,0042)配置 fadeInSeconds:0 覆盖 —— 淡入会从当前参数值混合起播
+        // (前几帧闪出中间帧状态:点点参数 0.5 = 全部点点),且循环点重设淡入造成周期性闪动,
+        // 曲线直写则骤显骤灭,与素材"气泡非淡入淡出"一致。
+        instance.setFadeInTime(config.fadeInSeconds ?? MOTION_FADE_IN_SECONDS)
         // 素材未写 FadeOutTime 时 SDK 默认 1.0s(ACubismMotion.parse)→ 短动作(思考 0.5s)
         // 被全程淡出压扁,曲线到不了终点值(0038 实测:ParamArmRChange 只到 0.52,两只手
         // 各约 50% 半透明;编辑器无此默认淡出)。SDK fadeOut 拉向"当前值"本就无法回归待机

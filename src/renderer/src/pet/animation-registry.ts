@@ -90,6 +90,9 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
     file: 'Expression_think_thinking.motion3.json',
     loop: true,
     priority: 0,
+    // 0043:禁用淡入 —— 循环贴纸的淡入会从当前参数值混合起播,前几帧闪出中间帧状态
+    // (点点参数 0.5 = 全部点点,即动画第 21 帧);且循环点重设淡入会造成周期性闪动。
+    fadeInSeconds: 0,
     autoBlink: false,
   },
   /**
@@ -128,12 +131,17 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
   },
 }
 
-/** runtime 需要的 file/loop/holdEnd 映射(由 ANIMATIONS 派生,单点配置,0037s)。 */
-export const MOTION_FILES: Record<string, { file: string; loop: boolean; holdEnd?: boolean }> = Object.fromEntries(
-  Object.entries(ANIMATIONS).map(([id, spec]) => {
-    const entry: { file: string; loop: boolean; holdEnd?: boolean } = { file: spec.file, loop: spec.loop ?? false }
-    // exactOptionalPropertyTypes:可选属性不能赋显式 undefined,条件写入
-    if (spec.holdEnd !== undefined) entry.holdEnd = spec.holdEnd
-    return [id, entry]
-  }),
-)
+/** runtime 需要的 file/loop/holdEnd/fadeInSeconds 映射(由 ANIMATIONS 派生,单点配置,0037s)。 */
+export const MOTION_FILES: Record<string, { file: string; loop: boolean; holdEnd?: boolean; fadeInSeconds?: number }> =
+  Object.fromEntries(
+    Object.entries(ANIMATIONS).map(([id, spec]) => {
+      const entry: { file: string; loop: boolean; holdEnd?: boolean; fadeInSeconds?: number } = {
+        file: spec.file,
+        loop: spec.loop ?? false,
+      }
+      // exactOptionalPropertyTypes:可选属性不能赋显式 undefined,条件写入
+      if (spec.holdEnd !== undefined) entry.holdEnd = spec.holdEnd
+      if (spec.fadeInSeconds !== undefined) entry.fadeInSeconds = spec.fadeInSeconds
+      return [id, entry]
+    }),
+  )
