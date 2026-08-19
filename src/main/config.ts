@@ -114,6 +114,7 @@ export class PetConfigStore {
           if (typeof raw.pet.pupilSensitivity === 'number') next.pet.pupilSensitivity = clamp(raw.pet.pupilSensitivity, 200, 2000)
           if (typeof raw.pet.pupilMax === 'number') next.pet.pupilMax = clamp(raw.pet.pupilMax, 0, 1)
           if (typeof raw.pet.dragStrength === 'number') next.pet.dragStrength = clamp(raw.pet.dragStrength, 0, 1)
+          if (typeof raw.pet.showHitMesh === 'boolean') next.pet.showHitMesh = raw.pet.showHitMesh
         }
         if (typeof raw.voice?.enabled === 'boolean') next.voice.enabled = raw.voice.enabled
         if (typeof raw.launchAtLogin === 'boolean') next.launchAtLogin = raw.launchAtLogin

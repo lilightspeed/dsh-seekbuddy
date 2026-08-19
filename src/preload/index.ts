@@ -41,6 +41,7 @@ function sanitizeConfigUpdate(patch: PetConfigUpdate | undefined): PetConfigUpda
   if (patch?.petPupilSensitivity !== undefined) out.petPupilSensitivity = toFinite(patch.petPupilSensitivity)
   if (patch?.petPupilMax !== undefined) out.petPupilMax = toFinite(patch.petPupilMax)
   if (patch?.petDragStrength !== undefined) out.petDragStrength = toFinite(patch.petDragStrength)
+  if (patch?.petShowHitMesh !== undefined) out.petShowHitMesh = Boolean(patch.petShowHitMesh)
   return out
 }
 
