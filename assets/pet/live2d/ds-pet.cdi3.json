@@ -12,6 +12,21 @@
 			"Name": "角度 Y"
 		},
 		{
+			"Id": "ParamEyeBallX",
+			"GroupId": "",
+			"Name": "眼珠转动X"
+		},
+		{
+			"Id": "ParamEyeBallY",
+			"GroupId": "",
+			"Name": "眼珠转动Y"
+		},
+		{
+			"Id": "ParamEyeForm",
+			"GroupId": "",
+			"Name": "双眼神态"
+		},
+		{
 			"Id": "ParamTailRoot",
 			"GroupId": "",
 			"Name": "尾巴根摆动"
@@ -40,16 +55,6 @@
 			"Id": "ParamHairSwayY",
 			"GroupId": "",
 			"Name": "前发上下飘动"
-		},
-		{
-			"Id": "ParamEyeBallX",
-			"GroupId": "",
-			"Name": "眼珠转动X"
-		},
-		{
-			"Id": "ParamEyeBallY",
-			"GroupId": "",
-			"Name": "眼珠转动Y"
 		},
 		{
 			"Id": "ParamAngleZ",
@@ -120,23 +125,42 @@
 			"Id": "ParamBackHairSwing",
 			"GroupId": "",
 			"Name": "后发上下"
+		},
+		{
+			"Id": "ParamCheek",
+			"GroupId": "",
+			"Name": "红晕"
+		},
+		{
+			"Id": "ParamMouthOpenY",
+			"GroupId": "",
+			"Name": "闭上嘴巴"
+		},
+		{
+			"Id": "ParamTear",
+			"GroupId": "",
+			"Name": "流泪"
 		}
 	],
 	"ParameterGroups": [],
 	"Parts": [
 		{
-			"Id": "Part2",
-			"Name": "mouth2.psd(未找到对应图层)"
-		},
-		{
 			"Id": "PartEyeMask",
 			"Name": "眼睛蒙版"
+		},
+		{
+			"Id": "PartSketch0",
+			"Name": "[ 参考图 ]"
 		}
 	],
 	"CombinedParameters": [
 		[
 			"ParamAngleX",
 			"ParamAngleY"
+		],
+		[
+			"ParamEyeBallX",
+			"ParamEyeBallY"
 		]
 	]
 }
