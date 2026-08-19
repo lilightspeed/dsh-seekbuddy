@@ -5,9 +5,9 @@
 		"Fps": 30.0,
 		"Loop": true,
 		"AreBeziersRestricted": false,
-		"CurveCount": 9,
-		"TotalSegmentCount": 24,
-		"TotalPointCount": 81,
+		"CurveCount": 8,
+		"TotalSegmentCount": 22,
+		"TotalPointCount": 74,
 		"UserDataCount": 0,
 		"TotalUserDataSize": 0
 	},
@@ -126,28 +126,6 @@
 				0,
 				2.033,
 				0
-			]
-		},
-		{
-			"Target": "Parameter",
-			"Id": "ParamTeasrs",
-			"Segments": [
-				0,
-				-1,
-				1,
-				0.144,
-				-1,
-				0.289,
-				1,
-				0.433,
-				1,
-				1,
-				0.967,
-				1,
-				1.5,
-				-1,
-				2.033,
-				-1
 			]
 		},
 		{
