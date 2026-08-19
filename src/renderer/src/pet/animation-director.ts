@@ -35,8 +35,10 @@ export interface AnimationSpec {
    *  走完"闭眼过程"再在 holdAt 冻结——有过程但不拖沓(替代 0037v 的瞬移跳变);
    *  缺省/≤1 = 按素材原速播放到 holdAt 再冻结(闭眼时长与素材关键帧一致,摸头默认)。 */
   holdSeekRate?: number
-  /** 0037w:按下时动画已播过保持帧(续摸/播放中再按)则先回跳到该秒数(闭眼起点
-   *  附近),再按 holdSeekRate 加速闭眼到 holdAt;缺省 0(从头)。 */
+  /** 0037w:按下时动画已播过保持段(眼睛已睁开)则回跳到该秒数,直接进入保持状态。
+   *  摸头 = holdAt(0.45s 闭眼保持帧)——瞬间回到"闭眼享受"而非回跳闭眼起点重播
+   *  (回跳 0.1s 会落到"大睁+红晕浅"的半吊子帧,断断续续摸头时观感像快速睁眼/
+   *  红晕闪变,0037y);缺省 0(动画起点)。 */
   holdRewindTo?: number
   /** 0037x:hold 模式"保持段"结束点(秒)——素材中"闭眼保持"到"开始睁眼"的切换
    *  时刻(如摸头素材 EyeLOpen 1.2s 起睁眼)。按下时 elapsed 已过该点 = 眼睛已睁开,
@@ -156,10 +158,12 @@ export function createAnimationDirector(runtime: Live2dRuntime): AnimationDirect
         // 0037w:"鼠标过来摸头就闭眼享受"——按下后动画从 0 以素材原速走完闭眼过程
         // 到保持帧(闭眼时长与素材关键帧一致),再由 tick 在 holdAt 冻结;若配置了
         // holdSeekRate>1 才加速(其他动画可选)。
-        // 0037x:回跳重闭眼只在"眼睛已睁开"时发生(elapsed ≥ holdUntil,素材保持段
-        // 结束点)——动画正处于 [holdAt, holdUntil) 闭眼保持段时按下,不重闭不跳变,
-        // 由 tick 直接冻结当前帧(正闭着眼就不必再闭一次);elapsed < holdAt(闭眼
-        // 进行中)同样不干预。素材未加载(elapsed=-1)时按下后照常从起点原速播放。
+        // 0037x:回跳只发生在"眼睛已睁开"时(elapsed ≥ holdUntil,素材保持段结束点)
+        // ——动画正处于 [holdAt, holdUntil) 闭眼保持段时按下,不重闭不跳变,由 tick
+        // 直接冻结当前帧(正闭着眼就不必再闭一次);elapsed < holdAt(闭眼进行中)
+        // 同样不干预。素材未加载(elapsed=-1)时按下后照常从起点原速播放。
+        // 0037y:回跳目标是保持帧 holdRewindTo(摸头=holdAt)——直接进入闭眼享受态,
+        // 不回跳 0.1s 闭眼起点(半吊子帧,断断续续摸头时像快速睁眼/红晕闪变)。
         if (entry.spec.mode === 'hold' && (entry.spec.holdAt ?? 0) > 0) {
           const holdAt = entry.spec.holdAt ?? 0
           const holdUntil = entry.spec.holdUntil ?? holdAt

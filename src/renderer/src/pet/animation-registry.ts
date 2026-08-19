@@ -17,7 +17,8 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
    *   "开始→闭眼"(≈0.33s),到 holdAt 冻结——闭眼时长与素材关键帧一致
    * - holdUntil=1.2(0037x,素材 EyeLOpen 1.2s 起睁眼):动画处于 [0.45,1.2) 闭眼
    *   保持段时按下,直接冻结当前帧不重闭;已过 1.2s(眼睛已睁开)才回跳
-   *   holdRewindTo=0.1s 闭眼起点重新闭眼——"正闭着眼时摸头不再闭一次眼"
+   *   holdRewindTo=0.45(0037y,=holdAt 保持帧)瞬间回到闭眼享受——不回跳 0.1s
+   *   闭眼起点(半吊子帧,断断续续摸头时像快速睁眼/红晕闪变)
    * - durationMs: 4000 兜底(素材 3.83s 自然结束,此值仅防异常)
    * - priority 默认 0:可被 sad(1) 打断
    */
@@ -28,7 +29,7 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
     mode: 'hold',
     holdAt: 0.45,
     holdUntil: 1.2,
-    holdRewindTo: 0.1,
+    holdRewindTo: 0.45,
     durationMs: 4000,
     autoBlink: false,
   },
