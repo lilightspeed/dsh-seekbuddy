@@ -1066,6 +1066,12 @@ class CubismRuntime implements Live2dRuntime {
         instance.setLoop(config.loop)
         // 素材未写 FadeInTime 时 SDK 默认 1.0s,表情渐入太慢(看起来没反应),压短
         instance.setFadeInTime(MOTION_FADE_IN_SECONDS)
+        // 素材未写 FadeOutTime 时 SDK 默认 1.0s(ACubismMotion.parse)→ 短动作(思考 0.5s)
+        // 被全程淡出压扁,曲线到不了终点值(0038 实测:ParamArmRChange 只到 0.52,两只手
+        // 各约 50% 半透明;编辑器无此默认淡出)。SDK fadeOut 拉向"当前值"本就无法回归待机
+        // (0037 坑 3,复位由 expressionReset 负责),这里直接禁用:setFadeOutTime(0) →
+        // fadeWeight 恒 1,曲线按素材原值走。对摸头/sad 同样更干净(末尾不再被 1s 淡出拖尾)。
+        instance.setFadeOutTime(0)
         // 关键:不 setEffectIds 时 _eyeBlinkParameterIds/_lipSyncParameterIds 为 null,
         // doUpdateParameters 首帧就抛 null.length TypeError → 动画器 tick 崩溃、模型
         // 定格"完全静止"(0037 实测)。本模型 EyeBlink/LipSync 组为空,传空数组即可。
