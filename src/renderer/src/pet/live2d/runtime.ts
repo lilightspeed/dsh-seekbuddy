@@ -75,9 +75,10 @@ export interface Live2dRuntime {
    */
   seekMotion?(channel: AnimationChannel, seconds: number): void
   /**
-   * 设置某通道 motion 的播放倍速(0037w):>1 加速(按住摸头快速走完闭眼过程到
-   * 保持帧,有过程但不拖沓),=1 原速(缺省);播放期间可随时切换,不影响 entry
-   * startTime 与 elapsed 语义。可选:占位/测试实现可不提供。
+   * 设置某通道 motion 的播放倍速(0037w/0037z):>1 加速,1 原速(缺省),
+   * **负数 = 反向播放**(每帧时间按 rate 倍倒退,曲线均匀倒回,0037z 用于
+   * 已睁眼段按下时平滑倒带回保持帧,替代瞬间 seek 跳变)。播放期间可随时
+   * 切换,不影响 entry startTime 与 elapsed 语义。可选:占位/测试实现可不提供。
    */
   setMotionRate?(channel: AnimationChannel, rate: number): void
   /**

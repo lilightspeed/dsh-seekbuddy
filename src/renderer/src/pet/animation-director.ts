@@ -35,11 +35,14 @@ export interface AnimationSpec {
    *  走完"闭眼过程"再在 holdAt 冻结——有过程但不拖沓(替代 0037v 的瞬移跳变);
    *  缺省/≤1 = 按素材原速播放到 holdAt 再冻结(闭眼时长与素材关键帧一致,摸头默认)。 */
   holdSeekRate?: number
-  /** 0037w:按下时动画已播过保持段(眼睛已睁开)则回跳到该秒数,直接进入保持状态。
-   *  摸头 = holdAt(0.45s 闭眼保持帧)——瞬间回到"闭眼享受"而非回跳闭眼起点重播
-   *  (回跳 0.1s 会落到"大睁+红晕浅"的半吊子帧,断断续续摸头时观感像快速睁眼/
-   *  红晕闪变,0037y);缺省 0(动画起点)。 */
+  /** 0037y:按下时动画已播过保持段(眼睛已睁开)则回跳到该秒数,直接进入保持状态。
+   *  摸头 = holdAt(0.45s 闭眼保持帧)——0037z 起改为反向播放倒带回该点,平滑
+   *  无跳变;缺省 0(动画起点)。 */
   holdRewindTo?: number
+  /** 0037z:已睁眼段按下时的**反向播放倍速**(正数,如 2 = 2 倍速倒带)。按下后
+   *  动画从当前帧按该倍速均匀倒回 holdRewindTo,再由 tick 冻结——表情连续变化
+   *  (眼睛平滑闭上),替代瞬间 seek 的跳变观感;缺省 1(原速倒带)。 */
+  holdRewindRate?: number
   /** 0037x:hold 模式"保持段"结束点(秒)——素材中"闭眼保持"到"开始睁眼"的切换
    *  时刻(如摸头素材 EyeLOpen 1.2s 起睁眼)。按下时 elapsed 已过该点 = 眼睛已睁开,
    *  才回跳重闭眼;elapsed 仍处于 [holdAt, holdUntil) 保持段 = 正闭着眼,直接冻结
@@ -85,6 +88,9 @@ interface ActiveEntry {
   spec: AnimationSpec
   /** hold 模式已冻结(定格在保持帧)。 */
   frozen: boolean
+  /** 0037z:反向倒带中——已睁眼段按下,动画从当前帧以 holdRewindRate 均匀倒回
+   *  保持帧(替代瞬间 seek 跳变);倒带到 holdAt 由 tick 转为冻结。 */
+  rewinding: boolean
 }
 
 /** 创建动画导演(runtime 未就绪/加载失败等异常由导演自愈:条目随 isChannelActive=false 清理)。 */
@@ -141,7 +147,7 @@ export function createAnimationDirector(runtime: Live2dRuntime): AnimationDirect
 
   /** 开始播放:登记 active + 按 spec 接管眨眼 + runtime 播放(物理互斥由 runtime 兜底)。 */
   function start(spec: AnimationSpec): void {
-    active.set(spec.channel, { spec, frozen: false })
+    active.set(spec.channel, { spec, frozen: false, rewinding: false })
     runtime.setAutoBlink(spec.autoBlink ?? true)
     runtime.playMotion(spec.id, spec.channel)
   }
@@ -158,25 +164,30 @@ export function createAnimationDirector(runtime: Live2dRuntime): AnimationDirect
         // 0037w:"鼠标过来摸头就闭眼享受"——按下后动画从 0 以素材原速走完闭眼过程
         // 到保持帧(闭眼时长与素材关键帧一致),再由 tick 在 holdAt 冻结;若配置了
         // holdSeekRate>1 才加速(其他动画可选)。
-        // 0037x:回跳只发生在"眼睛已睁开"时(elapsed ≥ holdUntil,素材保持段结束点)
-        // ——动画正处于 [holdAt, holdUntil) 闭眼保持段时按下,不重闭不跳变,由 tick
-        // 直接冻结当前帧(正闭着眼就不必再闭一次);elapsed < holdAt(闭眼进行中)
-        // 同样不干预。素材未加载(elapsed=-1)时按下后照常从起点原速播放。
-        // 0037y:回跳目标是保持帧 holdRewindTo(摸头=holdAt)——直接进入闭眼享受态,
-        // 不回跳 0.1s 闭眼起点(半吊子帧,断断续续摸头时像快速睁眼/红晕闪变)。
+        // 0037x:动画正处于 [holdAt, holdUntil) 闭眼保持段时按下,不重闭不跳变,由
+        // tick 直接冻结当前帧(正闭着眼就不必再闭一次);elapsed < holdAt(闭眼进行
+        // 中)同样不干预。素材未加载(elapsed=-1)时按下后照常从起点原速播放。
+        // 0037z:已睁眼段(elapsed ≥ holdUntil)按下不再瞬间 seek 回跳(跳变突兀),
+        // 改为反向播放——以 holdRewindRate 倍速从当前帧均匀倒回 holdRewindTo,
+        // 表情连续变化(眼睛平滑闭上),倒带到保持帧由 tick 转为冻结。
         if (entry.spec.mode === 'hold' && (entry.spec.holdAt ?? 0) > 0) {
-          const holdAt = entry.spec.holdAt ?? 0
-          const holdUntil = entry.spec.holdUntil ?? holdAt
+          // holdUntil 缺省 = holdAt:未配置保持段长度的动画,过了保持帧即视为"已睁眼"
+          const holdUntil = entry.spec.holdUntil ?? entry.spec.holdAt ?? 0
           const elapsed = runtime.getMotionElapsed?.(channel) ?? -1
           if (elapsed >= holdUntil) {
-            runtime.seekMotion?.(channel, entry.spec.holdRewindTo ?? 0)
+            entry.rewinding = true
+            runtime.setMotionRate?.(channel, -(entry.spec.holdRewindRate ?? 1))
+          } else {
+            entry.rewinding = false
           }
           const rate = entry.spec.holdSeekRate ?? 1
           if (rate > 1) runtime.setMotionRate?.(channel, rate)
         }
       } else {
-        // 松开/移出:立即解除冻结继续播放,恢复原速(后半段正常速度播完)
+        // 松开/移出:立即解除冻结继续播放,恢复原速(后半段正常速度播完);
+        // 若还在反向倒带中(没倒到保持帧)则中止倒带,从当前位置正向继续播
         holdState.set(channel, false)
+        entry.rewinding = false
         entry.frozen = false
         runtime.setMotionPaused?.(false)
         runtime.setMotionRate?.(channel, 1)
@@ -194,6 +205,20 @@ export function createAnimationDirector(runtime: Live2dRuntime): AnimationDirect
           continue
         }
         const elapsed = runtime.getMotionElapsed?.(channel) ?? -1
+        // 0037z:反向倒带中(已睁眼段按下):每帧时间倒退,倒回到保持帧即停止反向
+        // 并冻结。必须在普通冻结判定之前——倒带起点 elapsed 往往 ≥ holdAt,否则
+        // 会被当成"已到保持点"立即冻结,倒带失效。
+        if (entry.rewinding) {
+          if (elapsed <= (entry.spec.holdAt ?? 0)) {
+            entry.rewinding = false
+            runtime.setMotionRate?.(channel, 1)
+            // 精确落到保持帧:反向倍速可能一帧越过 holdAt 一点,seek 对齐
+            runtime.seekMotion?.(channel, entry.spec.holdAt ?? 0)
+            entry.frozen = true
+            runtime.setMotionPaused?.(true)
+          }
+          continue
+        }
         // hold 模式:按住且已到保持点 → 冻结定格
         if (
           entry.spec.mode === 'hold' &&

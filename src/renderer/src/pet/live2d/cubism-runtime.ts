@@ -372,15 +372,16 @@ class CubismRuntime implements Live2dRuntime {
   /** motion 暂停(0037l):暂停时不推进 motionTime 也不驱动曲线,动画定格当前帧。 */
   private motionPaused = false
   /**
-   * 各通道播放倍速(0037w):>1 加速播放(按住摸头快速闭眼到保持帧),缺省原速。
-   * 值只在更新时被读取,setMotionRate 写入,stopChannel 清退。
+   * 各通道播放倍速(0037w/0037z):>1 加速播放,负数反向播放(已睁眼段按下时
+   * 平滑倒带回保持帧,0037z),缺省原速。值只在更新时被读取,setMotionRate
+   * 写入,stopChannel 清退。
    */
   private readonly motionRate = new Map<AnimationChannel, number>()
   /**
-   * 各通道相对全局 motionTime 的额外时间偏移(0037w):加速时每帧累加
-   * delta×(rate−1),该通道曲线按 channelTime = motionTime + offset 求值。
-   * 独立于全局时间,多通道加速互不影响;stopChannel 不清(时间线平移无害,
-   * 下个动画起点基于新 channelTime 记录),dispose 全清。
+   * 各通道相对全局 motionTime 的额外时间偏移(0037w/0037z):rate≠1 时每帧累加
+   * delta×(rate−1)(正=加速,负=反向倒带),该通道曲线按 channelTime = motionTime
+   * + offset 求值。独立于全局时间,多通道互不影响;stopChannel 不清(时间线平移
+   * 无害,下个动画起点基于新 channelTime 记录),dispose 全清。
    */
   private readonly channelTimeOffset = new Map<AnimationChannel, number>()
   /**
@@ -1130,9 +1131,9 @@ class CubismRuntime implements Live2dRuntime {
     this.motionPaused = paused
   }
 
-  /** 设置某通道播放倍速(0037w):>1 加速(按住摸头快速走完闭眼到保持帧),≤1 恢复原速。 */
+  /** 设置某通道播放倍速(0037w/0037z):>1 加速,1 原速(删除条目),**负数 = 反向播放**。 */
   setMotionRate(channel: AnimationChannel, rate: number): void {
-    if (rate > 1) this.motionRate.set(channel, rate)
+    if (rate !== 1) this.motionRate.set(channel, rate)
     else this.motionRate.delete(channel)
   }
 
