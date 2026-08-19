@@ -17,4 +17,11 @@ export interface PetAnimator {
    * 可选:Live2D 后端实现;占位/贴图后端不实现(main.ts 用 ?. 调用)。
    */
   applyPetSettings?(settings: PetPetSettings): void
+  /**
+   * 0039:一次推理段开始(DSH 事件流的 reasoning 块进入;一次 turn 可含多段)。
+   * Live2D 后端实现:按段计时,超阈值 B 循环"困惑"、段结束判定"恍然大悟"。
+   */
+  onThinkingSegmentStart?(): void
+  /** 0039:推理段结束(非 reasoning 块/step-end/turn-end 收尾)。 */
+  onThinkingSegmentEnd?(): void
 }

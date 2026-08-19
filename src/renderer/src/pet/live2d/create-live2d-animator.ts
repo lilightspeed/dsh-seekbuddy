@@ -92,10 +92,11 @@ function createLive2dAnimatorWithRuntime(
   let loaded = false
   let unsubscribeCursor: (() => void) | undefined
   /**
-   * 思考表情(0039):本次思考开始时刻(performance.now,ms);离开 thinking 时算时长。
-   * 0 = 从未进入 thinking(时长判定前先进入才会写入)。
+   * 0039 推理段计时:当前推理段开始时刻(performance.now,ms;0 = 不在段中)。
+   * 由 onThinkingSegmentStart/End(DSH 事件流 reasoning 块)驱动 —— 一次 turn
+   * 可含多次推理段,恍然大悟/困惑按**段时长**触发,而非整个任务时长。
    */
-  let thinkingStartedAt = 0
+  let segmentStartedAt = 0
   /** 思考表情阈值 A(秒,设置面板可调):思考时长 ≥ A → 结束播放"恍然大悟"。 */
   let thinkExclaimAfterSec = DEFAULT_PET_CONFIG.pet.thinkExclaimAfterSec
   /** 思考表情阈值 B(秒,设置面板可调):思考时长 > B → 期间循环"困惑"。 */
@@ -293,9 +294,14 @@ function createLive2dAnimatorWithRuntime(
   /**
    * 摸头动画结束/被打断(自然播完、sad 接管、离开 idle):清理按住状态。
    * 力度增益与按住锚点由 tick 按 holdActive=false 指数平滑回落(0037o),不瞬间跳变。
+   * 0039:恍然大悟自然播完、turn 仍在 thinking(段间/工具调用期)→ 恢复思考姿态;
+   * 被打断(下一推理段开始)时由 onThinkingSegmentStart 负责重建,这里不动。
    */
   director.onEnd((e) => {
     if (e.id === 'pat-head') holdActive = false
+    if (e.id === 'think-exclaim' && e.reason === 'finished' && state === 'thinking') {
+      director.request(ANIMATIONS['thinking'])
+    }
   })
 
   /**
@@ -356,20 +362,18 @@ function createLive2dAnimatorWithRuntime(
     // 状态级眨眼控制(thinking 关);动画期间的眨眼由导演按 spec.autoBlink 接管,二者互不冲突
     runtime.setAutoBlink(next !== 'thinking')
     if (next === 'thinking') {
-      // 进入思考:记录开始时刻;门控放开后主动停掉可能的摸头/难过表情(保证通道干净);
-      // action 通道同时清掉上一轮"恍然大悟"的余尾(否则同优先级会挡住思考动作的请求);
-      // 播放思考动作(Motion_think,holdEnd 保持末尾姿态,见 animation-registry thinking 条目)。
-      // 视角跟随已在 thinking 时关闭(shouldFollow),拖拽反馈(setDrag)不受状态影响照常生效。
-      thinkingStartedAt = performance.now()
+      // 进入 thinking(整个 turn):清掉摸头/难过表情与上一轮恍然大悟余尾(否则同优先级
+      // 会挡住思考姿态的请求),播放思考姿态(Motion_think,holdEnd 保持末尾姿态)。
+      // 视角跟随已在 thinking 时关闭(shouldFollow),拖拽反馈(setDrag)照常生效。
+      // 注意:思考表情(恍然大悟/困惑)不在这里判定 —— 它们按"推理段"触发
+      // (onThinkingSegmentStart/End),一次 turn 可含多段(0039)。
       director.stopChannel('expression')
       director.stopChannel('action')
       director.request(ANIMATIONS['thinking'])
     } else if (prev === 'thinking') {
-      // 离开思考:停止思考姿态(参数平滑复位回待机)→ 思考时长 ≥ 阈值 A 时,
-      // 播放"恍然大悟"表情一次;困惑表情由门控(expression 锁)在本切换时停止并复位
-      director.stopChannel('action')
-      const elapsedSec = (performance.now() - thinkingStartedAt) / 1000
-      if (elapsedSec >= thinkThresholds().a) director.request(ANIMATIONS['think-exclaim'])
+      // 离开 thinking(turn 结束):困惑/思考姿态停止;恍然大悟若在播让它播完(happy 期间)
+      director.stopChannel('expression')
+      if (!director.isActive('think-exclaim')) director.stopChannel('action')
     } else {
       // 常规状态切换:action 通道无动画时为空操作(离开 thinking 的 stop 在上一分支处理)
       director.stopChannel('action')
@@ -475,14 +479,38 @@ function createLive2dAnimatorWithRuntime(
       runtime.update(deltaSeconds)
       // 导演推进:hold 冻结判定/兜底超时/自然结束检测(在 update 之后读最新 elapsed)
       director.tick()
-      // 0039 长时间思考 → 困惑表情(循环):思考时长超过阈值 B 时播放,直到思考结束。
-      // 重复请求由导演幂等忽略(同 id 在播);离开 thinking 时门控(expression 锁)停止并复位。
-      if (state === 'thinking' && thinkingStartedAt > 0) {
-        const elapsedSec = (performance.now() - thinkingStartedAt) / 1000
+      // 0039 推理段超过阈值 B → 困惑表情(循环),直到该段结束。
+      // 重复请求由导演幂等忽略(同 id 在播);段结束(onThinkingSegmentEnd)时门控停止并复位。
+      if (segmentStartedAt > 0 && state === 'thinking') {
+        const elapsedSec = (performance.now() - segmentStartedAt) / 1000
         if (elapsedSec > thinkThresholds().b) director.request(ANIMATIONS['think-dizzy'])
       }
     },
     applyPetSettings,
+    /**
+     * 0039 推理段开始(DSH 事件流 reasoning 块进入,一次 turn 可含多段):
+     * 复位段计时;清上一段的恍然大悟/困惑余留;恢复思考姿态(若 turn 仍在 thinking)。
+     */
+    onThinkingSegmentStart(): void {
+      segmentStartedAt = performance.now()
+      director.stopChannel('expression')
+      director.stopChannel('action')
+      if (state === 'thinking') director.request(ANIMATIONS['thinking'])
+    },
+    /**
+     * 0039 推理段结束:按段时长判定 —— ≥ 阈值 A 播放"恍然大悟"一次(思考姿态让位);
+     * < A 保持思考姿态。困惑(expression)已在段末停止并复位。
+     */
+    onThinkingSegmentEnd(): void {
+      if (segmentStartedAt <= 0) return
+      const elapsedSec = (performance.now() - segmentStartedAt) / 1000
+      segmentStartedAt = 0
+      director.stopChannel('expression')
+      if (elapsedSec >= thinkThresholds().a) {
+        director.stopChannel('action')
+        director.request(ANIMATIONS['think-exclaim'])
+      }
+    },
     dispose(): void {
       unsubscribeCursor?.()
       window.removeEventListener('pointermove', onPointerMove)

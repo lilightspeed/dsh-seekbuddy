@@ -28,6 +28,14 @@ export type PetEvent =
       reason: string
       sessionId: string
     }
+  /**
+   * 0039:一次"推理段"开始(assistant/chunk 的 reasoning 块进入)。
+   * 一次 turn 可含多次推理段(思考 → 工具调用 → 再思考…),renderer 按段计时
+   * 触发思考表情(困惑/恍然大悟),而非按整个任务计时。
+   */
+  | { type: 'dsh:thinking-start'; sessionId: string; time: number }
+  /** 0039:推理段结束(非 reasoning 块开始 / step-end / turn-end 收尾)。 */
+  | { type: 'dsh:thinking-end'; sessionId: string; time: number }
   /** DSH 请求审批(服务端 answerable server-request;rpcId 用于回包)。 */
   | {
       type: 'approval:pending'

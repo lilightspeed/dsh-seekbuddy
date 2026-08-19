@@ -342,6 +342,13 @@ async function boot(): Promise<void> {
       case 'dsh:turn-start':
         actor.send({ type: 'DSH_WORKING' })
         break
+      case 'dsh:thinking-start':
+        // 0039:推理段开始(一次 turn 可含多段)→ animator 按段计时触发思考表情
+        animator.onThinkingSegmentStart?.()
+        break
+      case 'dsh:thinking-end':
+        animator.onThinkingSegmentEnd?.()
+        break
       case 'dsh:turn-end':
         if (event.reason === 'error' || event.reason === 'max-tokens' || event.reason === 'blocked') {
           actor.send({ type: 'DSH_ERROR' })

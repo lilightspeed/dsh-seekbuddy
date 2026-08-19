@@ -71,12 +71,13 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
     autoBlink: false,
   },
   /**
-   * 困惑表情(0039):思考时长 > 阈值 B 时,思考期间**循环播放**,直到思考结束。
+   * 困惑表情(0039):**推理段**时长 > 阈值 B 时,该段期间**循环播放**,段结束停止。
    * - channel: expression —— 与 action 通道的思考姿态(Motion_think holdEnd)并存,
    *   素材驱动的 ParamDizzy/IrisStyle/Blush/MouthOpenY/FormClose 与思考姿态参数不相交
-   * - loop: true —— 长时间思考持续晕眩感;ParamDizzy 曲线 0.1→0.9 循环点跳变由 V2
+   * - loop: true —— 长推理段持续晕眩感;ParamDizzy 曲线 0.1→0.9 循环点跳变由 V2
    *   correctEndPoint + loop fade-in 平滑(坑 4)
-   * - 思考结束时由 animator 离开 thinking 的门控(expression 锁)停止并平滑复位
+   * - 段结束(onThinkingSegmentEnd)时由 animator 停 expression 并平滑复位;
+   *   一次 turn 可含多段,每段独立触发
    */
   'think-dizzy': {
     id: 'think-dizzy',
@@ -87,10 +88,12 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
     autoBlink: false,
   },
   /**
-   * 恍然大悟表情(0039):思考时长 ≥ 阈值 A 时,思考结束**播放一次**。
-   * - channel: action —— 思考结束瞬间思考姿态已 stop(复位),恍然大悟独占身体通道;
+   * 恍然大悟表情(0039):**推理段**结束且段时长 ≥ 阈值 A 时**播放一次**;
+   * 一次 turn 可含多段,每段结束各自判定(思考 → 工具调用 → 再思考…)。
+   * - channel: action —— 段末思考姿态已 stop(复位),恍然大悟独占身体通道;
    *   驱动 ParamAngleY(摇头)/ParamSymbolExclamation(感叹号)/眼睛/嘴,与表情通道无关
-   * - 非循环,素材 2.9s 自然结束自动复位;happy 态(2.5s)内播完,余尾由 idle 切换截断复位
+   * - 非循环,素材 2.9s 自然结束自动复位;播完后若 turn 仍在 thinking 恢复思考姿态
+   *   (onEnd 回调),段间余尾由下一段/turn 结束截断复位
    */
   'think-exclaim': {
     id: 'think-exclaim',

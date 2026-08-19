@@ -33,6 +33,23 @@ export function createConnection(
   let generationAbort: AbortController | undefined
   /** tool/call 的 callId → 工具名(增量流内配对;供工具失败摘要显示)。 */
   const toolNames = new Map<string, string>()
+  /**
+   * 0039 推理段检测:是否正处于一次"推理段"中(assistant/chunk 的 reasoning 块连续出现)。
+   * 一次 turn 可含多段(思考 → 工具调用 → 再思考…),每段结束独立触发 renderer 的
+   * 思考表情判定;段起点按到达顺序维护(全局单宠物,与 turn 级 thinking 语义一致)。
+   */
+  let inReasoningSegment = false
+
+  function emitThinkingStart(sessionId: string, time: number): void {
+    inReasoningSegment = true
+    onEvent({ type: 'dsh:thinking-start', sessionId, time })
+  }
+
+  function emitThinkingEnd(sessionId: string, time: number): void {
+    if (!inReasoningSegment) return
+    inReasoningSegment = false
+    onEvent({ type: 'dsh:thinking-end', sessionId, time })
+  }
 
   function emitState(state: ConnectionState): void {
     if (currentState === state) return
@@ -50,7 +67,7 @@ export function createConnection(
     }
   }
 
-  /** mux 帧 → 语义事件(阶段 2:turn 生命周期;阶段 3:审批;B2:会话活动增量;历史浮层:重要摘要)。 */
+  /** mux 帧 → 语义事件(阶段 2:turn 生命周期;阶段 3:审批;B2:会话活动增量;历史浮层:重要摘要;0039:推理段)。 */
   function pumpMuxFrame(frame: MuxFrame, rpcId: string): void {
     switch (frame.type) {
       case 'session/event': {
@@ -62,10 +79,25 @@ export function createConnection(
           onEvent({ type: 'dsh:session-update', sessionId, running: true, reason: null, time: event.time })
         }
         if (event.type === 'turn/end') {
+          // 0039:turn 结束先收尾未关闭的推理段,再发 turn-end(顺序保证 renderer 先判段后切状态)
+          emitThinkingEnd(sessionId, event.time)
           const reason = event.data.reason.kind
           onEvent({ type: 'dsh:turn-end', reason, sessionId })
           onEvent({ type: 'dsh:session-update', sessionId, running: false, reason, time: event.time })
         }
+        // 0039 推理段检测:reasoning 块进入 = 段开始;非 reasoning 块(文本/工具调用/…)
+        // 开始或 step 结束 = 段结束。一次 turn 可含多段,各段独立触发思考表情。
+        if (event.type === 'assistant/chunk') {
+          const chunk = event.data.chunk
+          if (chunk.type === 'block-start') {
+            if (chunk.blockType === 'reasoning') emitThinkingStart(sessionId, event.time)
+            else emitThinkingEnd(sessionId, event.time)
+          } else if (chunk.type === 'reasoning-delta') {
+            // 兜底:部分适配器不发射 reasoning block-start,首个 delta 即段起点
+            emitThinkingStart(sessionId, event.time)
+          }
+        }
+        if (event.type === 'step/end') emitThinkingEnd(sessionId, event.time)
         // 最近对话浮层:只推目标会话的重要消息摘要(噪音已在 summary.ts 过滤)
         if (isTargetSession(sessionId)) {
           const entry = summaryEntryOf(event, toolNames)
@@ -114,8 +146,10 @@ export function createConnection(
     while (running) {
       const generation = new AbortController()
       generationAbort = generation
-      // 新代增量流从头开始,tool/call → tool/result 配对也从头来
+      // 新代增量流从头开始,tool/call → tool/result 配对也从头来;
+      // 推理段状态同理重置(重连后段起点重新由 reasoning 块判定)
       toolNames.clear()
+      inReasoningSegment = false
       try {
         // 握手:host.describe 证明上行可达(成功后下行流已在途)
         const describeResponse = await api.host.describe({}, generation.signal)

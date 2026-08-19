@@ -52,13 +52,13 @@ export interface PetPetSettings {
    */
   patStrength: number
   /**
-   * 思考表情阈值 A(秒,0039):一次思考的时长 ≥ A 时,思考结束播放
-   * "恍然大悟"(Expression_think_exclaim)表情一次;时长 < A 则直接正常结束。
+   * 思考表情阈值 A(秒,0039):一次**推理段**(DSH 事件流 reasoning 块,一次任务可含多段)
+   * 时长 ≥ A 时,段结束播放"恍然大悟"(Expression_think_exclaim)一次;段太短则正常继续。
    */
   thinkExclaimAfterSec: number
   /**
-   * 思考表情阈值 B(秒,0039,应 > A):思考时长 > B 时,思考期间循环播放
-   * "困惑"(Expression_think_dizzy1)表情,直到思考结束再播放"恍然大悟"。
+   * 思考表情阈值 B(秒,0039,应 > A):推理段时长 > B 时,段期间循环播放
+   * "困惑"(Expression_think_dizzy1),段结束再播放"恍然大悟"。
    * 运行时对 A/B 做 min/max 归一,顺序填反也不会破坏逻辑。
    */
   thinkDizzyAfterSec: number
@@ -95,7 +95,7 @@ export const DEFAULT_PET_CONFIG: PetConfig = {
     dragStrength: 1,
     showHitMesh: false,
     patStrength: 1,
-    // 思考表情阈值(0039):≥5s 结束思考时恍然大悟;>15s 思考期间循环困惑
+    // 思考表情阈值(0039):按"推理段"计时 —— ≥5s 的段结束恍然大悟;>15s 的段期间循环困惑
     thinkExclaimAfterSec: 5,
     thinkDizzyAfterSec: 15,
   },
