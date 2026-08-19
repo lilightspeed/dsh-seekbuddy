@@ -18,10 +18,10 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
    * - holdUntil=1.2(0037x,素材 EyeLOpen 1.2s 起睁眼):动画处于 [0.45,1.2) 闭眼
    *   保持段时按下,直接冻结当前帧不重闭
    * - holdRewindTo=0.45 + holdRewindRate=1 + eyeOpenDoneAt=1.5 +
-   *   holdRewindDurationMs=500(0037z/0037z2/0037z3):已过 1.2s(眼睛已睁开)按下,
-   *   动画**反向播放**从当前帧倒回 0.45s 保持帧再冻结——表情连续变化(眼睛平滑
-   *   闭上),替代瞬间 seek 跳变;倒带速度:睁眼过程(≤1.5s)固定 1x 细腻过渡,
-   *   红晕消退段(>1.5s)动态加速,每次倒带耗时≈0.5s
+   *   holdRewindDurationMs=300(0037z/0037z2/0037z3/0037z4):已过 1.2s(眼睛已睁开)
+   *   按下,动画**反向播放**倒回 0.45s 保持帧再冻结——表情连续变化(眼睛平滑闭上),
+   *   替代瞬间 seek 跳变;倒带分段变速:消退段(>1.5s)快速倒带(耗时≈0.3s),倒带
+   *   进入闭眼段(≤1.5s)自动降速 1x——闭眼过程始终素材原速,不受快速倒带影响
    * - durationMs: 4000 兜底(素材 3.83s 自然结束,此值仅防异常)
    * - priority 默认 0:可被 sad(1) 打断
    */
@@ -35,7 +35,7 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
     holdRewindTo: 0.45,
     holdRewindRate: 1,
     eyeOpenDoneAt: 1.5,
-    holdRewindDurationMs: 500,
+    holdRewindDurationMs: 300,
     durationMs: 4000,
     autoBlink: false,
   },
