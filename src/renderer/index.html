@@ -430,6 +430,70 @@
       #btn-panel:hover {
         background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.5));
       }
+      /* ---- 右上角操作通知队列(0042):液态玻璃小气泡,贴近设置按钮与窗口右缘 ----
+         新通知从上方滑入队首(队列顶部),最旧的通知从队尾向下滑出消失 ——
+         视觉上是"传送带"队列;样式与 #bubble 同主题(玻璃渐变 + 模糊 + 品牌蓝辉光)。
+         pointer-events: none,不拦截窗口拖拽/点击。 */
+      #notify-queue {
+        position: fixed;
+        top: 48px; /* 紧贴设置按钮(#btn-panel, top:10px 高 30px)下方 */
+        right: 18px;
+        z-index: 4;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
+        pointer-events: none;
+      }
+      .notify-toast {
+        max-width: 220px;
+        padding: 6px 12px;
+        border-radius: 12px;
+        color: var(--ink);
+        font-size: 12px;
+        line-height: 1.4;
+        font-family: ui-monospace, 'Cascadia Code', monospace;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.5));
+        backdrop-filter: blur(20px) saturate(180%);
+        -webkit-backdrop-filter: blur(20px) saturate(180%);
+        border: 1px solid rgba(255, 255, 255, 0.65);
+        box-shadow:
+          0 6px 18px rgba(77, 107, 254, 0.22),
+          inset 0 1px 1px rgba(255, 255, 255, 0.8),
+          inset 0 -1px 1px rgba(255, 255, 255, 0.15);
+        transition: transform 0.28s ease, opacity 0.28s ease;
+      }
+      /* 新弹窗:从上方滑入(translateY 负 → 0)+ 淡入 */
+      .notify-toast.entering {
+        animation: notify-in 0.3s ease;
+      }
+      @keyframes notify-in {
+        from {
+          opacity: 0;
+          transform: translateY(-18px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      /* 旧弹窗:向下滑出(0 → 正 translateY)+ 淡出,动画结束移除 */
+      .notify-toast.leaving {
+        animation: notify-out 0.3s ease forwards;
+      }
+      @keyframes notify-out {
+        from {
+          opacity: 1;
+          transform: translateY(0);
+        }
+        to {
+          opacity: 0;
+          transform: translateY(18px);
+        }
+      }
       /* 会话/历史/审批面板:大面液态玻璃,贴窗口左右边缘,四角圆角 */
       #panel {
         position: fixed;

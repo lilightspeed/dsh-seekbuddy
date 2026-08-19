@@ -103,6 +103,14 @@ export function createConnection(
           }
         }
         if (event.type === 'step/end') emitThinkingEnd(sessionId, event.time)
+        // 0042 右上角操作通知:除 think 外的全部工具调用(Read/Edit/Glob/…)。
+        // think(推理)不通知 —— 推理 delta 是模型内部活动,通知只会刷屏。
+        if (event.type === 'tool/call') {
+          const name = String(event.data.name)
+          if (!/^think$/i.test(name)) {
+            onEvent({ type: 'dsh:tool-call', sessionId, callId: String(event.data.callId), name })
+          }
+        }
         // 最近对话浮层:只推目标会话的重要消息摘要(噪音已在 summary.ts 过滤)
         if (isTargetSession(sessionId)) {
           const entry = summaryEntryOf(event, toolNames)

@@ -6,6 +6,7 @@ import { createLive2dAnimator } from './pet/live2d/create-live2d-animator.ts'
 import { createStage } from './pet/stage.ts'
 import { createApprovalCenter, type PendingApproval } from './ui/approvals.ts'
 import { markdownToDom } from './ui/markdown.ts'
+import { createNotifyQueue } from './ui/notify.ts'
 import { createPanel } from './ui/panel.ts'
 import { conceal, reveal } from './ui/reveal.ts'
 
@@ -17,6 +18,8 @@ declare global {
 
 const api = window.petApi
 const bubbleEl = document.querySelector<HTMLDivElement>('#bubble')
+// 右上角操作通知队列(0042):AI 工具调用/操作提示(除 think 外全部)
+const notify = createNotifyQueue()
 const inputEl = document.querySelector<HTMLTextAreaElement>('#msg-input')
 const sendBtn = document.querySelector<HTMLButtonElement>('#btn-send')
 // 顶部按钮:左 = 历史/重连;右 = 菜单。最近对话浮层由历史按钮开合。
@@ -348,6 +351,10 @@ async function boot(): Promise<void> {
         break
       case 'dsh:thinking-end':
         animator.onThinkingSegmentEnd?.()
+        break
+      case 'dsh:tool-call':
+        // 0042:AI 工具调用 → 右上角通知队列(除 think 外全部;Read/Edit/Glob 等)
+        notify.show(`🔧 ${event.name}`)
         break
       case 'dsh:turn-end':
         if (event.reason === 'error' || event.reason === 'max-tokens' || event.reason === 'blocked') {

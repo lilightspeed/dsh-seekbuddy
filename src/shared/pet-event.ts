@@ -36,6 +36,11 @@ export type PetEvent =
   | { type: 'dsh:thinking-start'; sessionId: string; time: number }
   /** 0039:推理段结束(非 reasoning 块开始 / step-end / turn-end 收尾)。 */
   | { type: 'dsh:thinking-end'; sessionId: string; time: number }
+  /**
+   * 0042:AI 发起一次工具调用(除 think 外的全部,如 read/edit/glob/grep/pwsh…)。
+   * 右上角操作通知队列消费;think(推理)不通知 —— 推理 delta 是模型内部活动,弹出只会刷屏。
+   */
+  | { type: 'dsh:tool-call'; sessionId: string; callId: string; name: string }
   /** DSH 请求审批(服务端 answerable server-request;rpcId 用于回包)。 */
   | {
       type: 'approval:pending'
