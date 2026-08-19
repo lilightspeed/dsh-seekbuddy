@@ -139,6 +139,35 @@ function createLive2dAnimatorWithRuntime(
     'background: transparent;'
   document.body.appendChild(hitEl)
 
+  /** 点击判定网格可视化(0037):SVG polygon 画命中网格轮廓,设置面板开关控制(默认隐藏)。 */
+  const meshSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  meshSvg.setAttribute(
+    'style',
+    'position: fixed; inset: 0; z-index: 3; pointer-events: none; display: none;',
+  )
+  const meshPoly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon')
+  meshPoly.setAttribute('fill', 'rgba(77, 107, 254, 0.18)')
+  meshPoly.setAttribute('stroke', '#4d6bfe')
+  meshPoly.setAttribute('stroke-width', '1.5')
+  meshPoly.setAttribute('stroke-dasharray', '4 3')
+  meshSvg.appendChild(meshPoly)
+  document.body.appendChild(meshSvg)
+
+  /** 每帧更新网格可视化:优先画命中网格多边形,无网格回退估算矩形(与点击区一致)。 */
+  function updateMeshOverlay(): void {
+    if (!petSettings.showHitMesh) return
+    const pts = runtime.getHeadMeshPoints?.()
+    if (pts && pts.length >= 3) {
+      meshPoly.setAttribute('points', pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '))
+    } else {
+      const h = headAnchor()
+      meshPoly.setAttribute(
+        'points',
+        `${h.x},${h.y} ${h.x + h.width},${h.y} ${h.x + h.width},${h.y + h.height} ${h.x},${h.y + h.height}`,
+      )
+    }
+  }
+
   /**
    * 头部点击区(左上角 + 尺寸):优先取运行时按 model3.json HitAreas 算出的精确
    * 包围盒(与命中网格一致);素材未导出时回退"模型中心锚点上方偏移"估算。
@@ -224,9 +253,12 @@ function createLive2dAnimatorWithRuntime(
       pupilSensitivity: clamp(settings.pupilSensitivity, 200, 2000),
       pupilMax: clamp01(settings.pupilMax),
       dragStrength: clamp01(settings.dragStrength),
+      showHitMesh: Boolean(settings.showHitMesh),
     }
     // 外层独立变量供 onCursor 闭包读取(增益计算):必须同步更新,否则滑块调了不生效(0035)
     dragStrength = petSettings.dragStrength
+    // 网格可视化开关(0037):立即显示/隐藏
+    meshSvg.style.display = petSettings.showHitMesh ? 'block' : 'none'
     // follower 闭包持有同一个 config 对象,就地覆盖即可实时生效
     Object.assign(followerConfig, toFollowerConfig(petSettings))
     runtime.setAppearance({ positionX: petSettings.positionX, positionY: petSettings.positionY, scale: petSettings.scale })
@@ -260,11 +292,14 @@ function createLive2dAnimatorWithRuntime(
         }
       }
       // 头部点击区跟随宠物位置(hitarea 精确位置或估算;窗口/位置/大小变化实时适配)
+      // 头部点击区跟随宠物位置(hitarea 精确位置或估算;窗口/位置/大小变化实时适配)
       const h = headAnchor()
       hitEl.style.left = `${h.x}px`
       hitEl.style.top = `${h.y}px`
       hitEl.style.width = `${h.width}px`
       hitEl.style.height = `${h.height}px`
+      // 点击判定网格可视化(设置面板开关,0037)
+      updateMeshOverlay()
       runtime.setViewLook(follower.look())
       // 拖动反馈:指数平滑趋近目标(停止拖动后目标为 0 → 参数回中,物理余韵自然衰减)
       const k = 1 - Math.exp(-DRAG_SMOOTHING * deltaSeconds)
@@ -280,6 +315,7 @@ function createLive2dAnimatorWithRuntime(
       unsubscribeCursor?.()
       window.removeEventListener('pointermove', onPointerMove)
       hitEl.remove()
+      meshSvg.remove()
       runtime.dispose()
     },
   }

@@ -117,6 +117,9 @@
   **SDK fadeOut 拉向当前值而非默认值,会残留摸头表情,弃用**)。播放期间
   `setAutoBlink(false)` 让眨眼让位(motion 接管眼睛);复位时恢复。素材未写 FadeInTime
   时 SDK 默认 1.0s 渐入(看起来没反应),运行时压到 0.15s。
+- **调试:设置面板"显示点击判定网格"**(0037,`pet.showHitMesh`)——打开后在宠物上叠
+  加 SVG 多边形轮廓(每帧跟随网格顶点),用于核对命中范围与 Live2D Editor/Viewer 里
+  的 hitarea 是否一致;无 hitarea 时画估算矩形。
 - **必踩坑 1:`CubismMotion.create` 后必须 `setEffectIds([], [])`**(0037 实测)——不调
   时 `_eyeBlinkParameterIds` 为 null,`doUpdateParameters` 首帧抛 `null.length`
   TypeError → 动画器 tick 崩溃、模型定格"完全静止"。本模型 EyeBlink/LipSync 组为

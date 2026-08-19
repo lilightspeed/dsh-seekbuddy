@@ -282,6 +282,8 @@ async function bootstrap(): Promise<void> {
     if (typeof patch?.petPupilMax === 'number' && Number.isFinite(patch.petPupilMax)) out.petPupilMax = Math.min(1, Math.max(0, patch.petPupilMax))
     // 拖动反馈强度(0033):0..1
     if (typeof patch?.petDragStrength === 'number' && Number.isFinite(patch.petDragStrength)) out.petDragStrength = Math.min(1, Math.max(0, patch.petDragStrength))
+    // 显示点击判定网格(0037):布尔
+    if (typeof patch?.petShowHitMesh === 'boolean') out.petShowHitMesh = patch.petShowHitMesh
     return out
   }
 

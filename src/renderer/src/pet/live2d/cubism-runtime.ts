@@ -487,6 +487,12 @@ class CubismRuntime implements Live2dRuntime {
     return mesh ? { ...mesh.bounds } : null
   }
 
+  /** 头部 hitarea 网格的屏幕顶点(显示点击判定网格,0037);无 hitarea 返回 null。 */
+  getHeadMeshPoints(): { x: number; y: number }[] | null {
+    const mesh = this.computeHeadMesh()
+    return mesh ? mesh.points : null
+  }
+
   /** 屏幕坐标是否命中头部 hitarea 网格(点击摸头精确判定);无 hitarea 返回 undefined 由调用方回落。 */
   hitTestPoint(x: number, y: number): boolean | undefined {
     const mesh = this.computeHeadMesh()

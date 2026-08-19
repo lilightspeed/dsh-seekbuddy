@@ -42,6 +42,8 @@ export interface PetPetSettings {
    * 默认 1:升级后默认即为增强效果。
    */
   dragStrength: number
+  /** 显示点击判定网格(摸头触发范围可视化,0037;默认关)。 */
+  showHitMesh: boolean
 }
 
 export interface PetConfig {
@@ -73,6 +75,7 @@ export const DEFAULT_PET_CONFIG: PetConfig = {
     pupilSensitivity: 600,
     pupilMax: 1,
     dragStrength: 1,
+    showHitMesh: false,
   },
   voice: { enabled: true },
   launchAtLogin: false,
@@ -102,4 +105,6 @@ export interface PetConfigUpdate {
   petPupilMax?: number
   /** 拖动反馈强度(0..1,0033)。 */
   petDragStrength?: number
+  /** 显示点击判定网格(0037)。 */
+  petShowHitMesh?: boolean
 }

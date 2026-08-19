@@ -62,6 +62,7 @@ export class PetConfigStore {
     if (patch.petPupilSensitivity !== undefined) next.pet.pupilSensitivity = clamp(patch.petPupilSensitivity, 200, 2000)
     if (patch.petPupilMax !== undefined) next.pet.pupilMax = clamp(patch.petPupilMax, 0, 1)
     if (patch.petDragStrength !== undefined) next.pet.dragStrength = clamp(patch.petDragStrength, 0, 1)
+    if (patch.petShowHitMesh !== undefined) next.pet.showHitMesh = Boolean(patch.petShowHitMesh)
     if (patch.voiceEnabled !== undefined) next.voice.enabled = Boolean(patch.voiceEnabled)
     if (patch.launchAtLogin !== undefined) next.launchAtLogin = Boolean(patch.launchAtLogin)
     if (patch.targetSessionId !== undefined) {

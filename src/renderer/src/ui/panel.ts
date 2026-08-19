@@ -293,6 +293,7 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     if (petDistance && document.activeElement !== petDistance) petDistance.value = String(Math.round(p.distance))
     if (petResponse && document.activeElement !== petResponse) petResponse.value = String(Math.round(p.response * 100))
     if (petDrag && document.activeElement !== petDrag) petDrag.value = String(Math.round(p.dragStrength * 100))
+    if (petShowHitMesh) petShowHitMesh.checked = p.showHitMesh
     refreshPetLabels()
   }
 
@@ -375,9 +376,10 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
   const petResponseVal = document.querySelector<HTMLSpanElement>('#pet-response-val')
   const petDrag = document.querySelector<HTMLInputElement>('#pet-drag')
   const petDragVal = document.querySelector<HTMLSpanElement>('#pet-drag-val')
+  const petShowHitMesh = document.querySelector<HTMLInputElement>('#pet-show-hitmesh')
   const petSliders: Array<HTMLInputElement | null> = [petX, petY, petScale, petHead, petEye, petPupilSensitivity, petPupilMax, petDeadZone, petDistance, petResponse, petDrag]
 
-  /** 从滑块值构造宠物设置补丁(扁平 pet* 键,全量 11 项)。 */
+  /** 从滑块值构造宠物设置补丁(扁平 pet* 键,全量 11 项 + 网格开关)。 */
   function petPatchFromSliders(): PetConfigUpdate {
     const num = (el: HTMLInputElement | null): number => (el ? Number(el.value) : 0)
     return {
@@ -392,6 +394,7 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
       petDistance: num(petDistance),
       petResponse: num(petResponse) / 100,
       petDragStrength: num(petDrag) / 100,
+      petShowHitMesh: petShowHitMesh?.checked ?? false,
     }
   }
 
@@ -422,6 +425,10 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
       debouncePetSettings()
     })
   }
+  // 点击判定网格开关:即时应用并落盘(与其他宠物设置一致走防抖)
+  petShowHitMesh?.addEventListener('change', () => {
+    hooks.onPetSettingsChange?.({ petShowHitMesh: petShowHitMesh.checked })
+  })
 
   // ---- B2 雷达 tab:全会话活动(运行中/完成/出错),点击设目标 ----
 

@@ -52,6 +52,8 @@ export interface Live2dRuntime {
    * HitAreas 返回 null,调用方回退估算)。可选:占位/测试实现可不提供。
    */
   getHeadPoint?(): { x: number; y: number; width: number; height: number } | null
+  /** 头部 hitarea 网格的屏幕顶点(显示点击判定网格用;无 hitarea 返回 null)。 */
+  getHeadMeshPoints?(): { x: number; y: number }[] | null
   /**
    * 屏幕坐标是否命中头部 hitarea 网格(旧格式 Id 引用的触碰检测网格做点包含测试)。
    * 无 hitarea 返回 undefined(调用方回落为 overlay 圆内即命中)。
