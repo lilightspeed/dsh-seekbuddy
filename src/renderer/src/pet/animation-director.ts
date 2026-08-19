@@ -47,6 +47,10 @@ export interface AnimationSpec {
    *  动态速度:距保持帧远(消退段)自动加速,保证每次倒带耗时≈该值;距保持帧近
    *  (睁眼过程)则落在 holdRewindRate 基准速率,保持细腻过渡。缺省 500。 */
   holdRewindDurationMs?: number
+  /** 0037z3:素材"睁眼完成"时刻(秒)——eyeOpenDoneAt 之前的睁眼过程段按下,
+   *  倒带固定用 holdRewindRate 原速(细腻过渡);该时刻之后(红晕消退段)才用
+   *  holdRewindDurationMs 动态加速。缺省 = holdUntil(无 1x 区间,全动态)。 */
+  eyeOpenDoneAt?: number
   /** 0037x:hold 模式"保持段"结束点(秒)——素材中"闭眼保持"到"开始睁眼"的切换
    *  时刻(如摸头素材 EyeLOpen 1.2s 起睁眼)。按下时 elapsed 已过该点 = 眼睛已睁开,
    *  才回跳重闭眼;elapsed 仍处于 [holdAt, holdUntil) 保持段 = 正闭着眼,直接冻结
@@ -177,6 +181,8 @@ export function createAnimationDirector(runtime: Live2dRuntime): AnimationDirect
         // 0037z2:倒带速度**动态**:rate = max(holdRewindRate, 距离/目标时长)——距
         // 保持帧远(消退段)自动加速、每次倒带耗时≈holdRewindDurationMs;距保持帧
         // 近(睁眼过程)落在基准速率 holdRewindRate,过渡保持细腻。
+        // 0037z3:睁眼过程(按下时刻 ≤ eyeOpenDoneAt)固定用 holdRewindRate 原速
+        // (摸头 1x)细腻倒带;该时刻之后(红晕消退段)才动态加速。
         if (entry.spec.mode === 'hold' && (entry.spec.holdAt ?? 0) > 0) {
           // holdUntil 缺省 = holdAt:未配置保持段长度的动画,过了保持帧即视为"已睁眼"
           const holdUntil = entry.spec.holdUntil ?? entry.spec.holdAt ?? 0
@@ -187,7 +193,13 @@ export function createAnimationDirector(runtime: Live2dRuntime): AnimationDirect
             const distance = Math.max(0, elapsed - rewindTo)
             const baseRate = entry.spec.holdRewindRate ?? 1
             const durationS = (entry.spec.holdRewindDurationMs ?? 500) / 1000
-            const rate = durationS > 0 ? Math.max(baseRate, distance / durationS) : baseRate
+            const slowUntil = entry.spec.eyeOpenDoneAt ?? holdUntil
+            const rate =
+              elapsed <= slowUntil && distance > 0
+                ? baseRate
+                : durationS > 0
+                  ? Math.max(baseRate, distance / durationS)
+                  : baseRate
             runtime.setMotionRate?.(channel, -rate)
           } else {
             entry.rewinding = false
