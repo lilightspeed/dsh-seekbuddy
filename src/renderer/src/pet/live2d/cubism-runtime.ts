@@ -46,6 +46,11 @@ const MOTION_FILES: Record<string, string> = {
 const MOTION_BASE_URL = '/pet/live2d/'
 /** stopMotion 的淡出时长(秒):表情参数经 fade 平滑回归基准,避免硬切跳变。 */
 const MOTION_FADE_OUT_SECONDS = 0.35
+/**
+ * motion 起始淡入时长(秒)。素材 json 未写 FadeInTime 时 SDK 默认 1.0s ——
+ * 表情渐入太慢会看起来"点了没反应"(加上眨眼被接管,模型近乎静止),这里压到 0.15s。
+ */
+const MOTION_FADE_IN_SECONDS = 0.15
 
 /**
  * 未拖动时恢复"角度驱动头发"(0036)。
@@ -650,6 +655,8 @@ class CubismRuntime implements Live2dRuntime {
         const meta = JSON.parse(new TextDecoder().decode(buf)) as { Meta?: { Loop?: boolean } }
         const instance = CubismMotion.create(buf, buf.byteLength)
         instance.setLoop(meta.Meta?.Loop ?? false)
+        // 素材未写 FadeInTime 时 SDK 默认 1.0s,表情渐入太慢(看起来没反应),压短
+        instance.setFadeInTime(MOTION_FADE_IN_SECONDS)
         motion = instance
       } catch (error) {
         console.error(`[live2d] motion 加载失败:${file}`, error)

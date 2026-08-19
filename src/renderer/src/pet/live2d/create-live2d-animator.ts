@@ -112,41 +112,50 @@ function createLive2dAnimatorWithRuntime(
   let dragCurrent = { x: 0, y: 0 }
 
   /**
-   * 摸头反馈(表情动作里程碑):idle(未工作)时鼠标进入头部锚点半径 PAT_RADIUS 内并
-   * 持续停留 PAT_HOLD_MS 即触发摸头表情(pat-head,循环播放);鼠标移出或状态离开
-   * idle 后淡出停止。与瞳孔收缩(0029,快速接近受惊)互补:接近时缩瞳,停驻后摸头享受。
+   * 摸头反馈(点击触发):idle(未工作)时点击头部点击区 → 播放 pat-head 循环表情
+   * PAT_PLAY_MS 后淡出停止,期间再次点击续摸(重置计时);状态离开 idle 立即淡出。
+   * 与瞳孔收缩(0029,快速接近受惊)互补:接近时缩瞳,点击头部时摸头享受。
+   * #stage 是 drag 区域会吞掉 renderer 鼠标事件(0016),故叠一个 no-drag 透明
+   * 圆形点击区(#pet-head-hit)捕获点击;位置每帧跟随头部锚点。
    */
-  const PAT_RADIUS = 64
-  const PAT_HOLD_MS = 600
+  /** 头部点击区半径(px)。 */
+  const PAT_HIT_RADIUS = 52
+  /** 头部相对模型中心锚点(anchor,窗口 positionX/Y)的向上偏移(窗口高度比例)。 */
+  const PAT_HEAD_OFFSET_RATIO = 0.18
+  /** 一次摸头播放时长(ms):素材单循环 3.83s,播满一轮后淡出;期间再点续摸。 */
+  const PAT_PLAY_MS = 4000
   const PAT_MOTION = 'pat-head'
-  /** 鼠标在头部区域已停留的累计时长(ms);离开区域清零。 */
-  let patHeldMs = 0
-  /** 摸头表情是否在播放(触发一次后保持,直到移开/状态变化)。 */
+  /** 摸头表情是否在播放。 */
   let patActive = false
+  /** 本次摸头已播放时长(ms);再次点击重置。 */
+  let patPlayMs = 0
+  /** 头部点击区:no-drag 透明圆,点击触发摸头。 */
+  const hitEl = document.createElement('div')
+  hitEl.id = 'pet-head-hit'
+  hitEl.style.cssText =
+    `position: fixed; z-index: 2; width: ${PAT_HIT_RADIUS * 2}px; height: ${PAT_HIT_RADIUS * 2}px;` +
+    'border-radius: 50%; pointer-events: auto; -webkit-app-region: no-drag;' +
+    'transform: translate(-50%, -50%); background: transparent;'
+  document.body.appendChild(hitEl)
 
-  /** 摸头检测:idle + 鼠标停在头部区域足够久 → 播放;移开/非 idle → 淡出停止。 */
-  function updatePat(deltaSeconds: number): void {
-    if (!pointer) return
-    const canPat = state === 'idle'
+  /** 头部锚点 = 模型中心锚点上方偏移(窗口高度比例,随窗口/位置实时变化)。 */
+  function headAnchor(): { x: number; y: number } {
     const a = anchor()
-    const dist = Math.hypot(pointer.x - a.x, pointer.y - a.y)
-    if (canPat && dist <= PAT_RADIUS) {
-      patHeldMs += deltaSeconds * 1000
-      if (!patActive && patHeldMs >= PAT_HOLD_MS) {
-        patActive = true
-        runtime.playMotion(PAT_MOTION)
-        // motion 接管眼睛(闭眼享受),自动眨眼让位;stopMotion 后由 applyState/updatePat 恢复
-        runtime.setAutoBlink(false)
-      }
-    } else {
-      if (patActive) {
-        patActive = false
-        runtime.stopMotion()
-        runtime.setAutoBlink(state !== 'thinking')
-      }
-      patHeldMs = 0
-    }
+    return { x: a.x, y: a.y - window.innerHeight * PAT_HEAD_OFFSET_RATIO }
   }
+
+  /** 点击头部:触发摸头(未在摸则开始,已在摸则续摸重置计时);非 idle 忽略。 */
+  function triggerPat(): void {
+    if (state !== 'idle') return
+    if (!patActive) {
+      patActive = true
+      runtime.playMotion(PAT_MOTION)
+      // motion 接管眼睛(闭眼享受),自动眨眼让位;停止后由 applyState/计时恢复
+      runtime.setAutoBlink(false)
+    }
+    patPlayMs = 0
+  }
+  hitEl.addEventListener('click', triggerPat)
 
   /**
    * 写入当前光标(窗口局部坐标,原样透传)。
@@ -184,7 +193,7 @@ function createLive2dAnimatorWithRuntime(
       patActive = false
       runtime.stopMotion()
     }
-    patHeldMs = 0
+    patPlayMs = 0
     runtime.setAutoBlink(next !== 'thinking')
   }
 
@@ -227,10 +236,20 @@ function createLive2dAnimatorWithRuntime(
       if (loaded) applyState(next)
     },
     tick(deltaSeconds: number): void {
-      if (pointer) {
-        follower.update(deltaSeconds, pointer, anchor())
-        updatePat(deltaSeconds)
+      if (pointer) follower.update(deltaSeconds, pointer, anchor())
+      // 摸头播放计时:播满一轮淡出停止;再次点击(triggerPat)会重置计时续摸
+      if (patActive) {
+        patPlayMs += deltaSeconds * 1000
+        if (patPlayMs >= PAT_PLAY_MS) {
+          patActive = false
+          runtime.stopMotion()
+          runtime.setAutoBlink(true)
+        }
       }
+      // 头部点击区跟随宠物位置(窗口/位置/大小变化实时适配)
+      const h = headAnchor()
+      hitEl.style.left = `${h.x}px`
+      hitEl.style.top = `${h.y}px`
       runtime.setViewLook(follower.look())
       // 拖动反馈:指数平滑趋近目标(停止拖动后目标为 0 → 参数回中,物理余韵自然衰减)
       const k = 1 - Math.exp(-DRAG_SMOOTHING * deltaSeconds)
@@ -245,6 +264,7 @@ function createLive2dAnimatorWithRuntime(
     dispose(): void {
       unsubscribeCursor?.()
       window.removeEventListener('pointermove', onPointerMove)
+      hitEl.remove()
       runtime.dispose()
     },
   }

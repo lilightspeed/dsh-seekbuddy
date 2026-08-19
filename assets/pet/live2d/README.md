@@ -102,9 +102,14 @@
   SDK 5-r.5 的 `CubismMotion.create` **不读 json 的 Loop 字段**(create 内赋值被注释),运行时
   按 json `Meta.Loop` 显式 `setLoop`;motion 内部不做 load/save,只 set 有曲线的参数,
   插在每帧 load 之后、视角跟随之前 —— 只覆盖表情参数,不碰头部/眼珠视角。
-- 触发:`create-live2d-animator.ts` —— idle(未工作)时鼠标进入头部锚点 64px 内停留 ≥600ms
-  触发;移开或状态离开 idle 淡出停止(`stopMotion` 设 0.35s fadeOut,避免表情参数硬切跳变)。
-  播放期间 `setAutoBlink(false)` 让眨眼让位(motion 接管眼睛)。
+- 触发:`create-live2d-animator.ts` —— idle(未工作)时**点击头部点击区**触发
+  (`#pet-head-hit`,no-drag 透明圆,圆心 = 模型中心锚点上方 `innerHeight×0.18`,
+  半径 52px,每帧跟随宠物位置);播放 PAT_PLAY_MS(4s,约一个循环)后淡出停止,
+  期间再次点击续摸;状态离开 idle 立即淡出(`stopMotion` 设 0.35s fadeOut,
+  避免表情参数硬切跳变)。播放期间 `setAutoBlink(false)` 让眨眼让位(motion 接管眼睛)。
+  素材未写 FadeInTime 时 SDK 默认 1.0s 渐入(看起来没反应),运行时压到 0.15s。
+  头部偏移/半径/时长均为常量,真机微调改 `PAT_HEAD_OFFSET_RATIO` / `PAT_HIT_RADIUS` /
+  `PAT_PLAY_MS`;如需精确 hitarea,可在 Cubism Editor 导出 HitAreas 后读取。
 - `Expression_sad.motion3.json`(2.03s,Loop=true,带 `ParamTear` 眼泪)已导出但**未接入**,
   等状态机 sad 态映射时用(注册进 `MOTION_FILES` 即可)。
 
