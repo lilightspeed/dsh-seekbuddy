@@ -6,7 +6,7 @@ import type { AnimationSpec } from './animation-director.ts'
  * runtime 需要的 file/loop 映射由本表派生注入(见 MOTION_FILES)。
  */
 /** 动画逻辑 id(新增动画在此扩展 union;索引访问带 noUncheckedIndexedAccess 下不返回 undefined)。 */
-type AnimationId = 'pat-head' | 'sad' | 'thinking' | 'think-dizzy' | 'think-exclaim'
+type AnimationId = 'pat-head' | 'sad' | 'working' | 'think-thinking' | 'think-dizzy' | 'think-exclaim'
 
 /** 动画注册表 —— 全部动画的单点登记处(doc/09 §3.2),详见各条目注释。 */
 export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
@@ -53,17 +53,20 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
     autoBlink: false,
   },
   /**
-   * 思考动作(0038):DSH 工作时(状态机 thinking)由 animator 请求播放。
-   * - channel: action —— 身体/姿态类动作(右手抬起 + 低头),与表情(expression)互不干扰;
+   * 执行任务的动作(0038;0041 更名,素材名 Motion_think 沿袭旧命名):DSH 工作期间
+   * **整个 turn**(turn/start → turn/end)常驻的姿态 —— 低头 + 右手抬起,表示"正在
+   * 执行任务",而非"思考"(真正的思考是表情 think-thinking 的气泡贴纸)。
+   * - channel: action —— 身体/姿态类动作,与表情(expression)互不干扰;
    *   素材同时驱动眉毛/眼睛/嘴部曲线,gate 只拦 expression 通道的请求,不拦运行时曲线写入
    * - 非循环(素材 Meta.Loop=true 但按 0037 教训统一强制非循环):播一遍后 **保持末尾姿态**
-   *   (holdEnd,低头思考 + 抬手),由 runtime 捕获曲线末帧参数持续恢复,直到离开 thinking
+   *   (holdEnd,低头 + 抬手),由 runtime 捕获曲线末帧参数持续恢复,直到离开 thinking
    * - 不设 durationMs:hold-end 是常驻姿态,不能由导演兜底超时停止(离开 thinking 时 animator
    *   显式 stopChannel('action') 复位)
-   * - autoBlink false:思考时眼睛/眉毛由 motion 接管
+   * - autoBlink false:执行任务期间眼睛/眉毛由 motion 接管
+   * - 0041:推理段开始不再停掉重建(仅被恍然大悟占用时才重建),保证整个运行期间常驻不抖动
    */
-  thinking: {
-    id: 'thinking',
+  working: {
+    id: 'working',
     channel: 'action',
     file: 'Motion_think.motion3.json',
     priority: 1,
@@ -71,9 +74,29 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
     autoBlink: false,
   },
   /**
+   * 思考表情(0041):推理段进行中、**段时长 ∈ (0, 困惑阈值 B]** 期间显示 —— 头顶
+   * 气泡"…"贴纸(素材 Expression_think_thinking,只驱动 ParamBubbleEllipsis 系列,
+   * 纯贴纸/表情,不含低头抬手等姿态;真正的"思考"表现)。
+   * - channel: expression —— 与 action 通道的执行任务姿态(working)并存互不干扰;
+   *   段时长 > B 后由 tick 请求 think-dizzy(priority 1)自动顶替本贴纸
+   * - loop: true —— 推理期间持续显示(气泡点点循环),段结束(onThinkingSegmentEnd)
+   *   停 expression 通道并平滑复位(气泡参数已入 EXPRESSION_PARAM_IDS,不留残影)
+   * - priority 0:低于 think-dizzy(1),困惑表情随时可顶替;同段内重复请求幂等忽略
+   * - autoBlink false:不干扰执行任务姿态的眉眼接管
+   */
+  'think-thinking': {
+    id: 'think-thinking',
+    channel: 'expression',
+    file: 'Expression_think_thinking.motion3.json',
+    loop: true,
+    priority: 0,
+    autoBlink: false,
+  },
+  /**
    * 困惑表情(0039):**推理段**时长 > 阈值 B 时,该段期间**循环播放**,段结束停止。
-   * - channel: expression —— 与 action 通道的思考姿态(Motion_think holdEnd)并存,
-   *   素材驱动的 ParamDizzy/IrisStyle/Blush/MouthOpenY/FormClose 与思考姿态参数不相交
+   * - channel: expression —— 与 action 通道的执行任务姿态(working)并存,顶替
+   *   思考表情(think-thinking,priority 0 < 本表 1),素材驱动的 ParamDizzy/
+   *   IrisStyle/Blush/MouthOpenY/FormClose 与执行任务姿态参数不相交
    * - loop: true —— 长推理段持续晕眩感;ParamDizzy 曲线 0.1→0.9 循环点跳变由 V2
    *   correctEndPoint + loop fade-in 平滑(坑 4)
    * - 段结束(onThinkingSegmentEnd)时由 animator 停 expression 并平滑复位;

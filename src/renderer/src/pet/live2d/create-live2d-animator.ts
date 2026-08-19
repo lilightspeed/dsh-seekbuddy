@@ -294,13 +294,13 @@ function createLive2dAnimatorWithRuntime(
   /**
    * 摸头动画结束/被打断(自然播完、sad 接管、离开 idle):清理按住状态。
    * 力度增益与按住锚点由 tick 按 holdActive=false 指数平滑回落(0037o),不瞬间跳变。
-   * 0039:恍然大悟自然播完、turn 仍在 thinking(段间/工具调用期)→ 恢复思考姿态;
+   * 0039:恍然大悟自然播完、turn 仍在 thinking(段间/工具调用期)→ 恢复执行任务姿态;
    * 被打断(下一推理段开始)时由 onThinkingSegmentStart 负责重建,这里不动。
    */
   director.onEnd((e) => {
     if (e.id === 'pat-head') holdActive = false
     if (e.id === 'think-exclaim' && e.reason === 'finished' && state === 'thinking') {
-      director.request(ANIMATIONS['thinking'])
+      director.request(ANIMATIONS['working'])
     }
   })
 
@@ -363,15 +363,15 @@ function createLive2dAnimatorWithRuntime(
     runtime.setAutoBlink(next !== 'thinking')
     if (next === 'thinking') {
       // 进入 thinking(整个 turn):清掉摸头/难过表情与上一轮恍然大悟余尾(否则同优先级
-      // 会挡住思考姿态的请求),播放思考姿态(Motion_think,holdEnd 保持末尾姿态)。
+      // 会挡住执行任务姿态的请求),播放执行任务的动作(低头 + 抬手,holdEnd 保持末尾姿态)。
       // 视角跟随已在 thinking 时关闭(shouldFollow),拖拽反馈(setDrag)照常生效。
-      // 注意:思考表情(恍然大悟/困惑)不在这里判定 —— 它们按"推理段"触发
-      // (onThinkingSegmentStart/End),一次 turn 可含多段(0039)。
+      // 注意:思考表情(气泡/困惑/恍然大悟)不在这里判定 —— 它们按"推理段"触发
+      // (onThinkingSegmentStart/End),一次 turn 可含多段(0039/0041)。
       director.stopChannel('expression')
       director.stopChannel('action')
-      director.request(ANIMATIONS['thinking'])
+      director.request(ANIMATIONS['working'])
     } else if (prev === 'thinking') {
-      // 离开 thinking(turn 结束):困惑/思考姿态停止;恍然大悟若在播让它播完(happy 期间)
+      // 离开 thinking(turn 结束):气泡/困惑表情停止;执行任务姿态停止(恍然大悟若在播让它播完)
       director.stopChannel('expression')
       if (!director.isActive('think-exclaim')) director.stopChannel('action')
     } else {
@@ -479,7 +479,7 @@ function createLive2dAnimatorWithRuntime(
       runtime.update(deltaSeconds)
       // 导演推进:hold 冻结判定/兜底超时/自然结束检测(在 update 之后读最新 elapsed)
       director.tick()
-      // 0039 推理段超过阈值 B → 困惑表情(循环),直到该段结束。
+      // 0039/0041 推理段超过阈值 B → 困惑表情(循环)顶替思考气泡贴纸,直到该段结束。
       // 重复请求由导演幂等忽略(同 id 在播);段结束(onThinkingSegmentEnd)时门控停止并复位。
       if (segmentStartedAt > 0 && state === 'thinking') {
         const elapsedSec = (performance.now() - segmentStartedAt) / 1000
@@ -488,18 +488,24 @@ function createLive2dAnimatorWithRuntime(
     },
     applyPetSettings,
     /**
-     * 0039 推理段开始(DSH 事件流 reasoning 块进入,一次 turn 可含多段):
-     * 复位段计时;清上一段的恍然大悟/困惑余留;恢复思考姿态(若 turn 仍在 thinking)。
+     * 0039/0041 推理段开始(DSH 事件流 reasoning 块进入,一次 turn 可含多段):
+     * 复位段计时;播放思考表情(气泡贴纸,段时长 0~困惑阈值 B 期间显示,超 B 由
+     * tick 顶替为困惑);执行任务的动作(working)整个运行期间**常驻** —— 仅当
+     * action 通道被其他动画(恍然大悟余尾)占用时才停掉重建,已是执行任务姿态
+     * 则不动(避免每个推理段开头 0.5s 重播抖动:低头→抬头→低头)。
      */
     onThinkingSegmentStart(): void {
       segmentStartedAt = performance.now()
       director.stopChannel('expression')
-      director.stopChannel('action')
-      if (state === 'thinking') director.request(ANIMATIONS['thinking'])
+      if (state === 'thinking' && !director.isActive('working')) {
+        director.stopChannel('action')
+        director.request(ANIMATIONS['working'])
+      }
+      if (state === 'thinking') director.request(ANIMATIONS['think-thinking'])
     },
     /**
-     * 0039 推理段结束:按段时长判定 —— ≥ 阈值 A 播放"恍然大悟"一次(思考姿态让位);
-     * < A 保持思考姿态。困惑(expression)已在段末停止并复位。
+     * 0039 推理段结束:按段时长判定 —— ≥ 阈值 A 播放"恍然大悟"一次(执行任务姿态让位);
+     * < A 保持执行任务姿态。气泡/困惑(expression)已在段末停止并复位。
      */
     onThinkingSegmentEnd(): void {
       if (segmentStartedAt <= 0) return

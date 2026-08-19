@@ -82,6 +82,11 @@ const EXPRESSION_PARAM_IDS = [
   'ParamBlush',
   'ParamSymbolExclamation',
   'ParamMouthFormClose',
+  /** 思考气泡贴纸(0041,Expression_think_thinking)驱动:头顶"…"气泡 —— 停止后
+   *  同样需平滑拉回默认(气泡隐藏),否则贴纸残留(loop 动画被 stopChannel 时
+   *  SDK 不清参数,值停在末帧)。 */
+  'ParamBubbleEllipsis',
+  'ParamBubbleEllipsis2',
 ] as const
 /** 表情复位平滑速度(1/s):≈0.3s 内基本回归待机。 */
 const EXPRESSION_RESET_SPEED = 10

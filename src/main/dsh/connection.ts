@@ -41,6 +41,11 @@ export function createConnection(
   let inReasoningSegment = false
 
   function emitThinkingStart(sessionId: string, time: number): void {
+    // 段内推理 delta 会持续到达,只在**段起点**发一次(0041:重复发会让 renderer 的
+    // 段计时被反复重置 —— 思考表情(0~阈值B)/困惑/恍然大悟的时长判定全部失效,
+    // 执行任务的动作也会在每个 delta 上停掉重播而无法常驻)。段终点由
+    // emitThinkingEnd(非 reasoning 块 / step-end / turn-end)收尾。
+    if (inReasoningSegment) return
     inReasoningSegment = true
     onEvent({ type: 'dsh:thinking-start', sessionId, time })
   }
