@@ -13,10 +13,11 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
   /**
    * 摸头反馈(0037 系列):点击头部 HitAreaHead 触发。
    * - mode: hold —— 按住时动画冻结在闭眼保持帧(holdAt=0.45s),松开继续播完自然复位
-   * - 闭眼过程按素材原速播放(0037w 修正):按下后动画从 0 以素材速度走完
-   *   "开始→闭眼"(≈0.33s),到 holdAt 冻结——闭眼时长与素材关键帧一致,
-   *   不加速不瞬移;已播过保持帧(续摸/播放中再按)先回跳 holdRewindTo=0.1s
-   *   闭眼起点再原速闭眼,保证"播放中按下也能转回保持帧"
+   * - 闭眼过程按素材原速播放(0037w2):按下后动画从 0 以素材速度走完
+   *   "开始→闭眼"(≈0.33s),到 holdAt 冻结——闭眼时长与素材关键帧一致
+   * - holdUntil=1.2(0037x,素材 EyeLOpen 1.2s 起睁眼):动画处于 [0.45,1.2) 闭眼
+   *   保持段时按下,直接冻结当前帧不重闭;已过 1.2s(眼睛已睁开)才回跳
+   *   holdRewindTo=0.1s 闭眼起点重新闭眼——"正闭着眼时摸头不再闭一次眼"
    * - durationMs: 4000 兜底(素材 3.83s 自然结束,此值仅防异常)
    * - priority 默认 0:可被 sad(1) 打断
    */
@@ -26,6 +27,7 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
     file: 'Expression_pat_head.motion3.json',
     mode: 'hold',
     holdAt: 0.45,
+    holdUntil: 1.2,
     holdRewindTo: 0.1,
     durationMs: 4000,
     autoBlink: false,

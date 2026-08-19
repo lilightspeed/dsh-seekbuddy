@@ -38,6 +38,11 @@ export interface AnimationSpec {
   /** 0037w:按下时动画已播过保持帧(续摸/播放中再按)则先回跳到该秒数(闭眼起点
    *  附近),再按 holdSeekRate 加速闭眼到 holdAt;缺省 0(从头)。 */
   holdRewindTo?: number
+  /** 0037x:hold 模式"保持段"结束点(秒)——素材中"闭眼保持"到"开始睁眼"的切换
+   *  时刻(如摸头素材 EyeLOpen 1.2s 起睁眼)。按下时 elapsed 已过该点 = 眼睛已睁开,
+   *  才回跳重闭眼;elapsed 仍处于 [holdAt, holdUntil) 保持段 = 正闭着眼,直接冻结
+   *  当前帧不重闭(避免"闭着眼时再按又闭一次眼"的突兀)。缺省 = holdAt(无保持段)。 */
+  holdUntil?: number
   /** 兜底播放时长(ms);素材无自然结束信号时由导演兜底 stop。 */
   durationMs?: number
   /** 播放期间是否允许自动眨眼;默认 true,摸头/sad 设 false(motion 接管眼睛)。 */
@@ -150,14 +155,16 @@ export function createAnimationDirector(runtime: Live2dRuntime): AnimationDirect
         holdState.set(channel, true)
         // 0037w:"鼠标过来摸头就闭眼享受"——按下后动画从 0 以素材原速走完闭眼过程
         // 到保持帧(闭眼时长与素材关键帧一致),再由 tick 在 holdAt 冻结;若配置了
-        // holdSeekRate>1 才加速(其他动画可选)。动画已播过保持帧(续摸/播放中再按)
-        // 先回跳到 holdRewindTo 闭眼起点重新闭眼,保证"播放中按下也能转回保持帧";
-        // 素材未加载(elapsed=-1)时按下后照常从起点原速播放。缺省 holdSeekRate(≤1)
-        // = 0037l 原速自然播放语义。
+        // holdSeekRate>1 才加速(其他动画可选)。
+        // 0037x:回跳重闭眼只在"眼睛已睁开"时发生(elapsed ≥ holdUntil,素材保持段
+        // 结束点)——动画正处于 [holdAt, holdUntil) 闭眼保持段时按下,不重闭不跳变,
+        // 由 tick 直接冻结当前帧(正闭着眼就不必再闭一次);elapsed < holdAt(闭眼
+        // 进行中)同样不干预。素材未加载(elapsed=-1)时按下后照常从起点原速播放。
         if (entry.spec.mode === 'hold' && (entry.spec.holdAt ?? 0) > 0) {
           const holdAt = entry.spec.holdAt ?? 0
+          const holdUntil = entry.spec.holdUntil ?? holdAt
           const elapsed = runtime.getMotionElapsed?.(channel) ?? -1
-          if (elapsed >= holdAt) {
+          if (elapsed >= holdUntil) {
             runtime.seekMotion?.(channel, entry.spec.holdRewindTo ?? 0)
           }
           const rate = entry.spec.holdSeekRate ?? 1
