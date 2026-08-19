@@ -66,6 +66,12 @@ export interface Live2dRuntime {
    * 无 hitarea 返回 undefined(调用方回落为 overlay 圆内即命中)。
    */
   hitTestPoint?(x: number, y: number): boolean | undefined
+  /** 身体 hitarea 的屏幕包围盒(点击区定位,0037r;素材未导出返回 null)。 */
+  getBodyPoint?(): { x: number; y: number; width: number; height: number } | null
+  /** 身体 hitarea 网格的屏幕顶点(显示点击判定网格用;无 hitarea 返回 null)。 */
+  getBodyMeshPoints?(): { x: number; y: number }[] | null
+  /** 屏幕坐标是否命中身体 hitarea 网格(点击身体触发 sad,0037r);无 hitarea 返回 undefined。 */
+  hitTestBodyPoint?(x: number, y: number): boolean | undefined
   /** 切表情(exp3;后续里程碑,未实现可忽略)。 */
   playExpression(name: string): void
   /** 释放 canvas / WebGL 上下文 / 事件监听。 */

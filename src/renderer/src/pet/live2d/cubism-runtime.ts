@@ -43,6 +43,8 @@ const SHADER_PATH = '/pet/live2d/shaders/'
 const MOTION_FILES: Record<string, { file: string; loop: boolean }> = {
   /** 摸头反馈:眯眼 + 闭眼 + 微笑 + 脸颊泛红。 */
   'pat-head': { file: 'Expression_pat_head.motion3.json', loop: false },
+  /** sad 表情(0037r):点击身体 HitAreaBody 触发;曲线首尾一致,仍按非循环播一遍自动复位。 */
+  sad: { file: 'Expression_sad.motion3.json', loop: false },
 }
 /** motion 基础 URL(publicDir=assets)。 */
 const MOTION_BASE_URL = '/pet/live2d/'
@@ -69,6 +71,8 @@ const EXPRESSION_PARAM_IDS = [
   'ParamBrowRY',
   'ParamCheek',
   'ParamTear',
+  /** sad 表情(0037r)驱动嘴部;摸头不涉及但复位无害。 */
+  'ParamMouthOpenY',
 ] as const
 /** 表情复位平滑速度(1/s):≈0.3s 内基本回归待机。 */
 const EXPRESSION_RESET_SPEED = 10
@@ -467,23 +471,23 @@ class CubismRuntime implements Live2dRuntime {
   }
 
   /**
-   * 计算头部 hitarea 的屏幕命中网格(0037)。
-   * 匹配 Name/Id 含 "head" 的 HitArea,优先取 Id 引用的 moc3 触碰检测网格(drawable,
-   * 旧格式,最贴合轮廓);无网格则用矩形坐标(新格式)生成四角。
-   * **每次调用按当前帧顶点重算**(不缓存):HitAreaHead 网格挂在变形器上,顶点随
-   * 头部角度等参数变化(0037 实测),缓存会与渲染错位 → 触发区域对不上模型。
+   * 计算 HitArea 的屏幕命中网格(0037/0037r)。
+   * 匹配 Name/Id 含关键字(head/body)的 HitArea,优先取 Id 引用的 moc3 触碰检测
+   * 网格(drawable,旧格式,最贴合轮廓);无网格则用矩形坐标(新格式)生成四角。
+   * **每次调用按当前帧顶点重算**(不缓存):网格挂在变形器上,顶点随参数变化
+   * (0037 实测),缓存会与渲染错位 → 触发区域对不上模型。
    */
-  private computeHeadMesh(): HeadMesh | null {
+  private computeHitMesh(keyword: 'head' | 'body'): HeadMesh | null {
     const model = this.userModel?.getModel()
     if (!model) return null
-    const head = this.hitAreas.find(
-      (h) => h.name.toLowerCase().includes('head') || h.id.toLowerCase().includes('head'),
+    const hit = this.hitAreas.find(
+      (h) => h.name.toLowerCase().includes(keyword) || h.id.toLowerCase().includes(keyword),
     )
-    if (!head) return null
+    if (!hit) return null
 
     // 1) 旧格式:Id 引用触碰检测网格(drawable)—— 顶点多边形(最贴合)
-    if (head.id) {
-      const drawableIndex = model.getDrawableIndex(this.id(head.id))
+    if (hit.id) {
+      const drawableIndex = model.getDrawableIndex(this.id(hit.id))
       if (drawableIndex >= 0) {
         const positions = model.getDrawableVertexPositions(drawableIndex)
         const points: { x: number; y: number }[] = []
@@ -497,23 +501,28 @@ class CubismRuntime implements Live2dRuntime {
     }
 
     // 2) 新格式:矩形坐标(画布归一化 → 屏幕四角)
-    if (typeof head.x === 'number' && typeof head.y === 'number') {
+    if (typeof hit.x === 'number' && typeof hit.y === 'number') {
       const canvasW = model.getCanvasWidth()
       const canvasH = model.getCanvasHeight()
       if (canvasW > 0 && canvasH > 0) {
-        const w = head.width ?? 0
-        const h = head.height ?? 0
+        const w = hit.width ?? 0
+        const h = hit.height ?? 0
         const points = [
-          this.modelPointToScreen((head.x - 0.5) * canvasW, (0.5 - head.y) * canvasH),
-          this.modelPointToScreen((head.x + w - 0.5) * canvasW, (0.5 - head.y) * canvasH),
-          this.modelPointToScreen((head.x + w - 0.5) * canvasW, (0.5 - (head.y + h)) * canvasH),
-          this.modelPointToScreen((head.x - 0.5) * canvasW, (0.5 - (head.y + h)) * canvasH),
+          this.modelPointToScreen((hit.x - 0.5) * canvasW, (0.5 - hit.y) * canvasH),
+          this.modelPointToScreen((hit.x + w - 0.5) * canvasW, (0.5 - hit.y) * canvasH),
+          this.modelPointToScreen((hit.x + w - 0.5) * canvasW, (0.5 - (hit.y + h)) * canvasH),
+          this.modelPointToScreen((hit.x - 0.5) * canvasW, (0.5 - (hit.y + h)) * canvasH),
         ]
         return this.makeHeadMesh(points)
       }
     }
 
     return null
+  }
+
+  /** 头部 hitarea 命中网格(0037)。 */
+  private computeHeadMesh(): HeadMesh | null {
+    return this.computeHitMesh('head')
   }
 
   /** 顶点列表 → 命中网格(包围盒;HitAreaHead 是 4 顶点矩形,包围盒即网格本身)。
@@ -547,6 +556,25 @@ class CubismRuntime implements Live2dRuntime {
   getHeadMeshPoints(): { x: number; y: number }[] | null {
     const mesh = this.computeHeadMesh()
     return mesh ? mesh.points : null
+  }
+
+  /** 身体 hitarea 的屏幕包围盒(身体点击区定位,0037r);无 hitarea 返回 null。 */
+  getBodyPoint(): { x: number; y: number; width: number; height: number } | null {
+    const mesh = this.computeHitMesh('body')
+    return mesh ? { ...mesh.bounds } : null
+  }
+
+  /** 身体 hitarea 网格的屏幕顶点(显示点击判定网格,0037r);无 hitarea 返回 null。 */
+  getBodyMeshPoints(): { x: number; y: number }[] | null {
+    const mesh = this.computeHitMesh('body')
+    return mesh ? mesh.points : null
+  }
+
+  /** 屏幕坐标是否命中身体 hitarea 网格(点击身体触发 sad,0037r);无 hitarea 返回 undefined。 */
+  hitTestBodyPoint(x: number, y: number): boolean | undefined {
+    const mesh = this.computeHitMesh('body')
+    if (!mesh) return undefined
+    return pointInPolygon(x, y, mesh.points)
   }
 
   /** 屏幕坐标是否命中头部 hitarea 网格(点击摸头精确判定);无 hitarea 返回 undefined 由调用方回落。 */

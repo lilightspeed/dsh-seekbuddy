@@ -161,6 +161,17 @@ function createLive2dAnimatorWithRuntime(
     'background: transparent;'
   document.body.appendChild(hitEl)
 
+  /**
+   * 身体点击区(0037r):no-drag 透明矩形,覆盖 HitAreaBody 包围盒;点击触发 sad
+   * 表情。z-index 1 低于头部(2)——头部区域优先命中,两区不重叠时互不影响。
+   */
+  const bodyHitEl = document.createElement('div')
+  bodyHitEl.id = 'pet-body-hit'
+  bodyHitEl.style.cssText =
+    'position: fixed; z-index: 1; pointer-events: auto; -webkit-app-region: no-drag;' +
+    'background: transparent; display: none;'
+  document.body.appendChild(bodyHitEl)
+
   /** 点击判定网格可视化(0037):SVG polygon 画命中网格轮廓,设置面板开关控制(默认隐藏)。
    *  注意:svg 是替换元素,position:fixed + inset:0 不会拉伸尺寸,必须显式给宽高,
    *  否则默认 300×150 画布会把屏幕坐标的网格裁掉(0037j)。 */
@@ -175,9 +186,16 @@ function createLive2dAnimatorWithRuntime(
   meshPoly.setAttribute('stroke-width', '1.5')
   meshPoly.setAttribute('stroke-dasharray', '4 3')
   meshSvg.appendChild(meshPoly)
+  /** 身体命中网格(0037r):绿色区分头部;无 HitAreaBody 时隐藏。 */
+  const meshBodyPoly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon')
+  meshBodyPoly.setAttribute('fill', 'rgba(0, 199, 106, 0.16)')
+  meshBodyPoly.setAttribute('stroke', '#00c76a')
+  meshBodyPoly.setAttribute('stroke-width', '1.5')
+  meshBodyPoly.setAttribute('stroke-dasharray', '4 3')
+  meshSvg.appendChild(meshBodyPoly)
   document.body.appendChild(meshSvg)
 
-  /** 每帧更新网格可视化:优先画命中网格多边形,无网格回退估算矩形(与点击区一致)。 */
+  /** 每帧更新网格可视化:头部蓝色 + 身体绿色;无命中网格回退估算矩形(与点击区一致)。 */
   function updateMeshOverlay(): void {
     if (!petSettings.showHitMesh) return
     const pts = runtime.getHeadMeshPoints?.()
@@ -189,6 +207,13 @@ function createLive2dAnimatorWithRuntime(
         'points',
         `${h.x},${h.y} ${h.x + h.width},${h.y} ${h.x + h.width},${h.y + h.height} ${h.x},${h.y + h.height}`,
       )
+    }
+    const bodyPts = runtime.getBodyMeshPoints?.()
+    if (bodyPts && bodyPts.length >= 3) {
+      meshBodyPoly.setAttribute('points', bodyPts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' '))
+      meshBodyPoly.setAttribute('display', '')
+    } else {
+      meshBodyPoly.setAttribute('display', 'none')
     }
   }
 
@@ -253,6 +278,35 @@ function createLive2dAnimatorWithRuntime(
   hitEl.addEventListener('pointerup', () => releasePatHold())
 
   /**
+   * 身体点击区(0037r):HitAreaBody 包围盒;素材未导出(旧素材)返回 null → 隐藏。
+   * 不提供估算回退:身体区域形状依赖素材,没有 hitarea 就不该有身体交互。
+   */
+  function bodyAnchor(): { x: number; y: number; width: number; height: number } | null {
+    return runtime.getBodyPoint?.() ?? null
+  }
+
+  /**
+   * 点击身体(0037r):idle + 命中 HitAreaBody → 播放 sad 表情一遍(非循环,
+   * 自然结束自动平滑复位)。播放中重复点击幂等忽略;会打断进行中的摸头
+   * (清理按住状态,SDK 队列自动 fadeOut/fadeIn 切换)。
+   */
+  function onBodyDown(x: number, y: number): void {
+    if (state !== 'idle') return
+    // 命中判定:无 hitarea(undefined)回落为 overlay 区域即命中
+    if (runtime.hitTestBodyPoint && runtime.hitTestBodyPoint(x, y) === false) return
+    // 打断摸头(若有):sad 接管时按住/冻结状态必须清干净
+    if (patActive || holdActive) {
+      patActive = false
+      holdActive = false
+      holdFrozen = false
+      runtime.setMotionPaused?.(false)
+    }
+    runtime.setAutoBlink(false)
+    runtime.playMotion('sad')
+  }
+  bodyHitEl.addEventListener('pointerdown', (e) => onBodyDown(e.clientX, e.clientY))
+
+  /**
    * 写入当前光标(窗口局部坐标,原样透传)。
    * 不夹取到窗口边缘:窗口外鼠标的远近由 follower 的指数距离曲线持续影响视角(0017);
    * 0016 曾夹取到边缘,但那会抹掉窗口外距离信息。
@@ -283,8 +337,8 @@ function createLive2dAnimatorWithRuntime(
 
   function applyState(next: PetState): void {
     follower.setEnabled(shouldFollow(next))
-    // 摸头只在 idle 生效:状态离开 idle(工作/瞬时反馈态)立即淡出摸头表情
-    if (next !== 'idle' && patActive) {
+    // 表情只在 idle 生效:状态离开 idle(工作/瞬时反馈态)立即停止摸头/sad
+    if (next !== 'idle') {
       patActive = false
       holdActive = false
       holdFrozen = false
@@ -376,12 +430,22 @@ function createLive2dAnimatorWithRuntime(
         }
       }
       // 头部点击区跟随宠物位置(hitarea 精确位置或估算;窗口/位置/大小变化实时适配)
-      // 头部点击区跟随宠物位置(hitarea 精确位置或估算;窗口/位置/大小变化实时适配)
       const h = headAnchor()
       hitEl.style.left = `${h.x}px`
       hitEl.style.top = `${h.y}px`
       hitEl.style.width = `${h.width}px`
       hitEl.style.height = `${h.height}px`
+      // 身体点击区跟随 HitAreaBody(0037r);素材未导出则隐藏
+      const b = bodyAnchor()
+      if (b) {
+        bodyHitEl.style.display = 'block'
+        bodyHitEl.style.left = `${b.x}px`
+        bodyHitEl.style.top = `${b.y}px`
+        bodyHitEl.style.width = `${b.width}px`
+        bodyHitEl.style.height = `${b.height}px`
+      } else {
+        bodyHitEl.style.display = 'none'
+      }
       // 点击判定网格可视化(设置面板开关,0037)
       updateMeshOverlay()
       runtime.setViewLook(follower.look())
@@ -399,6 +463,7 @@ function createLive2dAnimatorWithRuntime(
       unsubscribeCursor?.()
       window.removeEventListener('pointermove', onPointerMove)
       hitEl.remove()
+      bodyHitEl.remove()
       meshSvg.remove()
       runtime.dispose()
     },
