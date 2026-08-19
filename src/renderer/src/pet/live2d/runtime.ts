@@ -69,6 +69,12 @@ export interface Live2dRuntime {
   /** 某通道当前 motion 已播放秒数(从本 motion 起点计);无播放中的 motion 返回 -1。 */
   getMotionElapsed?(channel: AnimationChannel): number
   /**
+   * 把某通道当前 motion 的播放位置跳到指定秒数(0037v):
+   * 按下摸头瞬间直接定格在"保持帧"(脸红闭眼),无需等动画自然播放到 holdAt。
+   * motion 仍在异步加载时记录待生效目标,开始播放后立即应用。可选:占位/测试实现可不提供。
+   */
+  seekMotion?(channel: AnimationChannel, seconds: number): void
+  /**
    * 头部 hitarea 的屏幕包围盒(点击区 overlay 定位用,与命中区域一致;素材未导出
    * HitAreas 返回 null,调用方回退估算)。可选:占位/测试实现可不提供。
    */

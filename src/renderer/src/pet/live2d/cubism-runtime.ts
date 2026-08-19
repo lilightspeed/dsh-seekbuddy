@@ -371,6 +371,12 @@ class CubismRuntime implements Live2dRuntime {
   private readonly motionStartTimes = new Map<AnimationChannel, number>()
   /** motion 暂停(0037l):暂停时不推进 motionTime 也不驱动曲线,动画定格当前帧。 */
   private motionPaused = false
+  /**
+   * 待生效的 seek 目标(0037v):按下摸头瞬间请求跳到保持帧,但 motion 素材还在异步
+   * 加载、queue 尚无 entry 时无法立即调整 startTime —— 记在这里,startMotion 完成后
+   * 立即应用。仅"按下瞬间 seek"用,正常播放/续摸不会写入。
+   */
+  private readonly pendingSeek = new Map<AnimationChannel, number>()
   /** 已解析的 motion 缓存(逻辑名 → 实例;null 表示解析失败,不再重试)。 */
   private readonly motionCache = new Map<string, CubismMotion | null>()
   /** 各通道当前正在播放(或正在异步加载)的 motion 逻辑名;无 = 该通道空闲。 */
@@ -1005,17 +1011,30 @@ class CubismRuntime implements Live2dRuntime {
       this.motionParamIds.set(name, paramIds)
     }
     if (!motion || this.disposed) {
-      if (!motion) this.currentMotion.delete(channel)
+      if (!motion) {
+        this.currentMotion.delete(channel)
+        this.pendingSeek.delete(channel)
+      }
       return
     }
     // 加载期间被 stopChannel / 换了新动画 → 放弃本次 start(避免过期动画抢播)
-    if (this.currentMotion.get(channel) !== name) return
+    if (this.currentMotion.get(channel) !== name) {
+      this.pendingSeek.delete(channel)
+      return
+    }
 
     // 物理互斥(doc/09 §3.5):同通道 start 前先停旧动画 —— 即使绕过仲裁层直接
     // 调用,同一通道也不可能两条动画并行(0037s 修"两个动画重叠"的直接手段)。
     const queue = this.getMotionQueue(channel)
     queue.stopAllMotions()
     queue.startMotion(motion, false)
+    // 0037v:按下摸头瞬间的"跳到保持帧"请求在素材加载完成前到达 → 这里立即应用,
+    // 动画第一帧就定位在 holdAt(脸红闭眼),而不是从 0 开始自然播放到保持点。
+    const pending = this.pendingSeek.get(channel)
+    if (pending !== undefined) {
+      this.pendingSeek.delete(channel)
+      this.applySeek(channel, pending)
+    }
     // 新动画接管:上一动画被打断后的复位若整体取消,其曲线"不覆盖"的参数会残留
     // (如 sad 不驱动摸头的闭眼/微笑 → 两个表情叠加,0037u)——只保留新动画不驱动
     // 的参数继续复位,新动画驱动的参数交给曲线;记录起点(已播时长 = motionTime - start)。
@@ -1075,6 +1094,7 @@ class CubismRuntime implements Live2dRuntime {
     const hadMotion = this.currentMotion.has(channel) || queue !== undefined
     this.currentMotion.delete(channel)
     this.motionStartTimes.delete(channel)
+    this.pendingSeek.delete(channel)
     this.motionPaused = false
     queue?.stopAllMotions()
     if (hadMotion) this.beginExpressionReset()
@@ -1096,6 +1116,58 @@ class CubismRuntime implements Live2dRuntime {
     return this.currentMotion.has(channel) && start !== undefined ? this.motionTime - start : -1
   }
 
+  /**
+   * 把某通道当前 motion 的播放位置跳到指定秒数(0037v):
+   * 按下摸头瞬间由导演调用,让动画直接定格在"保持帧"(脸红闭眼),无需等自然播放到 holdAt。
+   * - motion 已入队列(素材加载完成):立即调整 entry startTime,下一帧曲线在目标秒求值;
+   * - 素材仍在异步加载(queue 无 entry):记 pendingSeek,startMotion 完成后立即应用。
+   */
+  seekMotion(channel: AnimationChannel, seconds: number): void {
+    if (this.disposed || !this.ready) return
+    const queue = this.motionQueues.get(channel)
+    const hasEntry = (queue?.getCubismMotionQueueEntries().some((e) => e && !e.isFinished()) ?? false)
+    if (!hasEntry) {
+      // 加载中:记录待生效目标(仅当该通道确有 motion 在途,否则丢弃)
+      if (this.currentMotion.has(channel)) this.pendingSeek.set(channel, seconds)
+      return
+    }
+    this.applySeek(channel, seconds)
+  }
+
+  /**
+   * 实际执行跳帧:把队列里非 finished entry 的 startTime 前移,使
+   * 曲线求值时间(= userTimeSeconds - startTime)直接落在目标秒(0037v)。
+   * 同步调整 fadeInStartTime 保证淡入权重为 1(定位即完整状态,不渐进淡入),
+   * 并把自身 motionStartTimes 对齐(getMotionElapsed 保持一致)。
+   * 目标 clamp 到 [0, duration-1 帧]:越过素材时长会触发 isFinished,动画立即结束。
+   */
+  private applySeek(channel: AnimationChannel, seconds: number): void {
+    const queue = this.motionQueues.get(channel)
+    if (!queue) return
+    const entries = queue.getCubismMotionQueueEntries()
+    if (entries.length === 0) return
+    // 素材时长上限:取第一个有效 entry 的时长,防止 seek 越过终点立即 finished
+    let duration = 0
+    for (const entry of entries) {
+      if (!entry || entry.isFinished()) continue
+      const d = (entry.getCubismMotion() as CubismMotion).getDuration()
+      if (d > 0) {
+        duration = d
+        break
+      }
+    }
+    const clamped = duration > 0 ? Math.min(seconds, Math.max(0, duration - 0.016)) : Math.max(0, seconds)
+    for (const entry of entries) {
+      if (!entry || entry.isFinished()) continue
+      // 标记已开始:entry 若尚未 setup(started),首次 updateParameters 会以
+      // userTimeSeconds 覆盖 startTime,必须提前钉死,seek 才不被抹掉
+      entry.setIsStarted(true)
+      entry.setStartTime(this.motionTime - clamped)
+      entry.setFadeInStartTime(this.motionTime - Math.max(clamped, MOTION_FADE_IN_SECONDS))
+    }
+    this.motionStartTimes.set(channel, this.motionTime - clamped)
+  }
+
   playExpression(name: string): void {
     console.warn(`[live2d] playExpression("${name}") 未接入:尚未制作 exp3 素材`)
   }
@@ -1113,6 +1185,7 @@ class CubismRuntime implements Live2dRuntime {
     this.motionParamIds.clear()
     this.currentMotion.clear()
     this.motionStartTimes.clear()
+    this.pendingSeek.clear()
     this.motionPaused = false
     this.expressionReset = null
     if (this.breath) CubismBreath.delete(this.breath)

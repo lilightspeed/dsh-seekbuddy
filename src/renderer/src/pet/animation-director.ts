@@ -141,6 +141,16 @@ export function createAnimationDirector(runtime: Live2dRuntime): AnimationDirect
       if (holding) {
         // 按住:记录状态,由 tick 在 holdAt 处冻结
         holdState.set(channel, true)
+        // 0037v:"鼠标过来摸头就闭眼享受"——按下瞬间直接把动画跳到保持帧
+        // (如摸头脸红闭眼 0.45s),无需等动画从 0 自然播放到 holdAt。仅当
+        // 动画还没播到保持帧时回跳(elapsed 含加载中的 -1,seekMotion 内部
+        // 记 pending,素材就绪后立即应用);已播过保持帧(续摸)不回跳,保持
+        // 原语义由 tick 冻结在当前帧。
+        if (entry.spec.mode === 'hold' && (entry.spec.holdAt ?? 0) > 0) {
+          const holdAt = entry.spec.holdAt ?? 0
+          const elapsed = runtime.getMotionElapsed?.(channel) ?? -1
+          if (elapsed < holdAt) runtime.seekMotion?.(channel, holdAt)
+        }
       } else {
         // 松开/移出:立即解除冻结继续播放
         holdState.set(channel, false)
