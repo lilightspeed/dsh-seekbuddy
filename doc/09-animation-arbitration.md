@@ -74,6 +74,8 @@ export interface AnimationSpec {
   holdAt?: number
   /** 兜底播放时长(ms);素材无自然结束信号时由 director 兜底 stop。 */
   durationMs?: number
+  /** 播放期间是否允许自动眨眼;默认 true;摸头/sad 设 false(动画接管眼睛,0037g 坑由导演统一保证)。 */
+  autoBlink?: boolean
   /** 未来:该动画要独占的其他通道(如"惊吓"全身动画要盖掉表情)。 */
   blocksChannels?: AnimationChannel[]
 }
@@ -85,13 +87,15 @@ export interface AnimationSpec {
 
 `director.request(spec)` 的判定顺序(同通道内):
 
-1. **Gate 检查**:所在通道被锁(如 thinking 状态锁 expression)→ 忽略(记录 `pending`,解锁后可配置补播)。
-2. **同 id 已在播**:`restartOnRepeat: false` → 幂等忽略;`true` → 重置计时重播。
+1. **Gate 检查**:所在通道被锁(如 thinking 状态锁 expression)→ 忽略(可选记 `pending`,解锁后补播,当前未实现)。
+2. **同 id 已在播** → 幂等忽略;若 `restartOnRepeat: true` 且动画已自然结束(导演尚未清理)→ 立即重播(续摸语义)。
 3. **同通道有别的动画**:
-   - 新动画 `priority >` 当前 → **打断**:`runtime.stopChannel(channel)`(触发复位 + onEnd)→ 播新的。
+   - 新动画 `priority >` 当前 → **打断**:`stopChannel`(触发复位 + onEnd)→ 播新的。
    - 否则 → 忽略(可选排队,默认不排队)。
 4. **跨通道** → 互不干扰,直接播(各通道独立队列)。
 5. **blocksChannels**:播前先 stop 被 block 的通道(未来扩展)。
+
+> 动画播放期间的自动眨眼由导演按 `spec.autoBlink` 接管:start 时关/开,结束(自然播完或被打断)统一恢复 true——0037g 的"续摸/重播不重关眨眼"坑在导演层根治,animator 不再手动调 `setAutoBlink`。
 
 ### 3.4 生命周期与 Gate
 
@@ -148,10 +152,13 @@ export interface Live2dRuntime {
 ### 4.3 新模块 `animation-registry.ts`
 
 ```ts
+/** 动画逻辑 id(新增动画扩展 union;索引访问不返回 undefined)。 */
+type AnimationId = 'pat-head' | 'sad'
+
 /** 全部动画的单点登记处(现在只有 expression;未来加 action)。 */
-export const ANIMATIONS: Record<string, AnimationSpec> = {
-  'pat-head': { id: 'pat-head', channel: 'expression', file: 'Expression_pat_head.motion3.json', mode: 'hold', holdAt: 0.45, durationMs: 4000 },
-  sad:       { id: 'sad', channel: 'expression', file: 'Expression_sad.motion3.json', priority: 1, durationMs: 3500 },
+export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
+  'pat-head': { id: 'pat-head', channel: 'expression', file: 'Expression_pat_head.motion3.json', mode: 'hold', holdAt: 0.45, durationMs: 4000, autoBlink: false },
+  sad:       { id: 'sad', channel: 'expression', file: 'Expression_sad.motion3.json', priority: 1, durationMs: 3500, autoBlink: false },
   // 未来:walk: { id: 'walk', channel: 'action', file: 'Action_walk.motion3.json', loop: true },
 }
 ```
@@ -172,31 +179,37 @@ export function createAnimationDirector(runtime: Live2dRuntime) {
   function request(spec: AnimationSpec): void {
     const cur = active.get(spec.channel)
     if (gates.has(spec.channel)) return                        // 1. gate 锁
-    if (cur?.id === spec.id) {                                 // 2. 同 id
-      if (spec.restartOnRepeat) restart(spec)                  //    重置重播
+    if (cur?.spec.id === spec.id) {                            // 2. 同 id
+      if (spec.restartOnRepeat && !runtime.isChannelActive(spec.channel)) start(spec)  // 已自然结束未清理 → 重播
       return                                                   //    幂等忽略
     }
-    if (cur && spec.priority <= cur.spec.priority) return      // 3. 优先级不足 → 忽略
+    if (cur && (spec.priority ?? 0) <= (cur.spec.priority ?? 0)) return  // 3. 优先级不足 → 忽略
     for (const c of spec.blocksChannels ?? []) stopChannel(c)  // 5. 独占声明(未来)
-    stopChannel(spec.channel)                                  //    打断旧的(含复位)
-    active.set(spec.channel, { spec, startMs: now() })
-    runtime.playMotion(spec.id, spec.channel)                  // 4. 物理互斥由 runtime 兜底
-    // hold 模式:每帧 tick 里到 holdAt 自动冻结;setHold(false) 恢复
+    if (cur) stopChannel(spec.channel)                         //    打断旧的(含复位 + onEnd)
+    start(spec)                                                // 4. 物理互斥由 runtime 兜底
+  }
+
+  function start(spec: AnimationSpec): void {
+    active.set(spec.channel, { spec, frozen: false })
+    runtime.setAutoBlink(spec.autoBlink ?? true)               // 动画接管/放行眨眼(0037g)
+    runtime.playMotion(spec.id, spec.channel)
   }
 
   function setHold(channel: AnimationChannel, holding: boolean): void {
-    if (holding) { /* 已到 holdAt → runtime.setMotionPaused(true) 冻结定格 */ }
-    else runtime.setMotionPaused?.(false)
+    const entry = active.get(channel); if (!entry) return
+    if (holding) holdState.set(channel, true)                  // 按住:由 tick 到 holdAt 冻结
+    else { holdState.set(channel, false); entry.frozen = false; runtime.setMotionPaused?.(false) }
   }
 
-  function tick(deltaMs: number): void {
-    for (const [channel, entry] of active) {
-      if (!runtime.isChannelActive(channel)) {                 // 素材自然播完
-        active.delete(channel); emit(channel, entry.spec.id, 'finished')
-      } else if (entry.spec.mode === 'hold' && !entry.frozen && runtime.getMotionElapsed?.(channel) >= (entry.spec.holdAt ?? 0)) {
+  function tick(): void {                                      // 无参:全部基于 elapsed 绝对时间
+    for (const [channel, entry] of [...active]) {
+      if (!runtime.isChannelActive(channel)) {                 // 素材自然播完(或加载失败)
+        active.delete(channel); runtime.setAutoBlink(true); emit(channel, entry.spec.id, 'finished')
+      } else if (entry.spec.mode === 'hold' && holdState.get(channel) && !entry.frozen &&
+                 (entry.spec.holdAt ?? 0) > 0 && runtime.getMotionElapsed?.(channel) >= (entry.spec.holdAt ?? 0)) {
         runtime.setMotionPaused?.(true); entry.frozen = true   // 冻结到保持点
-      } else if (entry.spec.durationMs && runtime.getMotionElapsed?.(channel) >= entry.spec.durationMs / 1000) {
-        stopChannel(channel)                                   // 兜底时长到 → 停止复位
+      } else if (!entry.frozen && entry.spec.durationMs && runtime.getMotionElapsed?.(channel) >= entry.spec.durationMs / 1000) {
+        stopChannel(channel)                                   // 兜底时长到 → 停止复位(冻结期间不计时)
       }
     }
   }
@@ -205,6 +218,7 @@ export function createAnimationDirector(runtime: Live2dRuntime) {
     const entry = active.get(channel); if (!entry) return
     active.delete(channel)
     runtime.stopChannel(channel)
+    runtime.setAutoBlink(true)                                 // 结束统一恢复眨眼
     emit(channel, entry.spec.id, reason)
   }
 
