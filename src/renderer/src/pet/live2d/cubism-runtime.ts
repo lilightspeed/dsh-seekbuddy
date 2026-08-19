@@ -117,6 +117,43 @@ function pointInPolygon(x: number, y: number, pts: { x: number; y: number }[]): 
   return inside
 }
 
+/**
+ * 顶点 → 凸包环绕序(Andrew 单调链,0037k):moc3 drawable 顶点数组的顺序不保证
+ * 是环绕序,原样连线会自交成沙漏(polygon 显示 + 射线法判定都错)。
+ * 凸包输出保证连线不自交;≤3 点或退化(共线)时原样返回(调用方有 ≥3 点兜底)。
+ */
+function convexHull(points: { x: number; y: number }[]): { x: number; y: number }[] {
+  if (points.length <= 3) return points
+  const pts = [...points].sort((a, b) => a.x - b.x || a.y - b.y)
+  const cross = (o: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }): number =>
+    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
+  const lower: { x: number; y: number }[] = []
+  for (const p of pts) {
+    while (lower.length >= 2) {
+      const b = lower[lower.length - 1]
+      const a = lower[lower.length - 2]
+      if (!a || !b || cross(a, b, p) > 0) break
+      lower.pop()
+    }
+    lower.push(p)
+  }
+  const upper: { x: number; y: number }[] = []
+  for (let i = pts.length - 1; i >= 0; i--) {
+    const p = pts[i]
+    if (!p) continue
+    while (upper.length >= 2) {
+      const b = upper[upper.length - 1]
+      const a = upper[upper.length - 2]
+      if (!a || !b || cross(a, b, p) > 0) break
+      upper.pop()
+    }
+    upper.push(p)
+  }
+  lower.pop()
+  upper.pop()
+  return lower.concat(upper)
+}
+
 /** 头部 hitarea 命中网格(屏幕坐标,每次按当前帧变形顶点重算)。 */
 interface HeadMesh {
   points: { x: number; y: number }[]
@@ -463,20 +500,23 @@ class CubismRuntime implements Live2dRuntime {
     return null
   }
 
-  /** 顶点列表 → 命中网格(包围盒;HitAreaHead 是 4 顶点矩形,包围盒即网格本身)。 */
+  /** 顶点列表 → 命中网格(包围盒;HitAreaHead 是 4 顶点矩形,包围盒即网格本身)。
+   *  顶点按凸包环绕序排列(0037k):drawable 顶点原始顺序可能交叉,直接连线会
+   *  自交成沙漏,凸包保证连线为方形轮廓且射线法判定可靠。 */
   private makeHeadMesh(points: { x: number; y: number }[]): HeadMesh {
+    const hull = convexHull(points)
     let minX = Infinity
     let minY = Infinity
     let maxX = -Infinity
     let maxY = -Infinity
-    for (const p of points) {
+    for (const p of hull) {
       minX = Math.min(minX, p.x)
       minY = Math.min(minY, p.y)
       maxX = Math.max(maxX, p.x)
       maxY = Math.max(maxY, p.y)
     }
     return {
-      points,
+      points: hull,
       bounds: { x: minX, y: minY, width: maxX - minX, height: maxY - minY },
     }
   }
