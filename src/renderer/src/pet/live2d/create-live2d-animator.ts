@@ -129,6 +129,10 @@ function createLive2dAnimatorWithRuntime(
    *  素材曲线:0~0.33s 闭眼,0.33~1.20s 保持(闭眼+微笑+泛红),1.20s 起睁眼复位。
    *  取 0.45s = 闭眼完全到位后立刻冻结,留足保持窗口。 */
   const PAT_HOLD_TIME = 0.45
+  /** 摸头按住期间的头部晃动增益(0037m):headMax 幅度 ×1.5 + 头部跟手速度 ×1.4。
+   *  仅按住鼠标期间生效(按下放大、松开立即恢复),体现"按住摸头时头部晃动"。 */
+  const PAT_SHAKE_HEAD_MULTIPLIER = 1.5
+  const PAT_SHAKE_SMOOTH_MULTIPLIER = 1.4
   const PAT_MOTION = 'pat-head'
   /** 摸头表情是否在播放。 */
   let patActive = false
@@ -138,6 +142,24 @@ function createLive2dAnimatorWithRuntime(
   let holdActive = false
   /** 已冻结:动画已定格在闭眼保持帧(松开/移出后解除)。 */
   let holdFrozen = false
+
+  /**
+   * 按住摸头期间的头部灵敏度(0037m):true = 放大(headMax ×1.5、smoothing.head ×1.4),
+   * false = 恢复 petSettings 基准。基于基准重新计算,设置面板调整不受影响。
+   */
+  function applyPatShake(enabled: boolean): void {
+    const base = toFollowerConfig(petSettings)
+    Object.assign(
+      followerConfig,
+      enabled
+        ? {
+            ...base,
+            headMax: base.headMax * PAT_SHAKE_HEAD_MULTIPLIER,
+            smoothing: { ...base.smoothing, head: base.smoothing.head * PAT_SHAKE_SMOOTH_MULTIPLIER },
+          }
+        : base,
+    )
+  }
   /** 头部点击区:no-drag 透明矩形(与命中区域一致),点击触发摸头。 */
   const hitEl = document.createElement('div')
   hitEl.id = 'pet-head-hit'
@@ -207,6 +229,8 @@ function createLive2dAnimatorWithRuntime(
     if (runtime.hitTestPoint && runtime.hitTestPoint(x, y) === false) return
     holdActive = true
     holdFrozen = false
+    // 按住期间调高头部灵敏度(0037m):按下即生效,松开恢复
+    applyPatShake(true)
     if (!patActive) patActive = true
     runtime.setAutoBlink(false)
     runtime.playMotion(PAT_MOTION)
@@ -218,6 +242,8 @@ function createLive2dAnimatorWithRuntime(
     if (!holdActive) return
     holdActive = false
     holdFrozen = false
+    // 松开即恢复常规灵敏度(0037m)
+    applyPatShake(false)
     runtime.setMotionPaused?.(false)
   }
 
@@ -272,6 +298,7 @@ function createLive2dAnimatorWithRuntime(
       patActive = false
       holdActive = false
       holdFrozen = false
+      applyPatShake(false)
       runtime.stopMotion()
     }
     patPlayMs = 0
