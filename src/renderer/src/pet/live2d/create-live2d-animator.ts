@@ -2,6 +2,8 @@ import type { PetState } from '../../fsm/pet-machine.ts'
 import type { PetAnimator } from '../animator.ts'
 import type { PetStage } from '../stage.ts'
 import { createSpriteAnimator } from '../sprite-animator.ts'
+import { createAnimationDirector, type AnimationDirector } from '../animation-director.ts'
+import { ANIMATIONS, MOTION_FILES } from '../animation-registry.ts'
 import { DEFAULT_PET_CONFIG, type PetPetSettings } from '../../../../shared/pet-config.ts'
 import { createCubismRuntime } from './cubism-runtime.ts'
 import { getLive2dRuntime, type Live2dRuntime } from './runtime.ts'
@@ -39,6 +41,7 @@ export function createLive2dAnimator(stage: PetStage, options: Live2dAnimatorOpt
       host: options.host ?? document.querySelector<HTMLElement>('#stage') ?? document.body,
       modelUrl: options.modelUrl ?? DEFAULT_MODEL_URL,
       appearance: { positionX: initial.positionX, positionY: initial.positionY, scale: initial.scale },
+      motions: MOTION_FILES,
     })
   if (!runtime) {
     console.warn('[live2d] 无法创建 Cubism 运行时(WebGL2 不可用),回落占位球宠')
@@ -90,6 +93,12 @@ function createLive2dAnimatorWithRuntime(
   let unsubscribeCursor: (() => void) | undefined
 
   /**
+   * 动画导演(doc/09):集中仲裁表情/动作动画 —— 同通道互斥、优先级打断、hold 冻结、
+   * 兜底超时、自然结束检测、眨眼接管。animator 只发 request,不再手写互斥标志位。
+   */
+  const director: AnimationDirector = createAnimationDirector(runtime)
+
+  /**
    * 拖动物理反馈(0032/0034):主进程 33ms 推送窗口位置增量(px),按窗口尺寸归一化后
    * 作为 ParamDragX/Y 的目标值;每帧指数平滑(拖动中跟手、停止后回中),由
    * physics3.json 演算尾巴/头发的惯性摆动。位移达到窗口宽/高的一半视为基础满行程。
@@ -123,21 +132,12 @@ function createLive2dAnimatorWithRuntime(
   const PAT_HIT_SIZE = 104
   /** 头部相对模型中心锚点(anchor,窗口 positionX/Y)的向上偏移(窗口高度比例;仅 HitAreas 缺失时回退)。 */
   const PAT_HEAD_OFFSET_RATIO = 0.18
-  /** 一次摸头播放时长(ms,兜底):动画 3.83s 自然结束后运行时自动复位,此值仅兜底。 */
-  const PAT_PLAY_MS = 4000
-  /** 按住摸头(0037l):按下后动画播到闭眼保持点(秒)冻结定格,松开/移出再继续。
-   *  素材曲线:0~0.33s 闭眼,0.33~1.20s 保持(闭眼+微笑+泛红),1.20s 起睁眼复位。
-   *  取 0.45s = 闭眼完全到位后立刻冻结,留足保持窗口。 */
-  const PAT_HOLD_TIME = 0.45
-  const PAT_MOTION = 'pat-head'
-  /** 摸头表情是否在播放。 */
-  let patActive = false
-  /** 本次摸头已播放时长(ms);再次点击重置。 */
-  let patPlayMs = 0
-  /** 按住模式(0037l):按下且命中判定区域为 true;松开或移出区域解除。 */
+  /**
+   * 按住模式(0037l):按下且命中判定区域为 true;松开或移出区域解除。
+   * 动画冻结/兜底/续摸等生命周期统一由 AnimationDirector 管理(0037s,doc/09),
+   * 此处只保留"是否按住"这一交互状态(驱动 follower 力度增益与锚点切换,0037o)。
+   */
   let holdActive = false
-  /** 已冻结:动画已定格在闭眼保持帧(松开/移出后解除)。 */
-  let holdFrozen = false
   /**
    * 按住摸头力度增益(0037o):当前生效的增益系数,0 = 不放大,patStrength = 满增益。
    * **平滑过渡而非瞬间赋值**——headMax 突变会让 follower 目标值跳变,按下瞬间
@@ -235,22 +235,17 @@ function createLive2dAnimatorWithRuntime(
 
   /**
    * 按下摸头(0037l):idle + 命中判定区域 → 播放摸头并进入按住模式。
-   * 动画播到闭眼保持点后由 tick 冻结(定格闭眼),松开或鼠标移出判定区域才继续。
-   * 播放中重复按下:playMotion 幂等(同 motion 忽略);动画结束后再按会重播。
-   * **每次触发都关眨眼**(0037:动画结束后复位会恢复眨眼,续摸/重播若不重关,
-   * 眨眼会覆盖 motion 的闭眼)。
+   * 播放中重复按下:导演幂等忽略(续摸);动画结束后再按会重播。
+   * 动画的冻结(到 holdAt 定格闭眼)/眨眼接管/兜底计时全部由导演管理,此处只发请求。
    */
   function onPatDown(x: number, y: number): void {
     if (state !== 'idle') return
     // 命中判定:无 hitarea(undefined)回落为 overlay 区域即命中
     if (runtime.hitTestPoint && runtime.hitTestPoint(x, y) === false) return
     holdActive = true
-    holdFrozen = false
+    director.request(ANIMATIONS['pat-head'])
+    director.setHold('expression', true)
     // 力度增益由 tick 每帧平滑爬升(0037o),不在按下瞬间跳变
-    if (!patActive) patActive = true
-    runtime.setAutoBlink(false)
-    runtime.playMotion(PAT_MOTION, 'expression')
-    patPlayMs = 0
   }
 
   /** 松开鼠标或移出判定区域:解除冻结,动画从保持帧继续播放到自然结束复位。
@@ -258,8 +253,7 @@ function createLive2dAnimatorWithRuntime(
   function releasePatHold(): void {
     if (!holdActive) return
     holdActive = false
-    holdFrozen = false
-    runtime.setMotionPaused?.(false)
+    director.setHold('expression', false)
   }
 
   /** 按住期间指针移动:移出判定区域 → 解除冻结继续播放。 */
@@ -278,6 +272,14 @@ function createLive2dAnimatorWithRuntime(
   hitEl.addEventListener('pointerup', () => releasePatHold())
 
   /**
+   * 摸头动画结束/被打断(自然播完、sad 接管、离开 idle):清理按住状态。
+   * 力度增益与按住锚点由 tick 按 holdActive=false 指数平滑回落(0037o),不瞬间跳变。
+   */
+  director.onEnd((e) => {
+    if (e.id === 'pat-head') holdActive = false
+  })
+
+  /**
    * 身体点击区(0037r):HitAreaBody 包围盒;素材未导出(旧素材)返回 null → 隐藏。
    * 不提供估算回退:身体区域形状依赖素材,没有 hitarea 就不该有身体交互。
    */
@@ -287,22 +289,14 @@ function createLive2dAnimatorWithRuntime(
 
   /**
    * 点击身体(0037r):idle + 命中 HitAreaBody → 播放 sad 表情一遍(非循环,
-   * 自然结束自动平滑复位)。播放中重复点击幂等忽略;会打断进行中的摸头
-   * (清理按住状态,SDK 队列自动 fadeOut/fadeIn 切换)。
+   * 自然结束自动平滑复位)。播放中重复点击幂等忽略;sad priority 1 > 摸头 0,
+   * 会自动打断进行中的摸头(导演仲裁),按住状态由 onEnd 回调清理。
    */
   function onBodyDown(x: number, y: number): void {
     if (state !== 'idle') return
     // 命中判定:无 hitarea(undefined)回落为 overlay 区域即命中
     if (runtime.hitTestBodyPoint && runtime.hitTestBodyPoint(x, y) === false) return
-    // 打断摸头(若有):sad 接管时按住/冻结状态必须清干净
-    if (patActive || holdActive) {
-      patActive = false
-      holdActive = false
-      holdFrozen = false
-      runtime.setMotionPaused?.(false)
-    }
-    runtime.setAutoBlink(false)
-    runtime.playMotion('sad', 'expression')
+    director.request(ANIMATIONS['sad'])
   }
   bodyHitEl.addEventListener('pointerdown', (e) => onBodyDown(e.clientX, e.clientY))
 
@@ -337,14 +331,9 @@ function createLive2dAnimatorWithRuntime(
 
   function applyState(next: PetState): void {
     follower.setEnabled(shouldFollow(next))
-    // 表情只在 idle 生效:状态离开 idle(工作/瞬时反馈态)立即停止摸头/sad
-    if (next !== 'idle') {
-      patActive = false
-      holdActive = false
-      holdFrozen = false
-      runtime.stopChannel('expression')
-    }
-    patPlayMs = 0
+    // 表情只在 idle 生效:状态离开 idle → 锁 expression 通道(导演立即停止 + 拒绝新请求)
+    director.setGate('expression', next !== 'idle')
+    // 状态级眨眼控制(thinking 关);动画期间的眨眼由导演按 spec.autoBlink 接管,二者互不冲突
     runtime.setAutoBlink(next !== 'thinking')
   }
 
@@ -411,24 +400,6 @@ function createLive2dAnimatorWithRuntime(
       followAnchor.y += (anchorGoal.y - followAnchor.y) * (1 - Math.exp(-PAT_ANCHOR_SMOOTH * deltaSeconds))
 
       if (pointer) follower.update(deltaSeconds, pointer, followAnchor)
-      // 按住摸头(0037l):动画播到闭眼保持点 → 冻结定格;松开/移出由事件解除
-      if (holdActive && !holdFrozen) {
-        const elapsed = runtime.getMotionElapsed?.('expression') ?? -1
-        if (elapsed >= PAT_HOLD_TIME) {
-          holdFrozen = true
-          runtime.setMotionPaused?.(true)
-        }
-      }
-      // 摸头播放计时:播满一轮淡出停止;再次点击(triggerPat)会重置计时续摸。
-      // 冻结(闭眼保持)期间暂停计时——定格时不计入播放时长。
-      if (patActive && !holdFrozen) {
-        patPlayMs += deltaSeconds * 1000
-        if (patPlayMs >= PAT_PLAY_MS) {
-          patActive = false
-          runtime.stopChannel('expression')
-          runtime.setAutoBlink(true)
-        }
-      }
       // 头部点击区跟随宠物位置(hitarea 精确位置或估算;窗口/位置/大小变化实时适配)
       const h = headAnchor()
       hitEl.style.left = `${h.x}px`
@@ -457,11 +428,14 @@ function createLive2dAnimatorWithRuntime(
       }
       runtime.setDrag(dragCurrent)
       runtime.update(deltaSeconds)
+      // 导演推进:hold 冻结判定/兜底超时/自然结束检测(在 update 之后读最新 elapsed)
+      director.tick()
     },
     applyPetSettings,
     dispose(): void {
       unsubscribeCursor?.()
       window.removeEventListener('pointermove', onPointerMove)
+      director.dispose()
       hitEl.remove()
       bodyHitEl.remove()
       meshSvg.remove()
