@@ -75,6 +75,12 @@ export interface Live2dRuntime {
    */
   seekMotion?(channel: AnimationChannel, seconds: number): void
   /**
+   * 设置某通道 motion 的播放倍速(0037w):>1 加速(按住摸头快速走完闭眼过程到
+   * 保持帧,有过程但不拖沓),=1 原速(缺省);播放期间可随时切换,不影响 entry
+   * startTime 与 elapsed 语义。可选:占位/测试实现可不提供。
+   */
+  setMotionRate?(channel: AnimationChannel, rate: number): void
+  /**
    * 头部 hitarea 的屏幕包围盒(点击区 overlay 定位用,与命中区域一致;素材未导出
    * HitAreas 返回 null,调用方回退估算)。可选:占位/测试实现可不提供。
    */

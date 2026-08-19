@@ -372,6 +372,18 @@ class CubismRuntime implements Live2dRuntime {
   /** motion 暂停(0037l):暂停时不推进 motionTime 也不驱动曲线,动画定格当前帧。 */
   private motionPaused = false
   /**
+   * 各通道播放倍速(0037w):>1 加速播放(按住摸头快速闭眼到保持帧),缺省原速。
+   * 值只在更新时被读取,setMotionRate 写入,stopChannel 清退。
+   */
+  private readonly motionRate = new Map<AnimationChannel, number>()
+  /**
+   * 各通道相对全局 motionTime 的额外时间偏移(0037w):加速时每帧累加
+   * delta×(rate−1),该通道曲线按 channelTime = motionTime + offset 求值。
+   * 独立于全局时间,多通道加速互不影响;stopChannel 不清(时间线平移无害,
+   * 下个动画起点基于新 channelTime 记录),dispose 全清。
+   */
+  private readonly channelTimeOffset = new Map<AnimationChannel, number>()
+  /**
    * 待生效的 seek 目标(0037v):按下摸头瞬间请求跳到保持帧,但 motion 素材还在异步
    * 加载、queue 尚无 entry 时无法立即调整 startTime —— 记在这里,startMotion 完成后
    * 立即应用。仅"按下瞬间 seek"用,正常播放/续摸不会写入。
@@ -889,8 +901,15 @@ class CubismRuntime implements Live2dRuntime {
     // 多通道(0037s):每通道独立队列,共享同一 motionTime 基准(各通道起点记在 motionStartTimes)。
     if (!this.motionPaused) {
       this.motionTime += deltaSeconds
-      for (const queue of this.motionQueues.values()) {
-        queue.doUpdateMotion(model, this.motionTime)
+      // 0037w:每通道倍速(按住摸头快速闭眼)——加速通道每帧额外推进时间,
+      // 曲线按 channelTime(= motionTime + offset)求值,不加速通道不受影响。
+      for (const [ch, rate] of this.motionRate) {
+        if (rate !== 1) {
+          this.channelTimeOffset.set(ch, (this.channelTimeOffset.get(ch) ?? 0) + deltaSeconds * (rate - 1))
+        }
+      }
+      for (const [ch, queue] of this.motionQueues) {
+        queue.doUpdateMotion(model, this.channelTime(ch))
       }
     }
     // 非循环动画播完(队列清空)自动复位表情,无需等 stopChannel(0037):
@@ -1039,7 +1058,7 @@ class CubismRuntime implements Live2dRuntime {
     // (如 sad 不驱动摸头的闭眼/微笑 → 两个表情叠加,0037u)——只保留新动画不驱动
     // 的参数继续复位,新动画驱动的参数交给曲线;记录起点(已播时长 = motionTime - start)。
     this.expressionReset = this.keepUncoveredReset(this.expressionReset, paramIds)
-    this.motionStartTimes.set(channel, this.motionTime)
+    this.motionStartTimes.set(channel, this.channelTime(channel))
     this.motionPaused = false
     console.info(`[live2d] playMotion("${name}") 开始(channel=${channel})`)
   }
@@ -1095,6 +1114,7 @@ class CubismRuntime implements Live2dRuntime {
     this.currentMotion.delete(channel)
     this.motionStartTimes.delete(channel)
     this.pendingSeek.delete(channel)
+    this.motionRate.delete(channel)
     this.motionPaused = false
     queue?.stopAllMotions()
     if (hadMotion) this.beginExpressionReset()
@@ -1110,10 +1130,22 @@ class CubismRuntime implements Live2dRuntime {
     this.motionPaused = paused
   }
 
+  /** 设置某通道播放倍速(0037w):>1 加速(按住摸头快速走完闭眼到保持帧),≤1 恢复原速。 */
+  setMotionRate(channel: AnimationChannel, rate: number): void {
+    if (rate > 1) this.motionRate.set(channel, rate)
+    else this.motionRate.delete(channel)
+  }
+
+  /** 某通道的曲线时间基准(0037w):全局 motionTime + 该通道加速偏移;
+   *  doUpdateMotion / entry.startTime / elapsed 全部以此坐标系统一,加速才不自相矛盾。 */
+  private channelTime(channel: AnimationChannel): number {
+    return this.motionTime + (this.channelTimeOffset.get(channel) ?? 0)
+  }
+
   /** 某通道当前 motion 已播时长(秒,从本 motion 起点计);无播放中的 motion 返回 -1。 */
   getMotionElapsed(channel: AnimationChannel): number {
     const start = this.motionStartTimes.get(channel)
-    return this.currentMotion.has(channel) && start !== undefined ? this.motionTime - start : -1
+    return this.currentMotion.has(channel) && start !== undefined ? this.channelTime(channel) - start : -1
   }
 
   /**
@@ -1157,15 +1189,16 @@ class CubismRuntime implements Live2dRuntime {
       }
     }
     const clamped = duration > 0 ? Math.min(seconds, Math.max(0, duration - 0.016)) : Math.max(0, seconds)
+    const chTime = this.channelTime(channel)
     for (const entry of entries) {
       if (!entry || entry.isFinished()) continue
       // 标记已开始:entry 若尚未 setup(started),首次 updateParameters 会以
       // userTimeSeconds 覆盖 startTime,必须提前钉死,seek 才不被抹掉
       entry.setIsStarted(true)
-      entry.setStartTime(this.motionTime - clamped)
-      entry.setFadeInStartTime(this.motionTime - Math.max(clamped, MOTION_FADE_IN_SECONDS))
+      entry.setStartTime(chTime - clamped)
+      entry.setFadeInStartTime(chTime - Math.max(clamped, MOTION_FADE_IN_SECONDS))
     }
-    this.motionStartTimes.set(channel, this.motionTime - clamped)
+    this.motionStartTimes.set(channel, chTime - clamped)
   }
 
   playExpression(name: string): void {
@@ -1186,6 +1219,8 @@ class CubismRuntime implements Live2dRuntime {
     this.currentMotion.clear()
     this.motionStartTimes.clear()
     this.pendingSeek.clear()
+    this.motionRate.clear()
+    this.channelTimeOffset.clear()
     this.motionPaused = false
     this.expressionReset = null
     if (this.breath) CubismBreath.delete(this.breath)

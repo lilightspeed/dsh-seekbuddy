@@ -31,6 +31,13 @@ export interface AnimationSpec {
   mode?: 'oneshot' | 'hold' | 'persistent'
   /** hold 模式的冻结时刻(秒,素材曲线上的"保持点",如摸头闭眼 0.45s)。 */
   holdAt?: number
+  /** 0037w:按住时把动画加速播到保持帧的倍率(>1)。>1 时按下瞬间以该倍速快速
+   *  走完"闭眼过程"再在 holdAt 冻结——有过程但不拖沓(替代 0037v 的瞬移跳变);
+   *  缺省/≤1 = 原速自然播放到 holdAt 再冻结。 */
+  holdSeekRate?: number
+  /** 0037w:按下时动画已播过保持帧(续摸/播放中再按)则先回跳到该秒数(闭眼起点
+   *  附近),再按 holdSeekRate 加速闭眼到 holdAt;缺省 0(从头)。 */
+  holdRewindTo?: number
   /** 兜底播放时长(ms);素材无自然结束信号时由导演兜底 stop。 */
   durationMs?: number
   /** 播放期间是否允许自动眨眼;默认 true,摸头/sad 设 false(motion 接管眼睛)。 */
@@ -141,21 +148,26 @@ export function createAnimationDirector(runtime: Live2dRuntime): AnimationDirect
       if (holding) {
         // 按住:记录状态,由 tick 在 holdAt 处冻结
         holdState.set(channel, true)
-        // 0037v:"鼠标过来摸头就闭眼享受"——按下瞬间直接把动画跳到保持帧
-        // (如摸头脸红闭眼 0.45s),无需等动画从 0 自然播放到 holdAt。仅当
-        // 动画还没播到保持帧时回跳(elapsed 含加载中的 -1,seekMotion 内部
-        // 记 pending,素材就绪后立即应用);已播过保持帧(续摸)不回跳,保持
-        // 原语义由 tick 冻结在当前帧。
+        // 0037w:"鼠标过来摸头就(快速)闭眼享受"——按下瞬间让动画以 holdSeekRate 倍速
+        // 快速走完闭眼过程到保持帧(有过程、不瞬移跳变),再由 tick 在 holdAt 冻结。
+        // 动画已播过保持帧(续摸/播放中再按)先回跳到 holdRewindTo 闭眼起点重新闭眼,
+        // 保证"播放中按下也能转回保持帧";素材未加载(elapsed=-1)时倍速先生效,
+        // 播放后立即按加速时间线走。缺省 holdSeekRate(≤1)= 0037l 原速自然播放语义。
         if (entry.spec.mode === 'hold' && (entry.spec.holdAt ?? 0) > 0) {
           const holdAt = entry.spec.holdAt ?? 0
           const elapsed = runtime.getMotionElapsed?.(channel) ?? -1
-          if (elapsed < holdAt) runtime.seekMotion?.(channel, holdAt)
+          if (elapsed >= holdAt) {
+            runtime.seekMotion?.(channel, entry.spec.holdRewindTo ?? 0)
+          }
+          const rate = entry.spec.holdSeekRate ?? 1
+          if (rate > 1) runtime.setMotionRate?.(channel, rate)
         }
       } else {
-        // 松开/移出:立即解除冻结继续播放
+        // 松开/移出:立即解除冻结继续播放,恢复原速(后半段正常速度播完)
         holdState.set(channel, false)
         entry.frozen = false
         runtime.setMotionPaused?.(false)
+        runtime.setMotionRate?.(channel, 1)
       }
     },
 
