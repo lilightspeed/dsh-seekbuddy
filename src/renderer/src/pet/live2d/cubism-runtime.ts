@@ -289,6 +289,26 @@ async function fetchArrayBuffer(url: string): Promise<ArrayBuffer> {
   return response.arrayBuffer()
 }
 
+/**
+ * 从 motion3.json buffer 提取"曲线驱动的参数 id 集"(0037u)。
+ * 新动画接管时用它判断哪些复位参数可以交给曲线、哪些仍需继续复位;
+ * 解析失败返回空集(保守:空集 = 不驱动任何参数 → 复位全部保留)。
+ */
+function parseMotionParamIds(buf: ArrayBuffer): Set<string> {
+  try {
+    const json = JSON.parse(new TextDecoder().decode(buf)) as {
+      Curves?: { Target?: string; Id?: string }[]
+    }
+    const ids = new Set<string>()
+    for (const curve of json.Curves ?? []) {
+      if (curve.Target === 'Parameter' && curve.Id) ids.add(curve.Id)
+    }
+    return ids
+  } catch {
+    return new Set()
+  }
+}
+
 /** 按官方示例的方式加载 PNG 纹理(预乘 alpha + mipmap)。 */
 function loadPngTexture(gl: WebGL2RenderingContext, url: string): Promise<WebGLTexture> {
   return new Promise((resolve, reject) => {
@@ -357,8 +377,14 @@ class CubismRuntime implements Live2dRuntime {
   private readonly currentMotion = new Map<AnimationChannel, string>()
   /** motion 素材配置(逻辑名 → file/loop),构造注入(0037s)。 */
   private readonly motions: Record<string, { file: string; loop: boolean }>
-  /** 表情复位进行中:停止 motion 后把表情参数指数平滑拉回模型默认(待机基准)。 */
-  private expressionReset: { indices: number[] } | null = null
+  /**
+   * 表情复位进行中:停止 motion 后把表情参数指数平滑拉回模型默认(待机基准)。
+   * 带 id 便于"新动画 start 时只保留其曲线不驱动的参数继续复位"(0037u:避免
+   * 新动画曲线覆盖不到的残留参数卡住 → 两个表情叠加)。
+   */
+  private expressionReset: { params: { id: string; index: number }[] } | null = null
+  /** 各 motion 曲线驱动的参数 id 集(解析自 motion3.json Curves;null = 未知/解析失败)。 */
+  private readonly motionParamIds = new Map<string, Set<string>>()
   /** model3.json 声明的 HitAreas(素材未导出则为空)。 */
   private hitAreas: ModelHitArea[] = []
   private ready = false
@@ -875,7 +901,7 @@ class CubismRuntime implements Live2dRuntime {
     // 不能依赖 SDK fadeOut——它拉向"当前值",而当前值快照已含 motion 表情 → 残留。
     if (this.expressionReset) {
       let done = true
-      for (const index of this.expressionReset.indices) {
+      for (const { index } of this.expressionReset.params) {
         const def = model.getParameterDefaultValue(index)
         const cur = model.getParameterValueByIndex(index)
         const next = cur + (def - cur) * (1 - Math.exp(-EXPRESSION_RESET_SPEED * deltaSeconds))
@@ -953,7 +979,8 @@ class CubismRuntime implements Live2dRuntime {
     }
 
     let motion = this.motionCache.get(name)
-    if (motion === undefined) {
+    let paramIds = this.motionParamIds.get(name)
+    if (motion === undefined || paramIds === undefined) {
       try {
         const buf = await fetchArrayBuffer(MOTION_BASE_URL + config.file)
         // SDK 5-r.5 的 CubismMotion.create 不读 json 的 Loop 字段(见 SDK 源码,
@@ -967,11 +994,15 @@ class CubismRuntime implements Live2dRuntime {
         // 定格"完全静止"(0037 实测)。本模型 EyeBlink/LipSync 组为空,传空数组即可。
         instance.setEffectIds([], [])
         motion = instance
+        // 曲线驱动的参数 id 集(0037u):新动画接管时只保留其曲线"不覆盖"的复位参数
+        paramIds = parseMotionParamIds(buf)
       } catch (error) {
         console.error(`[live2d] motion 加载失败:${config.file}`, error)
         motion = null
+        paramIds = new Set()
       }
       this.motionCache.set(name, motion)
+      this.motionParamIds.set(name, paramIds)
     }
     if (!motion || this.disposed) {
       if (!motion) this.currentMotion.delete(channel)
@@ -985,11 +1016,26 @@ class CubismRuntime implements Live2dRuntime {
     const queue = this.getMotionQueue(channel)
     queue.stopAllMotions()
     queue.startMotion(motion, false)
-    // 新动画接管:取消待处理的复位,记录起点(已播时长 = motionTime - motionStartTimes[channel])
-    this.expressionReset = null
+    // 新动画接管:上一动画被打断后的复位若整体取消,其曲线"不覆盖"的参数会残留
+    // (如 sad 不驱动摸头的闭眼/微笑 → 两个表情叠加,0037u)——只保留新动画不驱动
+    // 的参数继续复位,新动画驱动的参数交给曲线;记录起点(已播时长 = motionTime - start)。
+    this.expressionReset = this.keepUncoveredReset(this.expressionReset, paramIds)
     this.motionStartTimes.set(channel, this.motionTime)
     this.motionPaused = false
     console.info(`[live2d] playMotion("${name}") 开始(channel=${channel})`)
+  }
+
+  /**
+   * 缩减进行中的复位(0037u):只保留新动画曲线"不驱动"的参数继续拉回默认。
+   * 新动画驱动的参数由曲线接管(避免复位与曲线每帧打架);无剩余参数返回 null。
+   */
+  private keepUncoveredReset(
+    reset: { params: { id: string; index: number }[] } | null,
+    driven: Set<string>,
+  ): { params: { id: string; index: number }[] } | null {
+    if (!reset) return null
+    const params = reset.params.filter((p) => !driven.has(p.id))
+    return params.length > 0 ? { params } : null
   }
 
   /** 按通道懒创建 motion 队列(0037s)。 */
@@ -1004,19 +1050,19 @@ class CubismRuntime implements Live2dRuntime {
 
   /**
    * 开始表情复位:把表情参数指数平滑拉回模型默认(待机基准)。
-   * 收集 EXPRESSION_PARAM_IDS 中模型存在的参数索引;模型未就绪则跳过。
+   * 收集 EXPRESSION_PARAM_IDS 中模型存在的参数(id + 索引);模型未就绪则跳过。
    */
   private beginExpressionReset(): void {
     const model = this.userModel?.getModel()
     if (!model) return
     // 复位 = 摸头结束 = idle:恢复自动眨眼(motion 不再接管眼睛)
     this.setAutoBlink(true)
-    const indices: number[] = []
+    const params: { id: string; index: number }[] = []
     for (const id of EXPRESSION_PARAM_IDS) {
       const index = model.getParameterIndex(this.id(id))
-      if (index >= 0) indices.push(index)
+      if (index >= 0) params.push({ id, index })
     }
-    if (indices.length > 0) this.expressionReset = { indices }
+    if (params.length > 0) this.expressionReset = { params }
   }
 
   /**
@@ -1064,6 +1110,7 @@ class CubismRuntime implements Live2dRuntime {
     for (const queue of this.motionQueues.values()) queue.release()
     this.motionQueues.clear()
     this.motionCache.clear()
+    this.motionParamIds.clear()
     this.currentMotion.clear()
     this.motionStartTimes.clear()
     this.motionPaused = false
