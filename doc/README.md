@@ -15,6 +15,7 @@
 | [05-scaffolding.md](./05-scaffolding.md) | `apps/pet` 工程现状:目录结构、构建、preload 白名单 | ★★ |
 | [06-roadmap.md](./06-roadmap.md) | 分阶段开发路线图(阶段 0–5.5 已完成,阶段 6 进行中) | ★ |
 | [08-live2d-integration.md](./08-live2d-integration.md) | Live2D 角色接入:Cubism 工程 → runtime 包、兼容矩阵、落地记录 | ★★ |
+| [09-animation-arbitration.md](./09-animation-arbitration.md) | 动画仲裁:表情互斥 + 动作通道预留(Animation Director) | ★★ |
 
 > **项目改动档案**:[changes/](./changes/) 按"一次改动一篇文档"记录实际开发过程(改动清单、决策、踩坑、验证),约定见 [changes/README.md](./changes/README.md)。主题文档描述"当前应该是什么样",changes/ 记录"当时怎么走到这里的"。
 
