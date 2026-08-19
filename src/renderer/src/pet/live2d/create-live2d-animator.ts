@@ -138,27 +138,13 @@ function createLive2dAnimatorWithRuntime(
   let holdActive = false
   /** 已冻结:动画已定格在闭眼保持帧(松开/移出后解除)。 */
   let holdFrozen = false
-
   /**
-   * 按住摸头期间的头部灵敏度(0037m/0037n):true = 按"摸头力度"增益放大
-   * (patStrength 0..2:幅度 ×(1+0.5s)、跟手 ×(1+0.4s);0 = 不放大,1 = 默认
-   * 1.5×/1.4×,2 = 2.0×/1.8×),false = 恢复 petSettings 基准。
-   * 基于基准重新计算,设置面板调整不受影响。
+   * 按住摸头力度增益(0037o):当前生效的增益系数,0 = 不放大,patStrength = 满增益。
+   * **平滑过渡而非瞬间赋值**——headMax 突变会让 follower 目标值跳变,按下瞬间
+   * 头部甩出去(0037o 修复);tick 每帧指数趋近 holdActive ? patStrength : 0。
    */
-  function applyPatShake(enabled: boolean): void {
-    const base = toFollowerConfig(petSettings)
-    const s = petSettings.patStrength
-    Object.assign(
-      followerConfig,
-      enabled
-        ? {
-            ...base,
-            headMax: base.headMax * (1 + s * 0.5),
-            smoothing: { ...base.smoothing, head: base.smoothing.head * (1 + s * 0.4) },
-          }
-        : base,
-    )
-  }
+  const PAT_SHAKE_SPEED = 6
+  let patShakeLevel = 0
   /** 头部点击区:no-drag 透明矩形(与命中区域一致),点击触发摸头。 */
   const hitEl = document.createElement('div')
   hitEl.id = 'pet-head-hit'
@@ -228,21 +214,19 @@ function createLive2dAnimatorWithRuntime(
     if (runtime.hitTestPoint && runtime.hitTestPoint(x, y) === false) return
     holdActive = true
     holdFrozen = false
-    // 按住期间调高头部灵敏度(0037m):按下即生效,松开恢复
-    applyPatShake(true)
+    // 力度增益由 tick 每帧平滑爬升(0037o),不在按下瞬间跳变
     if (!patActive) patActive = true
     runtime.setAutoBlink(false)
     runtime.playMotion(PAT_MOTION)
     patPlayMs = 0
   }
 
-  /** 松开鼠标或移出判定区域:解除冻结,动画从保持帧继续播放到自然结束复位。 */
+  /** 松开鼠标或移出判定区域:解除冻结,动画从保持帧继续播放到自然结束复位。
+   *  力度增益由 tick 每帧平滑回落(0037o),不在松开瞬间跳变。 */
   function releasePatHold(): void {
     if (!holdActive) return
     holdActive = false
     holdFrozen = false
-    // 松开即恢复常规灵敏度(0037m)
-    applyPatShake(false)
     runtime.setMotionPaused?.(false)
   }
 
@@ -297,7 +281,6 @@ function createLive2dAnimatorWithRuntime(
       patActive = false
       holdActive = false
       holdFrozen = false
-      applyPatShake(false)
       runtime.stopMotion()
     }
     patPlayMs = 0
@@ -347,6 +330,15 @@ function createLive2dAnimatorWithRuntime(
       if (loaded) applyState(next)
     },
     tick(deltaSeconds: number): void {
+      // 按住摸头力度增益平滑(0037o):按下缓升、松开缓降——headMax 突变会让
+      // follower 目标值跳变,按下瞬间头部甩出去;指数趋近避免跳变。
+      const shakeGoal = holdActive ? petSettings.patStrength : 0
+      patShakeLevel += (shakeGoal - patShakeLevel) * (1 - Math.exp(-PAT_SHAKE_SPEED * deltaSeconds))
+      if (Math.abs(patShakeLevel - shakeGoal) < 0.005) patShakeLevel = shakeGoal
+      const shakeBase = toFollowerConfig(petSettings)
+      followerConfig.headMax = shakeBase.headMax * (1 + patShakeLevel * 0.5)
+      followerConfig.smoothing = { ...shakeBase.smoothing, head: shakeBase.smoothing.head * (1 + patShakeLevel * 0.4) }
+
       if (pointer) follower.update(deltaSeconds, pointer, anchor())
       // 按住摸头(0037l):动画播到闭眼保持点 → 冻结定格;松开/移出由事件解除
       if (holdActive && !holdFrozen) {
