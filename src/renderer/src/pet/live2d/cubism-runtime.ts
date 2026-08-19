@@ -263,6 +263,13 @@ export function createCubismRuntime(options: CubismRuntimeOptions): Live2dRuntim
   const canvas = document.createElement('canvas')
   // 不拦截任何指针事件:视角跟随走主进程光标轮询,后续点击热区再单独接。
   canvas.style.pointerEvents = 'none'
+  // 关键(0037p):canvas 必须显式铺满宿主 CSS 尺寸。canvas 是替换元素,`inset: 0`
+  // 不会拉伸它,默认 CSS 尺寸 = 属性宽高(物理像素 = CSS × dpr)——dpr≠1 时画布
+  // 会按 dpr 倍显示(模型放大 + 偏移),且 modelPointToScreen 用 clientWidth 会得到
+  // 物理像素坐标系,命中网格/点击区与窗口 CSS 坐标错位。width/height 100% 让
+  // 显示尺寸 = 宿主(CSS),渲染与坐标换算全部回到窗口 CSS 坐标系。
+  canvas.style.width = '100%'
+  canvas.style.height = '100%'
   const gl = canvas.getContext('webgl2')
   if (!gl) {
     console.error('[live2d] WebGL2 上下文创建失败(Chromium 必须支持 WebGL2)')
@@ -442,15 +449,20 @@ class CubismRuntime implements Live2dRuntime {
     return projection
   }
 
-  /** 模型画布坐标(原点在画布中心,像素单位) → 窗口 CSS px(NDC → 屏幕)。 */
+  /** 模型画布坐标(原点在画布中心,像素单位) → 窗口 CSS px(NDC → 屏幕)。
+   *  用宿主(窗口)CSS 尺寸换算,不用 canvas.clientWidth —— #stage canvas 是
+   *  position:absolute + inset:0,对替换元素 inset:0 不拉伸(CSS 规范),canvas
+   *  CSS 尺寸跟随其属性宽高(物理像素 = CSS × dpr)。dpr≠1 时两者不一致,用
+   *  canvas.clientWidth 会把命中网格/点击区整体偏移 dpr 倍(0037p 实测:按住
+   *  摸头的"不偏移点"落在可见方框边缘)。 */
   private modelPointToScreen(cx: number, cy: number): { x: number; y: number } {
     const projection = this.buildProjectionMatrix()
     // 投影矩阵无旋转(仅 scale+translate),transformX/Y 只取对角+平移即完整变换
     const nx = projection.transformX(cx)
     const ny = projection.transformY(cy)
     return {
-      x: ((nx + 1) / 2) * this.canvas.clientWidth,
-      y: ((1 - ny) / 2) * this.canvas.clientHeight,
+      x: ((nx + 1) / 2) * this.host.clientWidth,
+      y: ((1 - ny) / 2) * this.host.clientHeight,
     }
   }
 
