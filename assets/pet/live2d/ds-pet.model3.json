@@ -19,5 +19,11 @@
 			"Name": "LipSync",
 			"Ids": []
 		}
+	],
+	"HitAreas": [
+		{
+			"Id": "HitAreaHead",
+			"Name": ""
+		}
 	]
 }
