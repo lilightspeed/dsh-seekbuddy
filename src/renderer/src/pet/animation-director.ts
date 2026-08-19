@@ -43,6 +43,10 @@ export interface AnimationSpec {
    *  动画从当前帧按该倍速均匀倒回 holdRewindTo,再由 tick 冻结——表情连续变化
    *  (眼睛平滑闭上),替代瞬间 seek 的跳变观感;缺省 1(原速倒带)。 */
   holdRewindRate?: number
+  /** 0037z2:倒带**目标时长**(ms)。按下时按 `max(holdRewindRate, 距离/时长)` 计算
+   *  动态速度:距保持帧远(消退段)自动加速,保证每次倒带耗时≈该值;距保持帧近
+   *  (睁眼过程)则落在 holdRewindRate 基准速率,保持细腻过渡。缺省 500。 */
+  holdRewindDurationMs?: number
   /** 0037x:hold 模式"保持段"结束点(秒)——素材中"闭眼保持"到"开始睁眼"的切换
    *  时刻(如摸头素材 EyeLOpen 1.2s 起睁眼)。按下时 elapsed 已过该点 = 眼睛已睁开,
    *  才回跳重闭眼;elapsed 仍处于 [holdAt, holdUntil) 保持段 = 正闭着眼,直接冻结
@@ -168,15 +172,23 @@ export function createAnimationDirector(runtime: Live2dRuntime): AnimationDirect
         // tick 直接冻结当前帧(正闭着眼就不必再闭一次);elapsed < holdAt(闭眼进行
         // 中)同样不干预。素材未加载(elapsed=-1)时按下后照常从起点原速播放。
         // 0037z:已睁眼段(elapsed ≥ holdUntil)按下不再瞬间 seek 回跳(跳变突兀),
-        // 改为反向播放——以 holdRewindRate 倍速从当前帧均匀倒回 holdRewindTo,
-        // 表情连续变化(眼睛平滑闭上),倒带到保持帧由 tick 转为冻结。
+        // 改为反向播放——从当前帧均匀倒回 holdRewindTo,表情连续变化(眼睛平滑
+        // 闭上),倒带到保持帧由 tick 转为冻结。
+        // 0037z2:倒带速度**动态**:rate = max(holdRewindRate, 距离/目标时长)——距
+        // 保持帧远(消退段)自动加速、每次倒带耗时≈holdRewindDurationMs;距保持帧
+        // 近(睁眼过程)落在基准速率 holdRewindRate,过渡保持细腻。
         if (entry.spec.mode === 'hold' && (entry.spec.holdAt ?? 0) > 0) {
           // holdUntil 缺省 = holdAt:未配置保持段长度的动画,过了保持帧即视为"已睁眼"
           const holdUntil = entry.spec.holdUntil ?? entry.spec.holdAt ?? 0
           const elapsed = runtime.getMotionElapsed?.(channel) ?? -1
           if (elapsed >= holdUntil) {
             entry.rewinding = true
-            runtime.setMotionRate?.(channel, -(entry.spec.holdRewindRate ?? 1))
+            const rewindTo = entry.spec.holdRewindTo ?? 0
+            const distance = Math.max(0, elapsed - rewindTo)
+            const baseRate = entry.spec.holdRewindRate ?? 1
+            const durationS = (entry.spec.holdRewindDurationMs ?? 500) / 1000
+            const rate = durationS > 0 ? Math.max(baseRate, distance / durationS) : baseRate
+            runtime.setMotionRate?.(channel, -rate)
           } else {
             entry.rewinding = false
           }
