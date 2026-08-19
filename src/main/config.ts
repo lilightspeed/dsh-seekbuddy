@@ -63,7 +63,7 @@ export class PetConfigStore {
     if (patch.petPupilMax !== undefined) next.pet.pupilMax = clamp(patch.petPupilMax, 0, 1)
     if (patch.petDragStrength !== undefined) next.pet.dragStrength = clamp(patch.petDragStrength, 0, 1)
     if (patch.petShowHitMesh !== undefined) next.pet.showHitMesh = Boolean(patch.petShowHitMesh)
-    if (patch.petPatStrength !== undefined) next.pet.patStrength = clamp(patch.petPatStrength, 0, 2)
+    if (patch.petPatStrength !== undefined) next.pet.patStrength = clamp(patch.petPatStrength, 0, 8)
     if (patch.voiceEnabled !== undefined) next.voice.enabled = Boolean(patch.voiceEnabled)
     if (patch.launchAtLogin !== undefined) next.launchAtLogin = Boolean(patch.launchAtLogin)
     if (patch.targetSessionId !== undefined) {
@@ -116,7 +116,7 @@ export class PetConfigStore {
           if (typeof raw.pet.pupilMax === 'number') next.pet.pupilMax = clamp(raw.pet.pupilMax, 0, 1)
           if (typeof raw.pet.dragStrength === 'number') next.pet.dragStrength = clamp(raw.pet.dragStrength, 0, 1)
           if (typeof raw.pet.showHitMesh === 'boolean') next.pet.showHitMesh = raw.pet.showHitMesh
-          if (typeof raw.pet.patStrength === 'number') next.pet.patStrength = clamp(raw.pet.patStrength, 0, 2)
+          if (typeof raw.pet.patStrength === 'number') next.pet.patStrength = clamp(raw.pet.patStrength, 0, 8)
         }
         if (typeof raw.voice?.enabled === 'boolean') next.voice.enabled = raw.voice.enabled
         if (typeof raw.launchAtLogin === 'boolean') next.launchAtLogin = raw.launchAtLogin

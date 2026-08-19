@@ -309,7 +309,7 @@ function createLive2dAnimatorWithRuntime(
       pupilMax: clamp01(settings.pupilMax),
       dragStrength: clamp01(settings.dragStrength),
       showHitMesh: Boolean(settings.showHitMesh),
-      patStrength: clamp(settings.patStrength, 0, 2),
+      patStrength: clamp(settings.patStrength, 0, 8),
     }
     // 外层独立变量供 onCursor 闭包读取(增益计算):必须同步更新,否则滑块调了不生效(0035)
     dragStrength = petSettings.dragStrength
