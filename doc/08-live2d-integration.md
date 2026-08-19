@@ -36,8 +36,8 @@
 | 自动呼吸 | ✅ | `ParamBreath` 由 `CubismBreathUpdater` 驱动(0018/0019,注意 load/save 帧节奏) |
 | 姿态 / 预设姿势 | ⏳ 未制作 | `.pose3.json`,SDK 支持 |
 | 表情 | ⏳ 未制作 | `.exp3.json`,可映射语义状态 |
-| 动画 | ⏳ 未制作 | `.motion3.json`,可映射语义状态 |
-| 口型(`ParamMouthOpenY`) | ⏳ 模型无嘴部参数 | talking/TTS 里程碑需回编辑器补 |
+| 动画 | ✅ 摸头已接入(0037) | `.motion3.json`,运行时直接加载,不依赖 model3.json 注册 |
+| 口型(`ParamMouthOpenY`) | ✅ 参数已就绪(0037) | 模型已带嘴部参数,口型动画素材待制作 |
 | Hit Area 点击热区 | ⏳ 未制作 | 数据会导出,点击检测运行时自写 |
 | 混合模式 | ✅ 基本兼容 | SDK 支持常见 blend |
 | 编辑器内后期特效 | ❌ 不导出 | 只是 Editor 预览 |
@@ -67,10 +67,10 @@
 
 | 状态机语义 | 动作(motion3) | 表情(exp3) |
 |---|---|---|
-| idle | 待机循环 | —(默认) |
+| idle | 待机循环;摸头反馈 `pat-head`(0037:鼠标在头部停留触发,见 README §4.1) | —(默认) |
 | thinking | 思考动画(眼神漂移/挠头) | 疑惑 |
 | happy | 开心动画 | 笑 |
-| sad | 难过动画 | 哭/低落 |
+| sad | 难过动画(`Expression_sad` 素材已导出,待接入) | 哭/低落 |
 | talking | 说话动画 | 口型联动(TTS 音量驱动 ParamMouthOpenY) |
 
 ## 5. 风险与注意(已核实)
@@ -84,6 +84,7 @@
 ## 6. 落地记录与剩余项
 
 - **落地**:0014(骨架+跟随逻辑)→ 0015(vendor + 独立 canvas 运行时)→ 0016(光标主进程轮询)→
-  0017(调优 + 设置面板)→ 0018(眨眼/呼吸)→ 0019(呼吸 load/save 节奏修复)。
-- **剩余**:表情/姿势/动画/HitAreas 素材与 `model3.json` 注册(导出清单见
-  `assets/pet/live2d/README.md` §4);嘴部参数;LipSync。
+  0017(调优 + 设置面板)→ 0018(眨眼/呼吸)→ 0019(呼吸 load/save 节奏修复)→
+  0037(表情动作 motion 接入:摸头反馈 + 模型补嘴部/眼泪参数)。
+- **剩余**:其他语义状态(thinking/happy/talking)的动画素材、exp3 表情、pose3、HitAreas
+  (导出清单见 `assets/pet/live2d/README.md` §4);口型动画素材;LipSync。

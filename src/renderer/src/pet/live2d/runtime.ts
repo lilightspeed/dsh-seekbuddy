@@ -43,8 +43,10 @@ export interface Live2dRuntime {
   setAppearance(appearance: Live2dAppearance): void
   /** 开关自动眨眼 / 呼吸(idle 开,thinking 关)。 */
   setAutoBlink(on: boolean): void
-  /** 播动作(motion3;后续里程碑,未实现可忽略)。 */
+  /** 播动作(motion3;按逻辑名,运行时自行映射素材文件)。 */
   playMotion(name: string): void
+  /** 停止当前动作(fade out 平滑回归,未实现可忽略)。 */
+  stopMotion(): void
   /** 切表情(exp3;后续里程碑,未实现可忽略)。 */
   playExpression(name: string): void
   /** 释放 canvas / WebGL 上下文 / 事件监听。 */

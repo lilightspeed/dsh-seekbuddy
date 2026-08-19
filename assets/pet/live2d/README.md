@@ -49,11 +49,14 @@
 | `ParamCheek` | 脸颊泛红 |
 | `ParamBrowLAngle` / `ParamBrowRAngle` / `ParamBrowLY` / `ParamBrowRY` | 眉毛角度 / 上下 |
 
-### 表情 / 说话(后续里程碑)
+### 表情 / 说话
 | ID | 含义 |
 |---|---|
-| `ParamEyeLOpen` / `ParamEyeROpen` | 眼睛开闭(眨眼) |
+| `ParamEyeLOpen` / `ParamEyeROpen` | 眼睛开闭(眨眼;motion 播放期间由 autoBlink=false 让位) |
 | `ParamEyeLSmile` / `ParamEyeRSmile` | 眼睛微笑 |
+| `ParamEyeForm` | 眼睛形状(1 = 笑眼/眯眼) |
+| `ParamTear` | 眼泪(表情动画用,`Expression_sad` 已驱动) |
+| `ParamMouthOpenY` | 嘴部开合(LipSync/说话;0037 起模型已带,口型素材待制作) |
 | `PartEyeMask` | 眼睛蒙版部件 |
 | `Part2` | 隐藏的表情嘴 `mouth2.psd`(当前隐藏,"未找到对应图层"是预期,勿删) |
 
@@ -69,7 +72,8 @@
 4. **model3.json 的 EyeBlink / LipSync 组当前为空**:SDK 自动眨眼已由运行时显式注入
    `ParamEyeLOpen/ROpen` 绕过(0018),不再依赖该组;LipSync(口型)仍待表情里程碑。
    若想在编辑器侧也生效,把 `ParamEyeLOpen/ROpen` 加进 EyeBlink 组再导出。
-5. **当前没有嘴部参数(`ParamMouthOpenY` 等)**:talking 状态需先回编辑器补嘴部参数。
+5. **嘴部参数已就绪(0037)**:模型已含 `ParamMouthOpenY`,LipSync/说话可直接驱动;
+   口型动画素材(时间轴)待制作。
 6. **`CombinedParameters` 只是编辑器 UX**(头部 XY 联动),运行时忽略。
 7. **参数改名后必须整包重导(Model 导出)**:编辑器会自动同步 physics3.json 等所有引用,无需手改
    JSON——本次 8 个参数 + 1 个部件改名已按此流程完成并验证(`Param6/7/8` → `ParamBackHair*` 等)。
@@ -80,14 +84,29 @@
 
 ## 4. 后续里程碑的导出清单
 
-做完对应内容后导出到本目录,并注册进 `ds-pet.model3.json`:
+做完对应内容后导出到本目录;**动画(motion3)走运行时直接加载**(见 §4.1),
+不注册进 model3.json 也能播;exp3 / pose3 / HitAreas 仍需按表注册:
 
-| 里程碑 | 导出文件 | 注册位置 |
-|---|---|---|
-| 表情 | `*.exp3.json` | `FileReferences.Expressions` + 运行时按语义状态切换 |
-| 预设姿势 | `*.pose3.json` | `FileReferences.Pose` |
-| 动画 | `*.motion3.json` | `FileReferences.Motions` |
-| 可点区域 | HitAreas | 写入 model3.json 的 `HitAreas`(点击检测运行时自写) |
+| 里程碑 | 导出文件 | 注册位置 | 状态 |
+|---|---|---|---|
+| 表情 | `*.exp3.json` | `FileReferences.Expressions` + 运行时按语义状态切换 | ⏳ 未制作 |
+| 预设姿势 | `*.pose3.json` | `FileReferences.Pose` | ⏳ 未制作 |
+| 动画 | `*.motion3.json` | 运行时 `MOTION_FILES` 映射直接加载(0037) | ✅ 摸头已接入 |
+| 可点区域 | HitAreas | 写入 model3.json 的 `HitAreas`(点击检测运行时自写) | ⏳ 未制作 |
+
+### 4.1 摸头反馈(0037,已接入)
+
+- 素材:`Expression_pat_head.motion3.json`(3.83s,Loop=true —— 眯眼 + 闭眼 + 微笑 + 脸颊泛红)。
+  以"表情动作"方式从动画时间轴导出,格式是 motion3(非 exp3)。
+- 接入:`cubism-runtime.ts` 的 `MOTION_FILES` 注册逻辑名 → 文件名,`playMotion('pat-head')` 播放;
+  SDK 5-r.5 的 `CubismMotion.create` **不读 json 的 Loop 字段**(create 内赋值被注释),运行时
+  按 json `Meta.Loop` 显式 `setLoop`;motion 内部不做 load/save,只 set 有曲线的参数,
+  插在每帧 load 之后、视角跟随之前 —— 只覆盖表情参数,不碰头部/眼珠视角。
+- 触发:`create-live2d-animator.ts` —— idle(未工作)时鼠标进入头部锚点 64px 内停留 ≥600ms
+  触发;移开或状态离开 idle 淡出停止(`stopMotion` 设 0.35s fadeOut,避免表情参数硬切跳变)。
+  播放期间 `setAutoBlink(false)` 让眨眼让位(motion 接管眼睛)。
+- `Expression_sad.motion3.json`(2.03s,Loop=true,带 `ParamTear` 眼泪)已导出但**未接入**,
+  等状态机 sad 态映射时用(注册进 `MOTION_FILES` 即可)。
 
 ## 5. 待办 / 备忘
 

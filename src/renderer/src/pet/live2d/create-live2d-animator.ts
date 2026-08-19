@@ -112,6 +112,43 @@ function createLive2dAnimatorWithRuntime(
   let dragCurrent = { x: 0, y: 0 }
 
   /**
+   * 摸头反馈(表情动作里程碑):idle(未工作)时鼠标进入头部锚点半径 PAT_RADIUS 内并
+   * 持续停留 PAT_HOLD_MS 即触发摸头表情(pat-head,循环播放);鼠标移出或状态离开
+   * idle 后淡出停止。与瞳孔收缩(0029,快速接近受惊)互补:接近时缩瞳,停驻后摸头享受。
+   */
+  const PAT_RADIUS = 64
+  const PAT_HOLD_MS = 600
+  const PAT_MOTION = 'pat-head'
+  /** 鼠标在头部区域已停留的累计时长(ms);离开区域清零。 */
+  let patHeldMs = 0
+  /** 摸头表情是否在播放(触发一次后保持,直到移开/状态变化)。 */
+  let patActive = false
+
+  /** 摸头检测:idle + 鼠标停在头部区域足够久 → 播放;移开/非 idle → 淡出停止。 */
+  function updatePat(deltaSeconds: number): void {
+    if (!pointer) return
+    const canPat = state === 'idle'
+    const a = anchor()
+    const dist = Math.hypot(pointer.x - a.x, pointer.y - a.y)
+    if (canPat && dist <= PAT_RADIUS) {
+      patHeldMs += deltaSeconds * 1000
+      if (!patActive && patHeldMs >= PAT_HOLD_MS) {
+        patActive = true
+        runtime.playMotion(PAT_MOTION)
+        // motion 接管眼睛(闭眼享受),自动眨眼让位;stopMotion 后由 applyState/updatePat 恢复
+        runtime.setAutoBlink(false)
+      }
+    } else {
+      if (patActive) {
+        patActive = false
+        runtime.stopMotion()
+        runtime.setAutoBlink(state !== 'thinking')
+      }
+      patHeldMs = 0
+    }
+  }
+
+  /**
    * 写入当前光标(窗口局部坐标,原样透传)。
    * 不夹取到窗口边缘:窗口外鼠标的远近由 follower 的指数距离曲线持续影响视角(0017);
    * 0016 曾夹取到边缘,但那会抹掉窗口外距离信息。
@@ -142,8 +179,13 @@ function createLive2dAnimatorWithRuntime(
 
   function applyState(next: PetState): void {
     follower.setEnabled(shouldFollow(next))
+    // 摸头只在 idle 生效:状态离开 idle(工作/瞬时反馈态)立即淡出摸头表情
+    if (next !== 'idle' && patActive) {
+      patActive = false
+      runtime.stopMotion()
+    }
+    patHeldMs = 0
     runtime.setAutoBlink(next !== 'thinking')
-    // TODO(表情 / 动作里程碑):按 doc/08 §4 映射表播 motion3 / exp3(素材未制作)。
   }
 
   /** 应用宠物外观与跟随手感(设置面板实时调用,0017):就地更新 follower 配置 + 重建视图。 */
@@ -185,7 +227,10 @@ function createLive2dAnimatorWithRuntime(
       if (loaded) applyState(next)
     },
     tick(deltaSeconds: number): void {
-      if (pointer) follower.update(deltaSeconds, pointer, anchor())
+      if (pointer) {
+        follower.update(deltaSeconds, pointer, anchor())
+        updatePat(deltaSeconds)
+      }
       runtime.setViewLook(follower.look())
       // 拖动反馈:指数平滑趋近目标(停止拖动后目标为 0 → 参数回中,物理余韵自然衰减)
       const k = 1 - Math.exp(-DRAG_SMOOTHING * deltaSeconds)
