@@ -86,6 +86,9 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
    *   素材同时驱动眉毛/眼睛/嘴部曲线,gate 只拦 expression 通道的请求,不拦运行时曲线写入
    * - 非循环(素材 Meta.Loop=true 但按 0037 教训统一强制非循环):播一遍后 **保持末尾姿态**
    *   (holdEnd,低头 + 抬手),由 runtime 捕获曲线末帧参数持续恢复,直到离开 thinking
+   * - holdAngleStack: true(0059)—— 拖动窗口时执行任务姿态也**叠加**物理输出而非
+   *   让位:低头 + 抬手保持,拖动点头(ParamAngleY)叠显;0040 的让位混合只保留为
+   *   未来"临时姿态被晃"类动画的缺省行为
    * - 不设 durationMs:hold-end 是常驻姿态,不能由导演兜底超时停止(离开 thinking 时 animator
    *   显式 stopChannel('action') 复位)
    * - autoBlink false:执行任务期间眼睛/眉毛由 motion 接管
@@ -97,6 +100,7 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
     file: 'Motion_think.motion3.json',
     priority: 1,
     holdEnd: true,
+    holdAngleStack: true,
     autoBlink: false,
   },
   /**
