@@ -40,6 +40,16 @@ let cardApproval: PendingApproval | null = null
 let targetSessionId: string | null = null
 /** 运行中的会话集合(dsh:session-update 增量维护;列表快照播种)。 */
 const runningSessions = new Set<string>()
+/** 状态机当前语义状态(subscribe 同步;供同步目标状态时避免冗余发送)。 */
+let petState: PetState = 'idle'
+
+/**
+ * 0046:宠物动作/表情只跟踪**目标会话** —— 其余并行会话的活动一律不驱动状态机。
+ * 判断某事件是否属于当前有效目标会话(显式或自动回退;由 onTargetChange 提供)。
+ */
+function isTargetSession(sessionId: string | null): boolean {
+  return targetSessionId !== null && sessionId !== null && sessionId === targetSessionId
+}
 
 /** 目标会话是否运行中:驱动"发送/停止"按钮。 */
 function isTargetRunning(): boolean {
@@ -66,17 +76,6 @@ function autoGrowInput(): void {
   inputEl.style.height = 'auto'
   inputEl.style.height = `${inputEl.scrollHeight}px`
   inputEl.style.overflowY = prev
-}
-
-/** 用会话列表的 running 快照补充运行中集合(覆盖"连接时回合已在跑"的情形)。 */
-function seedRunningSessions(): void {
-  void api?.listSessions().then((result) => {
-    if (!result.ok) return
-    for (const item of result.items) {
-      if (item.running) runningSessions.add(item.sessionId)
-    }
-    renderSendButton()
-  })
 }
 
 /**
@@ -245,9 +244,41 @@ async function boot(): Promise<void> {
   })
   const actor = createActor(petMachine)
   actor.subscribe((snapshot) => {
-    animator.play(snapshot.value as PetState)
+    petState = snapshot.value as PetState
+    animator.play(petState)
   })
   actor.start()
+
+  /**
+   * 0046:把宠物状态机同步到"目标会话当前是否在跑"。
+   * 重启 / 切换会话 / 重连后,以 runningSessions(全会话实时集合)为准:
+   * 目标在跑 → 思考;不在跑(且当前是思考)→ 复位待机。仅在需要时发送,避免多余的
+   * 表情闪烁(thinking 时不再重复 DSH_WORKING,idle 时不再重复 DSH_DONE)。
+   */
+  function syncTargetState(): void {
+    const target = targetSessionId
+    const running = target !== null && runningSessions.has(target) && isTargetSession(target)
+    if (running) {
+      if (petState !== 'thinking') actor.send({ type: 'DSH_WORKING' })
+    } else if (petState === 'thinking') {
+      actor.send({ type: 'DSH_DONE' })
+    }
+  }
+
+  /**
+   * 用会话列表的 running 快照补充运行中集合(覆盖"连接时回合已在跑"的情形),
+   * 并同步宠物状态(目标会话思考/待机)。
+   */
+  function seedRunningSessions(): void {
+    void api?.listSessions().then((result) => {
+      if (!result.ok) return
+      for (const item of result.items) {
+        if (item.running) runningSessions.add(item.sessionId)
+      }
+      renderSendButton()
+      syncTargetState()
+    })
+  }
 
   // 每帧驱动动画
   stage.app.ticker.add(() => animator.tick(stage.app.ticker.deltaMS / 1000))
@@ -303,6 +334,9 @@ async function boot(): Promise<void> {
       targetSessionId = id
       renderSendButton()
       resetSummary(id)
+      // 0046:切会话后重拉会话列表 running 快照(新目标可能在我方错过其 turn-start 前已在跑),
+      // 再由 seedRunningSessions 把状态机同步到新目标当前状态(思考/待机)
+      seedRunningSessions()
     },
     // 互斥:面板展开时先收起历史浮层
     onOpen: () => {
@@ -329,10 +363,9 @@ async function boot(): Promise<void> {
         activity.clear()
         // 运行中集合同样进入新代:清空后用会话列表快照播种(覆盖"连接时已在跑"的回合)
         runningSessions.clear()
+        // 0046:seedRunningSessions 在播种后把状态机同步到目标会话当前状态(思考/待机),
+        // 不再用"任意会话在跑"触发思考 —— 非目标会话的活动不影响宠物表情
         seedRunningSessions()
-        // 0038:连接时已有回合在跑(turn-start 不会重放)→ 补发 DSH_WORKING 进入思考,
-        // 回合结束由 turn-end 事件正常复位(宠物重启/重连后仍能反映 DSH 工作状态)
-        if (runningSessions.size > 0) actor.send({ type: 'DSH_WORKING' })
         void panel.refreshSessions()
         // 浮层缓冲属旧代事件,重置并重拉当前目标会话基线(refreshSessions 后
         // onTargetChange 若目标变化会再触发一次 resetSummary,幂等)
@@ -343,20 +376,28 @@ async function boot(): Promise<void> {
         renderHistoryButton()
         break
       case 'dsh:turn-start':
+        // 0046:只跟踪目标会话 —— 其余会话的回合不驱动思考表情
+        if (!isTargetSession(event.sessionId)) break
         actor.send({ type: 'DSH_WORKING' })
         break
       case 'dsh:thinking-start':
+        // 0046:只跟踪目标会话 —— 其余会话的推理段不触发思考表情
+        if (!isTargetSession(event.sessionId)) break
         // 0039:推理段开始(一次 turn 可含多段)→ animator 按段计时触发思考表情
         animator.onThinkingSegmentStart?.()
         break
       case 'dsh:thinking-end':
+        if (!isTargetSession(event.sessionId)) break
         animator.onThinkingSegmentEnd?.()
         break
       case 'dsh:tool-call':
+        // 0046:只通知目标会话的工具调用 —— 其余会话的操作不弹右上角通知
+        if (!isTargetSession(event.sessionId)) break
         // 0042:AI 工具调用 → 右上角通知队列(除 think 外全部;Read/Edit/Glob 等)
         notify.show(`🔧 ${event.name}`)
         break
       case 'dsh:turn-end':
+        if (!isTargetSession(event.sessionId)) break
         if (event.reason === 'error' || event.reason === 'max-tokens' || event.reason === 'blocked') {
           actor.send({ type: 'DSH_ERROR' })
           showBubble(`✗ 回合异常:${event.reason}`, 3500)
@@ -381,6 +422,8 @@ async function boot(): Promise<void> {
         }
         break
       case 'agent:error':
+        // 0046:只报目标会话的 host 级错误 —— 其余会话的报错不触发宠物难过/气泡
+        if (!isTargetSession(event.sessionId)) break
         actor.send({ type: 'DSH_ERROR' })
         showBubble(`✗ DSH 报错:${event.message}`, 4000)
         break
@@ -438,9 +481,9 @@ async function boot(): Promise<void> {
     if (state.connection) {
       connText = state.connection
       renderHistoryButton()
+      // 0046:启动时把状态机同步到目标会话当前状态(seedRunningSessions 播种后触发),
+      // 不再用"任意会话在跑"触发思考 —— 非目标会话的活动不影响宠物表情
       seedRunningSessions()
-      // 0038:启动时已有回合在跑(turn-start 不会重放)→ 补发 DSH_WORKING 进入思考
-      if (runningSessions.size > 0) actor.send({ type: 'DSH_WORKING' })
       void panel.refreshSessions()
     }
   })

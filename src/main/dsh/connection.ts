@@ -36,23 +36,26 @@ export function createConnection(
   /**
    * 0039 推理段检测:是否正处于一次"推理段"中(assistant/chunk 的 reasoning 块连续出现)。
    * 一次 turn 可含多段(思考 → 工具调用 → 再思考…),每段结束独立触发 renderer 的
-   * 思考表情判定;段起点按到达顺序维护(全局单宠物,与 turn 级 thinking 语义一致)。
+   * 思考表情判定;段起点按到达顺序维护。
+   *
+   * 0046:推理段**按会话隔离**(reasoningSessionId 记录所属会话)而非全局单标志 ——
+   * 宠物表情只跟踪目标会话,若多个会话并行,全局标志会被非目标会话的文本块/step
+   * 提前收尾,导致目标会话的 thinking-start 漏发/thinking-end 错配,思考表情判定失效。
+   * 同一会话的重复 reasoning delta 仍只在段起点发一次(0041:重复发会让 renderer 的
+   * 段计时被反复重置 —— 思考表情/困惑/恍然大悟的时长判定全部失效,执行任务的动作
+   * 也会在每个 delta 上停掉重播而无法常驻)。
    */
-  let inReasoningSegment = false
+  let reasoningSessionId: string | null = null
 
   function emitThinkingStart(sessionId: string, time: number): void {
-    // 段内推理 delta 会持续到达,只在**段起点**发一次(0041:重复发会让 renderer 的
-    // 段计时被反复重置 —— 思考表情(0~阈值B)/困惑/恍然大悟的时长判定全部失效,
-    // 执行任务的动作也会在每个 delta 上停掉重播而无法常驻)。段终点由
-    // emitThinkingEnd(非 reasoning 块 / step-end / turn-end)收尾。
-    if (inReasoningSegment) return
-    inReasoningSegment = true
+    if (reasoningSessionId === sessionId) return
+    reasoningSessionId = sessionId
     onEvent({ type: 'dsh:thinking-start', sessionId, time })
   }
 
   function emitThinkingEnd(sessionId: string, time: number): void {
-    if (!inReasoningSegment) return
-    inReasoningSegment = false
+    if (reasoningSessionId !== sessionId) return
+    reasoningSessionId = null
     onEvent({ type: 'dsh:thinking-end', sessionId, time })
   }
 
@@ -162,7 +165,7 @@ export function createConnection(
       // 新代增量流从头开始,tool/call → tool/result 配对也从头来;
       // 推理段状态同理重置(重连后段起点重新由 reasoning 块判定)
       toolNames.clear()
-      inReasoningSegment = false
+      reasoningSessionId = null
       try {
         // 握手:host.describe 证明上行可达(成功后下行流已在途)
         const describeResponse = await api.host.describe({}, generation.signal)
