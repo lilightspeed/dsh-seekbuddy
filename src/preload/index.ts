@@ -101,6 +101,16 @@ const petApi: PetApi = {
   // 0056 窗口边缘拖拽调整大小:edge 收敛为字符串(主进程白名单校验 8 个方向)
   resizeStart: (edge) => ipcRenderer.invoke('pet:resize-start', String(edge ?? '')),
   resizeEnd: () => ipcRenderer.invoke('pet:resize-end'),
+  // 0057:主进程推送手动缩放手势状态(win32 原生路径的开始/结束信号)
+  onResizeGesture(handler) {
+    const listener = (_event: IpcRendererEvent, active: boolean): void => {
+      handler(Boolean(active))
+    }
+    ipcRenderer.on('pet:resize-gesture', listener)
+    return () => {
+      ipcRenderer.removeListener('pet:resize-gesture', listener)
+    }
+  },
 }
 
 contextBridge.exposeInMainWorld('petApi', petApi)

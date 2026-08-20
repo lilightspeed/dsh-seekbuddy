@@ -237,8 +237,15 @@ async function boot(): Promise<void> {
   const animator: PetAnimator = createLive2dAnimator(stage)
 
   // 0056 窗口边缘拖拽调整大小:8 条透明 no-drag 手柄;按下/松开经 IPC 通知
-  // 主进程,尺寸计算在主进程光标轮询里做(renderer 不逐帧发 IPC)
+  // 主进程,尺寸计算在主进程光标轮询里做(renderer 不逐帧发 IPC)。
+  // win32 下手柄收不到 pointerdown(边缘按下被原生命中测试吞掉,0057),仅
+  // 非 win32 轮询兜底路径生效;手势状态另有 onResizeGesture 主进程推送。
   createWindowResizeHandles(api)
+  // 0057:主进程推送"手动缩放手势"状态 → body.pet-resizing(win32 原生路径的
+  // 开始/结束信号;与手柄信号并存,同平台只走一条,互不冲突)
+  api.onResizeGesture((active) => {
+    document.body.classList.toggle('pet-resizing', active)
+  })
 
   // 启动即应用持久化的宠物外观/手感(位置/大小/跟随)与背景透明度
   // (背景透明度用 CSS opacity 作用于 #bg-base 基色画布;win.setOpacity 会破坏 acrylic 毛玻璃)

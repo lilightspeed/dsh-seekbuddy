@@ -12,7 +12,6 @@ import { createBridge, bridgeActionToEvent, type BridgeHandle } from './mcp/brid
 import { createNotifier } from './notify.ts'
 import { createTray } from './tray.ts'
 import { applySystemRoundedCorners } from './rounded-window.ts'
-import { startNativeResize } from './native-resize.ts'
 
 /**
  * 0056 窗口边缘拖拽调整大小:允许的拖拽方向。
@@ -62,6 +61,34 @@ async function bootstrap(): Promise<void> {
   /** 目标会话:用户显式选择的会话(发消息的落点);null = 回退最近会话。 */
   let targetSessionId: string | null = null
 
+  /**
+   * 0057 缩放手势状态(win32 原生路径):Electron 的 will-resize/resized 只在
+   * **手动**缩放时触发(程序化 setBounds 不触发)。will-resize 在拖拽中高频
+   * 触发,按"状态变化"去重后推送 renderer 切换 body.pet-resizing;resized
+   * 表示手势结束 —— 恢复渲染态 + 把最终尺寸落盘(重启保持)。
+   */
+  let resizeGestureActive = false
+  /** will-resize 高频触发,resized 偶发缺失的兜底:手势静默 400ms 视为结束。 */
+  let resizeGestureTimer: NodeJS.Timeout | undefined
+
+  function sendResizeGesture(active: boolean): void {
+    if (resizeGestureActive === active) return
+    resizeGestureActive = active
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('pet:resize-gesture', active)
+    }
+  }
+
+  /** 0057:把当前窗口尺寸落盘(win32 原生缩放的结束路径;夹取到拖拽允许范围)。 */
+  function persistWindowSize(): void {
+    if (!mainWindow || mainWindow.isDestroyed() || !config) return
+    const b = mainWindow.getBounds()
+    config.update({
+      windowWidth: clampWindow(b.width, WINDOW_SIZE_MIN.width, WINDOW_SIZE_MAX.width),
+      windowHeight: clampWindow(b.height, WINDOW_SIZE_MIN.height, WINDOW_SIZE_MAX.height),
+    })
+  }
+
   function createWindow(): BrowserWindow {
     // 0056:窗口尺寸 = 持久化的显式尺寸(默认 420×560);不再有"窗口缩放"倍率
     const cfg = config?.get()
@@ -75,7 +102,11 @@ async function bootstrap(): Promise<void> {
       frame: false,
       transparent: true,
       alwaysOnTop: true,
-      resizable: false,
+      // 0057:win32 必须创建即 resizable:true —— Electron 对 transparent 窗口强制
+      // 关闭 thickFrame(WS_THICKFRAME 永远不在样式里),但**自带**frameless 边缘
+      // 命中测试与缩放实现(实测生效:真实边缘拖拽由 Electron 原生驱动,内容与框架
+      // 同步移动,无弹跳)。非 win32 保持 resizable:false,沿用 0056 手柄+轮询兜底。
+      resizable: process.platform === 'win32',
       skipTaskbar: true,
       hasShadow: false,
       backgroundColor: '#00000000',
@@ -91,8 +122,8 @@ async function bootstrap(): Promise<void> {
       },
     })
 
-    // 0056e:原生缩放循环的 MIN/MAX 夹取走 WM_GETMINMAXINFO —— 建窗时设好,
-    // 系统 sizing 循环会自动限制,轮询兜底路径的 applyResize 另有手动夹取。
+    // 0056e:MIN/MAX 夹取走 WM_GETMINMAXINFO —— 建窗时设好,原生缩放自动生效
+    // (win32 实测夹取有效);非 win32 轮询兜底路径的 applyResize 另有手动夹取。
     win.setMinimumSize(WINDOW_SIZE_MIN.width, WINDOW_SIZE_MIN.height)
     win.setMaximumSize(WINDOW_SIZE_MAX.width, WINDOW_SIZE_MAX.height)
 
@@ -116,7 +147,36 @@ async function bootstrap(): Promise<void> {
       // 窗口真正显示后 DWM 才完成 acrylic 绘制,此时再设置一次确保圆角生效
       void applySystemRoundedCorners(win)
     })
-    win.on('resize', () => void applySystemRoundedCorners(win))
+    // 圆角偏好只在缩放**结束**后重设(DWM 属性重拍在拖拽中无意义且可能闪烁),
+    // 用 debounce 兜住连续 resize;手势结束路径(resized)里也会重设一次。
+    let cornerDebounce: NodeJS.Timeout | undefined
+    win.on('resize', () => {
+      if (cornerDebounce) clearTimeout(cornerDebounce)
+      cornerDebounce = setTimeout(() => void applySystemRoundedCorners(win), 150)
+    })
+    // 0057:win32 手动缩放的开始/结束信号(will-resize 拖拽中高频触发,resized
+    // 在手势结束时触发;setBounds 等程序化缩放不触发这两个事件,不影响非 win32)。
+    win.on('will-resize', () => {
+      sendResizeGesture(true)
+      // 兜底:resized 偶发缺失时,手势静默 400ms 也视为结束(恢复正常渲染态并落盘)
+      if (resizeGestureTimer) clearTimeout(resizeGestureTimer)
+      resizeGestureTimer = setTimeout(() => {
+        resizeGestureTimer = undefined
+        if (!resizeGestureActive) return
+        sendResizeGesture(false)
+        persistWindowSize()
+        void applySystemRoundedCorners(win)
+      }, 400)
+    })
+    win.on('resized', () => {
+      if (resizeGestureTimer) {
+        clearTimeout(resizeGestureTimer)
+        resizeGestureTimer = undefined
+      }
+      sendResizeGesture(false)
+      persistWindowSize()
+      void applySystemRoundedCorners(win)
+    })
 
     // 窗口重建(如 mac activate)后拖动采样从零开始,避免旧窗口位置算出虚假位移(0032)
     prevWindowPos = null
@@ -455,36 +515,23 @@ async function bootstrap(): Promise<void> {
       petOps?.respondApproval(request) ?? { label: 'approval.respond', ok: false, summary: 'ops not ready' },
     )
 
-    // 0056 窗口边缘拖拽调整大小:renderer 按下/松开两个信号;尺寸计算在主进程
-    // 专用循环(16ms/60Hz,与显示对齐)里做 —— 不占 33ms 视角跟随轮询(0056b/c)
+    // 0056/0057 窗口边缘拖拽调整大小。win32:Electron 原生边缘缩放(创建即
+    // resizable:true,0057),renderer 手柄的 IPC 在原生路径下收不到 pointerdown
+    // (边缘按下被系统非客户区命中测试吞掉),这里仅作防御性兜底;手势状态由
+    // will-resize/resized 驱动(见 createWindow),不在此处理。
+    // 非 win32:沿用 0056 手柄 + 专用循环(16ms/60Hz,与显示对齐)锚定对侧边
+    // setBounds —— 不占 33ms 视角跟随轮询(0056b/c)。
     ipcMain.handle('pet:resize-start', async (_event, edge: unknown) => {
       if (!mainWindow || mainWindow.isDestroyed()) return
       const name = String(edge ?? '')
       if (!(RESIZE_EDGES as readonly string[]).includes(name)) return
       const win = mainWindow
       const cursor = screen.getCursorScreenPoint()
-      // 0056e:win32 优先**原生系统 sizing 循环**(WM_NCLBUTTONDOWN)—— 框架与
-      // 内容由 OS/DWM 一起移动,宠物/组件不再来回弹跳。SendMessage 阻塞到松开,
-      // 返回后尺寸已定,直接落盘;renderer 的 resize-end 到达时 resizeState 为空,
-      // stopResize 是 no-op,不会二次落盘。
       if (process.platform === 'win32') {
-        const startedAt = Date.now()
-        const native = await startNativeResize(win, name, cursor)
-        if (native) {
-          const b = win.getBounds()
-          if (config) {
-            config.update({
-              windowWidth: clampWindow(b.width, WINDOW_SIZE_MIN.width, WINDOW_SIZE_MAX.width),
-              windowHeight: clampWindow(b.height, WINDOW_SIZE_MIN.height, WINDOW_SIZE_MAX.height),
-            })
-          }
-          void applySystemRoundedCorners(win)
-          // SendMessage 正常阻塞到松开(≥150ms);**瞬间返回 = 原生循环未接管**
-          // (如透明窗口兼容问题),用户仍按住拖动 → 回落轮询继续
-          if (Date.now() - startedAt >= 150) return
-        }
+        // 防御性兜底:win32 原生缩放已接管,忽略手柄 IPC(实测手柄在此收不到事件)
+        console.error(`[pet] resize:win32 已走原生缩放,忽略手柄 IPC(${name})`)
+        return
       }
-      // 轮询方案(非 win32 / 原生不可用 / 原生未接管):锚定对侧边,60Hz setBounds
       const bounds = win.getBounds()
       resizeState = {
         edge: name as ResizeEdge,
@@ -494,7 +541,8 @@ async function bootstrap(): Promise<void> {
       startResizeTimer()
     })
     ipcMain.handle('pet:resize-end', () => {
-      // 停专用循环 + 清状态;实际拖拽过才把当前窗口尺寸落盘(重启后保持)
+      // 停专用循环 + 清状态;实际拖拽过才把当前窗口尺寸落盘(重启后保持)。
+      // win32 原生路径下 resizeState 恒为空,此处理解为 no-op(尺寸由 resized 落盘)。
       stopResize(true)
     })
 
@@ -571,6 +619,7 @@ async function bootstrap(): Promise<void> {
   app.on('will-quit', () => {
     if (cursorTimer) clearInterval(cursorTimer)
     if (resizeTimer) clearInterval(resizeTimer)
+    if (resizeGestureTimer) clearTimeout(resizeGestureTimer)
     connection?.stop()
     bridge?.close()
   })
