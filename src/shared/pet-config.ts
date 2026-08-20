@@ -6,13 +6,23 @@
  * renderer 经 preload 白名单(getConfig / setConfig)访问。
  */
 
-/** 外观设置:背景透明度与窗口缩放。 */
+/** 外观设置:背景透明度与窗口尺寸。 */
 export interface PetAppearanceConfig {
   /** 背景透明度 0–1(0 = 背景画布完全透明,1 = 不透明)。 */
   opacity: number
-  /** 窗口缩放倍率 0.6–1.6(1 = 默认 420×560)。 */
-  scale: number
+  /**
+   * 窗口尺寸 px(0056 起):由鼠标拖拽窗口边缘/四角调整,松手即持久化;
+   * 不再有"窗口缩放"倍率设置。默认 420×560。
+   */
+  windowWidth: number
+  windowHeight: number
 }
+
+/** 窗口基准尺寸(px,0056):默认窗口大小;拖拽调整后持久化到 appearance.windowWidth/Height。 */
+export const WINDOW_SIZE = { width: 420, height: 560 } as const
+/** 窗口尺寸夹取范围(px,0056):主进程拖拽 setBounds 与配置读写共用。 */
+export const WINDOW_SIZE_MIN = { width: 200, height: 280 } as const
+export const WINDOW_SIZE_MAX = { width: 1600, height: 1600 } as const
 
 /** 宠物(Live2D)外观与视角跟随手感 —— 设置面板可调,实时生效并持久化(0017)。 */
 export interface PetPetSettings {
@@ -80,7 +90,7 @@ export interface PetConfig {
 
 export const DEFAULT_PET_CONFIG: PetConfig = {
   dsh: { baseUrl: 'http://127.0.0.1:3080' },
-  appearance: { opacity: 1, scale: 1 },
+  appearance: { opacity: 1, windowWidth: WINDOW_SIZE.width, windowHeight: WINDOW_SIZE.height },
   pet: {
     positionX: 0.5,
     positionY: 0.44,
@@ -112,7 +122,9 @@ export const DEFAULT_PET_CONFIG: PetConfig = {
 export interface PetConfigUpdate {
   dshBaseUrl?: string
   opacity?: number
-  scale?: number
+  /** 0056:窗口尺寸 px(仅主进程 resize-end 写入;renderer 无设置入口)。 */
+  windowWidth?: number
+  windowHeight?: number
   voiceEnabled?: boolean
   launchAtLogin?: boolean
   petPositionX?: number

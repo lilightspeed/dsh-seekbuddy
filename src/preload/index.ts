@@ -26,7 +26,9 @@ function sanitizeConfigUpdate(patch: PetConfigUpdate | undefined): PetConfigUpda
   const out: PetConfigUpdate = {}
   if (patch?.dshBaseUrl !== undefined) out.dshBaseUrl = String(patch.dshBaseUrl ?? '')
   if (patch?.opacity !== undefined) out.opacity = toFinite(patch.opacity)
-  if (patch?.scale !== undefined) out.scale = toFinite(patch.scale)
+  // 0056:窗口尺寸(仅主进程 resize-end 写入;renderer 无设置入口,白名单保留)
+  if (patch?.windowWidth !== undefined) out.windowWidth = toFinite(patch.windowWidth)
+  if (patch?.windowHeight !== undefined) out.windowHeight = toFinite(patch.windowHeight)
   if (patch?.voiceEnabled !== undefined) out.voiceEnabled = Boolean(patch.voiceEnabled)
   if (patch?.launchAtLogin !== undefined) out.launchAtLogin = Boolean(patch.launchAtLogin)
   // 宠物(Live2D)外观/手感(0017):toFinite 收敛

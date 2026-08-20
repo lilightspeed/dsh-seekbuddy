@@ -2,7 +2,8 @@ import { join } from 'node:path'
 import { app, BrowserWindow, ipcMain, screen } from 'electron'
 import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
 import type { PetConnectionState, PetEvent, PetOpResult, PetApprovalRequest } from '../shared/pet-event.ts'
-import type { PetConfig, PetConfigUpdate } from '../shared/pet-config.ts'
+import type { PetConfigUpdate } from '../shared/pet-config.ts'
+import { WINDOW_SIZE, WINDOW_SIZE_MAX, WINDOW_SIZE_MIN } from '../shared/pet-config.ts'
 import { PetConfigStore, type PetConfigPatch } from './config.ts'
 import { createConnection, type ConnectionHandle } from './dsh/connection.ts'
 import { createPetOps, type PetOps } from './dsh/ops.ts'
@@ -12,18 +13,13 @@ import { createNotifier } from './notify.ts'
 import { createTray } from './tray.ts'
 import { applySystemRoundedCorners } from './rounded-window.ts'
 
-/** 窗口基准尺寸(外观缩放以此为 1.0)。 */
-const WINDOW_SIZE = { width: 420, height: 560 }
-
 /**
  * 0056 窗口边缘拖拽调整大小:允许的拖拽方向。
  * 主进程在光标轮询里锚定对侧边计算新 bounds,renderer 只发开始/结束信号。
+ * 尺寸夹取范围见 shared/pet-config.ts 的 WINDOW_SIZE_MIN/MAX(拖拽与配置共用)。
  */
 const RESIZE_EDGES = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const
 type ResizeEdge = (typeof RESIZE_EDGES)[number]
-/** 手动拖拽调整大小的最小/最大窗口尺寸(px;超出夹取,对侧边保持原位)。 */
-const MIN_WINDOW = { width: 200, height: 280 }
-const MAX_WINDOW = { width: 1600, height: 1600 }
 
 // 全局兜底:注册后 Electron 不再弹默认错误对话框,完整错误打到终端
 // (默认对话框只显示截断堆栈,无法定位是哪条 IPC 消息、哪个参数)。
@@ -56,11 +52,13 @@ async function bootstrap(): Promise<void> {
   let targetSessionId: string | null = null
 
   function createWindow(): BrowserWindow {
+    // 0056:窗口尺寸 = 持久化的显式尺寸(默认 420×560);不再有"窗口缩放"倍率
     const cfg = config?.get()
-    const scale = cfg?.appearance.scale ?? 1
+    const width = clampWindow(cfg?.appearance.windowWidth ?? WINDOW_SIZE.width, WINDOW_SIZE_MIN.width, WINDOW_SIZE_MAX.width)
+    const height = clampWindow(cfg?.appearance.windowHeight ?? WINDOW_SIZE.height, WINDOW_SIZE_MIN.height, WINDOW_SIZE_MAX.height)
     const win = new BrowserWindow({
-      width: Math.round(WINDOW_SIZE.width * scale),
-      height: Math.round(WINDOW_SIZE.height * scale),
+      width,
+      height,
       title: 'DSH Pet',
       // 桌面宠物壳:无边框 + 透明 + 置顶 + 不入任务栏(靠托盘管理)
       frame: false,
@@ -184,19 +182,19 @@ async function bootstrap(): Promise<void> {
     }
     if (south) height = s.startBounds.height + dy
     // 夹取:被拖动边停住,对侧边保持原位(修正锚点坐标)
-    if (width < MIN_WINDOW.width) {
-      if (west) x = s.startBounds.x + s.startBounds.width - MIN_WINDOW.width
-      width = MIN_WINDOW.width
-    } else if (width > MAX_WINDOW.width) {
-      if (west) x = s.startBounds.x + s.startBounds.width - MAX_WINDOW.width
-      width = MAX_WINDOW.width
+    if (width < WINDOW_SIZE_MIN.width) {
+      if (west) x = s.startBounds.x + s.startBounds.width - WINDOW_SIZE_MIN.width
+      width = WINDOW_SIZE_MIN.width
+    } else if (width > WINDOW_SIZE_MAX.width) {
+      if (west) x = s.startBounds.x + s.startBounds.width - WINDOW_SIZE_MAX.width
+      width = WINDOW_SIZE_MAX.width
     }
-    if (height < MIN_WINDOW.height) {
-      if (north) y = s.startBounds.y + s.startBounds.height - MIN_WINDOW.height
-      height = MIN_WINDOW.height
-    } else if (height > MAX_WINDOW.height) {
-      if (north) y = s.startBounds.y + s.startBounds.height - MAX_WINDOW.height
-      height = MAX_WINDOW.height
+    if (height < WINDOW_SIZE_MIN.height) {
+      if (north) y = s.startBounds.y + s.startBounds.height - WINDOW_SIZE_MIN.height
+      height = WINDOW_SIZE_MIN.height
+    } else if (height > WINDOW_SIZE_MAX.height) {
+      if (north) y = s.startBounds.y + s.startBounds.height - WINDOW_SIZE_MAX.height
+      height = WINDOW_SIZE_MAX.height
     }
     win.setBounds({ x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) })
   }
@@ -307,19 +305,6 @@ async function bootstrap(): Promise<void> {
     connection.start()
   }
 
-  /** 应用外观(透明度/缩放)到当前窗口。
-   *  透明度不走 win.setOpacity(会破坏 acrylic 毛玻璃,见 createWindow 注释),
-   *  改由 renderer 消费 cfg.appearance.opacity 用 CSS opacity 实现。 */
-  function applyAppearance(cfg: PetConfig): void {
-    if (!mainWindow || mainWindow.isDestroyed()) return
-    const width = Math.round(WINDOW_SIZE.width * cfg.appearance.scale)
-    const height = Math.round(WINDOW_SIZE.height * cfg.appearance.scale)
-    const [x, y] = mainWindow.getPosition()
-    mainWindow.setBounds({ x: x ?? 0, y: y ?? 0, width, height })
-    // 窗口尺寸变化后重新确认系统圆角偏好(重建/缩放后可能被重置)
-    void applySystemRoundedCorners(mainWindow)
-  }
-
   /** 开机自启(Windows LoginItem);非 Windows 平台静默忽略。 */
   function applyLaunchAtLogin(enabled: boolean): void {
     if (process.platform !== 'win32') return
@@ -330,12 +315,23 @@ async function bootstrap(): Promise<void> {
     }
   }
 
+  /** 0056:窗口尺寸夹取(建窗/配置写入统一收敛;拖拽期间的夹取在 applyResize)。 */
+  function clampWindow(n: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, Math.round(Number.isFinite(n) ? n : min)))
+  }
+
   /** IPC 侧配置补丁:只放行白名单字段(renderer 改不了 targetSessionId)。 */
   function sanitizeConfigUpdate(patch: PetConfigUpdate | undefined): PetConfigPatch {
     const out: PetConfigPatch = {}
     if (patch?.dshBaseUrl !== undefined) out.dshBaseUrl = String(patch.dshBaseUrl ?? '')
     if (typeof patch?.opacity === 'number' && Number.isFinite(patch.opacity)) out.opacity = patch.opacity
-    if (typeof patch?.scale === 'number' && Number.isFinite(patch.scale)) out.scale = patch.scale
+    // 0056:窗口尺寸只由主进程 resize-end 落盘;renderer 无设置入口,白名单保留以便程序化控制
+    if (typeof patch?.windowWidth === 'number' && Number.isFinite(patch.windowWidth)) {
+      out.windowWidth = clampWindow(patch.windowWidth, WINDOW_SIZE_MIN.width, WINDOW_SIZE_MAX.width)
+    }
+    if (typeof patch?.windowHeight === 'number' && Number.isFinite(patch.windowHeight)) {
+      out.windowHeight = clampWindow(patch.windowHeight, WINDOW_SIZE_MIN.height, WINDOW_SIZE_MAX.height)
+    }
     if (typeof patch?.voiceEnabled === 'boolean') out.voiceEnabled = patch.voiceEnabled
     if (typeof patch?.launchAtLogin === 'boolean') out.launchAtLogin = patch.launchAtLogin
     // 宠物(Live2D)外观/跟随手感(0017):标量 + 范围收敛
@@ -421,7 +417,15 @@ async function bootstrap(): Promise<void> {
       }
     })
     ipcMain.handle('pet:resize-end', () => {
+      if (!resizeState) return
       resizeState = null
+      // 0056:手动调整的窗口尺寸持久化(重启后保持);无实际拖拽(空状态)不写盘
+      if (!mainWindow || mainWindow.isDestroyed() || !config) return
+      const b = mainWindow.getBounds()
+      config.update({
+        windowWidth: clampWindow(b.width, WINDOW_SIZE_MIN.width, WINDOW_SIZE_MAX.width),
+        windowHeight: clampWindow(b.height, WINDOW_SIZE_MIN.height, WINDOW_SIZE_MAX.height),
+      })
     })
 
     // B3(只读)插件监控:agent 中介读取目标会话插件清单
@@ -434,16 +438,14 @@ async function bootstrap(): Promise<void> {
     )
 
     // 阶段 5 配置读写:get 返回完整配置;set 应用扁平补丁并按变更执行副作用
-    // (DSH 地址变更 → 重建连接;外观 → 窗口;自启 → LoginItem)。
+    // (DSH 地址变更 → 重建连接;自启 → LoginItem;透明度由 renderer CSS 应用;
+    // 窗口尺寸只由边缘拖拽 resize-end 落盘,不在此处理)。
     ipcMain.handle('pet:get-config', () => config?.get() ?? null)
     ipcMain.handle('pet:set-config', (_event, patch: PetConfigUpdate | undefined) => {
       if (!config) return null
       const prev = config.get()
       const next = config.update(sanitizeConfigUpdate(patch))
       if (next.dsh.baseUrl !== prev.dsh.baseUrl) restartConnection()
-      if (next.appearance.opacity !== prev.appearance.opacity || next.appearance.scale !== prev.appearance.scale) {
-        applyAppearance(next)
-      }
       if (next.launchAtLogin !== prev.launchAtLogin) applyLaunchAtLogin(next.launchAtLogin)
       return next
     })

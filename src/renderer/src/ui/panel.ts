@@ -256,8 +256,6 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
   const urlApplyBtn = document.querySelector<HTMLButtonElement>('#set-dsh-apply')
   const opacitySlider = document.querySelector<HTMLInputElement>('#set-opacity')
   const opacityVal = document.querySelector<HTMLSpanElement>('#set-opacity-val')
-  const scaleSlider = document.querySelector<HTMLInputElement>('#set-scale')
-  const scaleVal = document.querySelector<HTMLSpanElement>('#set-scale-val')
   const autostartCheck = document.querySelector<HTMLInputElement>('#set-autostart')
   const voiceCheck = document.querySelector<HTMLInputElement>('#set-voice')
 
@@ -276,8 +274,6 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     if (opacityVal) opacityVal.textContent = `${Math.round(cfg.appearance.opacity * 100)}%`
     // 应用持久化的背景透明度(CSS opacity 作用于 #bg;win.setOpacity 会破坏 acrylic 毛玻璃)
     applyBackgroundOpacity(cfg.appearance.opacity)
-    if (scaleSlider && document.activeElement !== scaleSlider) scaleSlider.value = String(Math.round(cfg.appearance.scale * 100))
-    if (scaleVal) scaleVal.textContent = `${Math.round(cfg.appearance.scale * 100)}%`
     if (autostartCheck) autostartCheck.checked = cfg.launchAtLogin
     if (voiceCheck) voiceCheck.checked = cfg.voice.enabled
     // 宠物(Live2D)外观/手感
@@ -327,23 +323,7 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     applyBackgroundOpacity(Number(opacitySlider.value) / 100)
     debounceOpacity(Number(opacitySlider.value) / 100)
   })
-  // 缩放滑块:拖拽中**只更新数值标签**,松手(change)才应用。
-  // 若拖拽中实时 setBounds,滑块元素宽度随窗口变化,Chromium 会把静止的指针
-  // 位置按新宽度重算 value → 又触发 setConfig → 窗口再缩放 —— 来回跳 10% 的
-  // 反馈回路(0010 修复)。松手应用后窗口尺寸不再在拖拽期间变化,回路被切断。
-  scaleSlider?.addEventListener('input', () => {
-    if (!scaleSlider) return
-    if (scaleVal) scaleVal.textContent = `${scaleSlider.value}%`
-  })
-  scaleSlider?.addEventListener('change', () => {
-    if (!scaleSlider) return
-    void api.setConfig({ scale: Number(scaleSlider.value) / 100 }).then((cfg) => {
-      const applied = Math.round(cfg.appearance.scale * 100)
-      if (scaleVal) scaleVal.textContent = `${applied}%`
-      // 回填实际生效值(与配置一致;理论上滑块范围 60–150 已含 clamp)
-      if (scaleSlider) scaleSlider.value = String(applied)
-    })
-  })
+  // 0056:"窗口缩放"滑块已移除 —— 窗口大小只由拖拽窗口边缘/四角调整并自动保存
   autostartCheck?.addEventListener('change', () => {
     if (!autostartCheck) return
     void api.setConfig({ launchAtLogin: autostartCheck.checked }).then((cfg) => {

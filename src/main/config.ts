@@ -3,6 +3,9 @@ import { dirname, join } from 'node:path'
 import { app } from 'electron'
 import {
   DEFAULT_PET_CONFIG,
+  WINDOW_SIZE,
+  WINDOW_SIZE_MAX,
+  WINDOW_SIZE_MIN,
   type PetConfig,
   type PetConfigUpdate,
 } from '../shared/pet-config.ts'
@@ -50,7 +53,13 @@ export class PetConfigStore {
       if (normalized !== null) next.dsh.baseUrl = normalized
     }
     if (patch.opacity !== undefined) next.appearance.opacity = clamp(patch.opacity, 0, 1)
-    if (patch.scale !== undefined) next.appearance.scale = clamp(patch.scale, 0.6, 1.6)
+    // 0056:窗口尺寸只由主进程边缘拖拽(resize-end)写入,夹取到拖拽允许范围
+    if (patch.windowWidth !== undefined) {
+      next.appearance.windowWidth = clamp(patch.windowWidth, WINDOW_SIZE_MIN.width, WINDOW_SIZE_MAX.width)
+    }
+    if (patch.windowHeight !== undefined) {
+      next.appearance.windowHeight = clamp(patch.windowHeight, WINDOW_SIZE_MIN.height, WINDOW_SIZE_MAX.height)
+    }
     if (patch.petPositionX !== undefined) next.pet.positionX = clamp(patch.petPositionX, 0, 1)
     if (patch.petPositionY !== undefined) next.pet.positionY = clamp(patch.petPositionY, 0, 1)
     if (patch.petScale !== undefined) next.pet.scale = clamp(patch.petScale, 0.2, 3)
@@ -105,7 +114,23 @@ export class PetConfigStore {
           if (normalized !== null) next.dsh.baseUrl = normalized
         }
         if (typeof raw.appearance?.opacity === 'number') next.appearance.opacity = clamp(raw.appearance.opacity, 0, 1)
-        if (typeof raw.appearance?.scale === 'number') next.appearance.scale = clamp(raw.appearance.scale, 0.6, 1.6)
+        if (typeof raw.appearance?.windowWidth === 'number') {
+          next.appearance.windowWidth = clamp(raw.appearance.windowWidth, WINDOW_SIZE_MIN.width, WINDOW_SIZE_MAX.width)
+        }
+        if (typeof raw.appearance?.windowHeight === 'number') {
+          next.appearance.windowHeight = clamp(raw.appearance.windowHeight, WINDOW_SIZE_MIN.height, WINDOW_SIZE_MAX.height)
+        }
+        // 0056 迁移:旧版"窗口缩放"(appearance.scale)一次性换算成显式窗口尺寸
+        // (新版窗口大小只由边缘拖拽调整并持久化,scale 字段已废弃,旧配置按此兜底)
+        const legacyScale = (raw.appearance as { scale?: unknown } | undefined)?.scale
+        if (
+          typeof legacyScale === 'number' &&
+          !(typeof raw.appearance?.windowWidth === 'number' && typeof raw.appearance?.windowHeight === 'number')
+        ) {
+          const s = clamp(legacyScale, 0.6, 1.6)
+          next.appearance.windowWidth = clamp(Math.round(WINDOW_SIZE.width * s), WINDOW_SIZE_MIN.width, WINDOW_SIZE_MAX.width)
+          next.appearance.windowHeight = clamp(Math.round(WINDOW_SIZE.height * s), WINDOW_SIZE_MIN.height, WINDOW_SIZE_MAX.height)
+        }
         if (raw.pet && typeof raw.pet === 'object') {
           if (typeof raw.pet.positionX === 'number') next.pet.positionX = clamp(raw.pet.positionX, 0, 1)
           if (typeof raw.pet.positionY === 'number') next.pet.positionY = clamp(raw.pet.positionY, 0, 1)
