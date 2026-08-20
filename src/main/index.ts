@@ -20,6 +20,13 @@ import { applySystemRoundedCorners } from './rounded-window.ts'
  */
 const RESIZE_EDGES = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const
 type ResizeEdge = (typeof RESIZE_EDGES)[number]
+/**
+ * 0056 边缘拖拽的**专用**采样间隔(ms):≈125Hz,远超 33ms 光标轮询的 30fps ——
+ * 30fps 下每步 setBounds 是 33ms 一跳,窗口边缘肉眼可见地顿挫;8ms 采样让
+ * DWM 每帧都能拿到最新尺寸,缩放连续平滑。与视角跟随的 33ms 轮询解耦
+ * (跟随不需要更高频率,避免无谓开销)。
+ */
+const RESIZE_POLL_MS = 8
 
 // 全局兜底:注册后 Electron 不再弹默认错误对话框,完整错误打到终端
 // (默认对话框只显示截断堆栈,无法定位是哪条 IPC 消息、哪个参数)。
@@ -153,6 +160,8 @@ async function bootstrap(): Promise<void> {
     startBounds: { x: number; y: number; width: number; height: number }
     startCursor: { x: number; y: number }
   } | null = null
+  /** 0056b:拖拽期间专用的高频缩放循环(仅 resizeState 非空时运行,8ms ≈ 125Hz)。 */
+  let resizeTimer: NodeJS.Timeout | undefined
 
   /**
    * 0056 按当前屏幕光标调整窗口大小:只移动/伸缩被拖动的边,对侧边保持原位。
@@ -199,6 +208,41 @@ async function bootstrap(): Promise<void> {
     win.setBounds({ x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) })
   }
 
+  /**
+   * 0056b:启动专用高频缩放循环(幂等;仅在拖拽期间运行)。每 tick 读屏幕光标
+   * 并 applyResize —— applyResize 从 startBounds + 当前光标重算,任意频率调用
+   * 都收敛到同一结果,高频只让窗口边缘更跟手、更平滑。
+   */
+  function startResizeTimer(): void {
+    if (resizeTimer) return
+    resizeTimer = setInterval(() => {
+      const win = mainWindow
+      if (!win || win.isDestroyed() || !win.isVisible() || !resizeState) {
+        // 窗口不可见/状态丢失:自愈收尾(不落盘,尺寸未完成)
+        stopResize(false)
+        return
+      }
+      applyResize(win, screen.getCursorScreenPoint())
+    }, RESIZE_POLL_MS)
+  }
+
+  /** 0056b:结束边缘拖拽 —— 停专用循环、清状态;persist=true 时把当前窗口尺寸落盘。 */
+  function stopResize(persist: boolean): void {
+    if (resizeTimer) {
+      clearInterval(resizeTimer)
+      resizeTimer = undefined
+    }
+    if (!resizeState) return
+    resizeState = null
+    if (persist && mainWindow && !mainWindow.isDestroyed() && config) {
+      const b = mainWindow.getBounds()
+      config.update({
+        windowWidth: clampWindow(b.width, WINDOW_SIZE_MIN.width, WINDOW_SIZE_MAX.width),
+        windowHeight: clampWindow(b.height, WINDOW_SIZE_MIN.height, WINDOW_SIZE_MAX.height),
+      })
+    }
+  }
+
   function startCursorPolling(): void {
     if (cursorTimer) return
     cursorTimer = setInterval(() => {
@@ -206,13 +250,12 @@ async function bootstrap(): Promise<void> {
       if (!win || win.isDestroyed() || !win.isVisible()) {
         // 不可见时不采样:拖动状态丢失,恢复可见后从零开始(否则旧位置算出一次性大位移)
         prevWindowPos = null
-        // 0056:窗口不可见时挂起的 resize 状态一并清掉(避免恢复后窗口跟着光标跑)
-        resizeState = null
+        // 0056:窗口不可见时挂起的 resize 一并收尾(专用循环随后自愈,这里兜底)
+        stopResize(false)
         return
       }
       const cursor = screen.getCursorScreenPoint()
-      // 0056 边缘拖拽调整大小:在光标轮询里同步 setBounds(30fps,零 IPC 往返)
-      if (resizeState) applyResize(win, cursor)
+      // 0056b:缩放改由专用高频循环(8ms)驱动,不再占用 33ms 视角跟随轮询
       const bounds = win.getBounds()
       const x = cursor.x - bounds.x
       const y = cursor.y - bounds.y
@@ -403,7 +446,8 @@ async function bootstrap(): Promise<void> {
       petOps?.respondApproval(request) ?? { label: 'approval.respond', ok: false, summary: 'ops not ready' },
     )
 
-    // 0056 窗口边缘拖拽调整大小:renderer 按下/松开两个信号;尺寸计算在光标轮询里
+    // 0056 窗口边缘拖拽调整大小:renderer 按下/松开两个信号;尺寸计算在主进程
+    // 专用高频循环(8ms)里做 —— 不占 33ms 视角跟随轮询,缩放更平滑(0056b)
     ipcMain.handle('pet:resize-start', (_event, edge: unknown) => {
       if (!mainWindow || mainWindow.isDestroyed()) return
       const name = String(edge ?? '')
@@ -415,17 +459,11 @@ async function bootstrap(): Promise<void> {
         startBounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
         startCursor: { x: cursor.x, y: cursor.y },
       }
+      startResizeTimer()
     })
     ipcMain.handle('pet:resize-end', () => {
-      if (!resizeState) return
-      resizeState = null
-      // 0056:手动调整的窗口尺寸持久化(重启后保持);无实际拖拽(空状态)不写盘
-      if (!mainWindow || mainWindow.isDestroyed() || !config) return
-      const b = mainWindow.getBounds()
-      config.update({
-        windowWidth: clampWindow(b.width, WINDOW_SIZE_MIN.width, WINDOW_SIZE_MAX.width),
-        windowHeight: clampWindow(b.height, WINDOW_SIZE_MIN.height, WINDOW_SIZE_MAX.height),
-      })
+      // 停专用循环 + 清状态;实际拖拽过才把当前窗口尺寸落盘(重启后保持)
+      stopResize(true)
     })
 
     // B3(只读)插件监控:agent 中介读取目标会话插件清单
@@ -500,6 +538,7 @@ async function bootstrap(): Promise<void> {
 
   app.on('will-quit', () => {
     if (cursorTimer) clearInterval(cursorTimer)
+    if (resizeTimer) clearInterval(resizeTimer)
     connection?.stop()
     bridge?.close()
   })
