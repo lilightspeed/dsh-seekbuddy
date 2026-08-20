@@ -96,8 +96,12 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
    * 纯贴纸/表情,不含低头抬手等姿态;真正的"思考"表现)。
    * - channel: expression —— 与 action 通道的执行任务姿态(working)并存互不干扰;
    *   段时长 > B 后由 tick 请求 think-dizzy(priority 1)自动顶替本贴纸
-   * - loop: true —— 推理期间持续显示(气泡点点循环),段结束(onThinkingSegmentEnd)
+   * - loop: true —— 推理期间持续显示(点点走路循环),段结束(onThinkingSegmentEnd)
    *   停 expression 通道并平滑复位(气泡参数已入 EXPRESSION_PARAM_IDS,不留残影)
+   * - hardLoopRestart(0050):素材是"点点走路"序列动画(.__→.._→...→_..→__.→___,
+   *   曲线首尾 0→1.0 恰为相邻状态),V2 循环的 correctEndPoint 会在循环点把曲线值
+   *   从终点扫回起点、**途经中间态(0.5 = 全亮 ...)**,每圈闪出中间帧;硬重启直接
+   *   `___`→`.__` 跳变,中间态永不出现
    * - priority 0:低于 think-dizzy(1),困惑表情随时可顶替;同段内重复请求幂等忽略
    * - autoBlink false:不干扰执行任务姿态的眉眼接管
    */
@@ -107,6 +111,7 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
     file: 'Expression_think_thinking.motion3.json',
     loop: true,
     priority: 0,
+    hardLoopRestart: true,
     autoBlink: false,
   },
   /**
@@ -150,19 +155,20 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
   },
 }
 
-/** runtime 需要的 file/loop/holdEnd/files 映射(由 ANIMATIONS 派生,单点配置,0037s)。 */
+/** runtime 需要的 file/loop/holdEnd/files/hardLoopRestart 映射(由 ANIMATIONS 派生,单点配置,0037s)。 */
 export const MOTION_FILES: Record<
   string,
-  { file: string; loop: boolean; holdEnd?: boolean; files?: string[] }
+  { file: string; loop: boolean; holdEnd?: boolean; files?: string[]; hardLoopRestart?: boolean }
 > = Object.fromEntries(
   Object.entries(ANIMATIONS).map(([id, spec]) => {
-    const entry: { file: string; loop: boolean; holdEnd?: boolean; files?: string[] } = {
+    const entry: { file: string; loop: boolean; holdEnd?: boolean; files?: string[]; hardLoopRestart?: boolean } = {
       file: spec.file,
       loop: spec.loop ?? false,
     }
     // exactOptionalPropertyTypes:可选属性不能赋显式 undefined,条件写入
     if (spec.holdEnd !== undefined) entry.holdEnd = spec.holdEnd
     if (spec.files !== undefined) entry.files = [...spec.files]
+    if (spec.hardLoopRestart !== undefined) entry.hardLoopRestart = spec.hardLoopRestart
     return [id, entry]
   }),
 )

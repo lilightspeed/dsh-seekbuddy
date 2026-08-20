@@ -30,6 +30,14 @@ export interface AnimationSpec {
   files?: string[]
   /** 是否循环;默认 false(素材曲线首尾对齐前一律非循环,见 0037)。 */
   loop?: boolean
+  /**
+   * 循环点**硬重启**(0050):true = 循环到达终点时不做 SDK correctEndPoint 插值,
+   * 直接硬跳回起点(内部对该素材用 MotionBehavior_V1 循环)。用于"点点走路"这类
+   * **序列动画** —— 曲线起点与终点是序列的相邻状态(思考气泡 `___`→`.__`),V2 的
+   * correctEndPoint 会把曲线值从终点线性扫回起点,**途经中间态(如全亮 `...`)**,每圈
+   * 循环点闪出中间帧;硬重启则直接落在下一状态,中间态永不出现。仅 runtime 消费。
+   */
+  hardLoopRestart?: boolean
   /** 优先级,默认 0;同通道内,新请求 priority > 当前正在播的才允许打断。 */
   priority?: number
   /** 同 id 重复请求:默认幂等忽略;true = 重置计时重播(续摸语义)。 */

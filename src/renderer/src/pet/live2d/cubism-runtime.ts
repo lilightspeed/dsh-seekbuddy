@@ -9,7 +9,7 @@ import type { CubismModel } from '@live2d/framework/model/cubismmodel'
 import { CubismUserModel } from '@live2d/framework/model/cubismusermodel'
 import { CubismBreathUpdater } from '@live2d/framework/motion/cubismbreathupdater'
 import { CubismEyeBlinkUpdater } from '@live2d/framework/motion/cubismeyeblinkupdater'
-import { CubismMotion } from '@live2d/framework/motion/cubismmotion'
+import { CubismMotion, MotionBehavior } from '@live2d/framework/motion/cubismmotion'
 import { CubismMotionQueueManager } from '@live2d/framework/motion/cubismmotionqueuemanager'
 import { CubismPhysicsUpdater } from '@live2d/framework/motion/cubismphysicsupdater'
 import { CubismUpdateScheduler } from '@live2d/framework/motion/cubismupdatescheduler'
@@ -271,10 +271,11 @@ export interface CubismRuntimeOptions {
   appearance: Live2dAppearance
   /** motion 逻辑名 → 素材文件/循环配置;由 animation-registry 派生注入(0037s 单点配置)。
    *  holdEnd(0038):非循环动画播完后保持末尾姿态(思考),由运行时捕获曲线末帧参数持续恢复。
-   *  files(0044):同动画的候选素材(随机变体),每次播放随机选一,按实际文件分别缓存。 */
+   *  files(0044):同动画的候选素材(随机变体),每次播放随机选一,按实际文件分别缓存。
+   *  hardLoopRestart(0050):循环点硬重启(MotionBehavior_V1),见 AnimationSpec 注释。 */
   motions?: Record<
     string,
-    { file: string; loop: boolean; holdEnd?: boolean; files?: string[] }
+    { file: string; loop: boolean; holdEnd?: boolean; files?: string[]; hardLoopRestart?: boolean }
   >
 }
 
@@ -421,10 +422,10 @@ class CubismRuntime implements Live2dRuntime {
   private readonly motionCache = new Map<string, CubismMotion | null>()
   /** 各通道当前正在播放(或正在异步加载)的 motion 逻辑名;无 = 该通道空闲。 */
   private readonly currentMotion = new Map<AnimationChannel, string>()
-  /** motion 素材配置(逻辑名 → file/loop/files),构造注入(0037s/0044)。 */
+  /** motion 素材配置(逻辑名 → file/loop/files/hardLoopRestart),构造注入(0037s/0044/0050)。 */
   private readonly motions: Record<
     string,
-    { file: string; loop: boolean; holdEnd?: boolean; files?: string[] }
+    { file: string; loop: boolean; holdEnd?: boolean; files?: string[]; hardLoopRestart?: boolean }
   >
   /**
    * 各通道当前实际播放的素材文件(0044):随机变体(恍然大悟)每次播放可能不同,
@@ -478,7 +479,7 @@ class CubismRuntime implements Live2dRuntime {
     appearance: Live2dAppearance,
     motions: Record<
       string,
-      { file: string; loop: boolean; holdEnd?: boolean; files?: string[] }
+      { file: string; loop: boolean; holdEnd?: boolean; files?: string[]; hardLoopRestart?: boolean }
     >,
   ) {
     this.canvas = canvas
@@ -1170,6 +1171,11 @@ class CubismRuntime implements Live2dRuntime {
         // create 内 _loop 赋值被注释),按素材配置显式 setLoop。
         const instance = CubismMotion.create(buf, buf.byteLength)
         instance.setLoop(config.loop)
+        // 0050:循环点硬重启 —— 序列动画(思考气泡点点走路)配置 hardLoopRestart:
+        // V2 循环在终点做 correctEndPoint 插值,把曲线值从终点线性扫回起点(途经
+        // 中间态如全亮 ...),每圈循环点闪出中间帧;切到 MotionBehavior_V1 后循环点
+        // 直接硬跳回起点(相邻序列状态),中间态永不出现。与淡入淡出无关(见 0047)。
+        if (config.hardLoopRestart) instance.setMotionBehavior(MotionBehavior.MotionBehavior_V1)
         // 0047:所有表情动画**不做**淡入淡出 —— 淡入淡出由用户在 Live2D 素材里自己制作。
         // SDK 默认 fadeIn 1.0s / fadeOut 1.0s(素材未写 FadeIn/FadeOutTime 时)会强行给
         // 每个表情加渐变(渐入太慢"点了没反应"、淡出把短动作压扁到不了终点值),与素材内
