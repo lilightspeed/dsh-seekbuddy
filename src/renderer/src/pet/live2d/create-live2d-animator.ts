@@ -94,6 +94,13 @@ function createLive2dAnimatorWithRuntime(
   let loaded = false
   let unsubscribeCursor: (() => void) | undefined
   /**
+   * 0060 入睡计时重置:上次光标采样位置(窗口局部坐标,px)。主进程每 33ms 恒定
+   * 推送一次光标(静止时位置不变),用"位置变化"判定鼠标是否在移动 —— 移动即
+   * 重置入睡计时(用户还在操作电脑,待机不该计入睡眠倒计时)。坐标为整数 DIP
+   * (主进程 getCursorScreenPoint 转局部坐标),=== 比较即可靠,无需死区。
+   */
+  let lastCursorPos: { x: number; y: number } | null = null
+  /**
    * 0039 推理段计时:当前推理段开始时刻(performance.now,ms;0 = 不在段中)。
    * 由 onThinkingSegmentStart/End(DSH 事件流 reasoning 块)驱动 —— 一次 turn
    * 可含多次推理段,恍然大悟/困惑按**段时长**触发,而非整个任务时长。
@@ -367,6 +374,10 @@ function createLive2dAnimatorWithRuntime(
    * 在睡眠中恢复视线跟随;松开/移出由 releasePatHold 回到禁用。
    */
   function onPatDown(x: number, y: number): void {
+    // 0060:点击(按下)同样重置入睡计时 —— 静止点击时移动检测(33ms 轮询)不触发,
+    // 点击本身即是"用户操作"信号。重置放最前,任何状态下点击都算操作;
+    // 睡眠中重置无副作用(不累计计时、不唤醒,见 setPointer 注释)。
+    idleElapsed = 0
     if (state !== 'idle') return
     // 命中判定:无 hitarea(undefined)回落为 overlay 区域即命中
     if (runtime.hitTestPoint && runtime.hitTestPoint(x, y) === false) return
@@ -438,6 +449,9 @@ function createLive2dAnimatorWithRuntime(
    * 0058:睡眠中点身体 —— 不播难过表情、不终止睡眠(需求 4:点击热区不终止睡眠)。
    */
   function onBodyDown(x: number, y: number): void {
+    // 0060:点击身体同样重置入睡计时(同 onPatDown 注释;睡眠中点身体不播 sad、
+    // 不唤醒,重置无副作用)。
+    idleElapsed = 0
     if (state !== 'idle') return
     if (sleeping) return
     // 命中判定:无 hitarea(undefined)回落为 overlay 区域即命中
@@ -450,9 +464,18 @@ function createLive2dAnimatorWithRuntime(
    * 写入当前光标(窗口局部坐标,原样透传)。
    * 不夹取到窗口边缘:窗口外鼠标的远近由 follower 的指数距离曲线持续影响视角(0017);
    * 0016 曾夹取到边缘,但那会抹掉窗口外距离信息。
+   * 0060:鼠标移动 → 重置入睡计时。主进程每 33ms 恒定推送(静止时位置不变),
+   * 只有真的移动(位置变化)才重置 —— 否则持续移动鼠标会让待机永远不入睡
+   * (语义:用户还在操作电脑,宠物保持清醒);睡眠中不累计 idleElapsed,重置
+   * 无副作用,也不唤醒睡眠(与 0058 点击热区不终止睡眠一致)。窗口外移动同样
+   * 重置(轮询是全屏的,用户操作不限于窗口内)。
    */
   function setPointer(x: number, y: number): void {
     pointer = { x, y }
+    if (lastCursorPos && (x !== lastCursorPos.x || y !== lastCursorPos.y)) {
+      idleElapsed = 0
+    }
+    lastCursorPos = { x, y }
   }
 
   // 主数据源:主进程光标轮询(拖拽区域吞 renderer 鼠标事件,0016)
