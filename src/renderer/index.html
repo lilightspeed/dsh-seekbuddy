@@ -118,32 +118,14 @@
       body.pet-resizing #stage {
         -webkit-app-region: no-drag;
       }
-      /* 0057:缩放手势期间玻璃组件降级 —— 透明窗口 + 实时缩放时 Chromium 的
-         backdrop-filter 采样滞后/重拍,玻璃模糊是"组件跳动/闪烁"的经典来源;
-         手势期禁用模糊并提亮背景(防宠物透出),手势结束由主进程恢复。 */
+      /* 0057:缩放手势期间仅禁用玻璃组件的 backdrop-filter(透明窗口 + 实时缩放
+         时 Chromium 的 backdrop 采样滞后/重拍,是"组件闪烁/跳动"的经典来源)与
+         过渡动画;背景保持原有半透明(不做提亮,组件观感与平时一致,0057 修正)。
+         手势结束由主进程 will-resize/resized 恢复。 */
       body.pet-resizing .glass {
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
         transition: none;
-      }
-      body.pet-resizing #inputbar {
-        background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.9));
-      }
-      body.pet-resizing #bubble {
-        background: rgba(255, 255, 255, 0.92);
-      }
-      body.pet-resizing #btn-panel,
-      body.pet-resizing #btn-history {
-        background: rgba(255, 255, 255, 0.9);
-      }
-      body.pet-resizing #panel {
-        background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.93));
-      }
-      body.pet-resizing #approval-card {
-        background: rgba(233, 240, 255, 0.97);
-      }
-      body.pet-resizing .notify-toast {
-        background: rgba(255, 255, 255, 0.94);
       }
       #stage canvas {
         position: absolute;
