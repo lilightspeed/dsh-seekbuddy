@@ -62,4 +62,4 @@ DSH 运行实例默认在 `http://127.0.0.1:3080`(loopback 受信,宠物权限�
 - **视角跟随的光标来自主进程轮询**:`#stage` 整窗是 `-webkit-app-region: drag`,拖拽区域会吞掉 renderer 的鼠标事件(0016)→ 主进程 33ms 轮询 `screen.getCursorScreenPoint()` + 窗口 bounds,经 `pet:cursor` 推给 renderer;**不要**在 renderer 里依赖 pointermove 做跟随。
 - **PixiJS v8 要求 CSP 允许 `unsafe-eval`**(WebGL 着色器生成),renderer 的 CSP 已为此放开;代价是 Electron dev 期的安全警告(打包后消失)。
 - **IPC 参数必须可序列化**:`undefined`/`NaN` 过 IPC 会触发主进程 `Error processing argument at index N, conversion failure` 崩溃。参数合法性在 **preload 边界统一收敛**(`toFinite` / `String`),renderer 与主进程 handler 不要透传原始值。
-- **窗口拖拽用原生 `-webkit-app-region: drag`**(`#stage`),**不要**用 IPC 逐帧 `setPosition`(曾导致卡顿 + setPosition 参数转换崩溃)。可交互区域(输入条)必须标 `no-drag`;要点击宠物时在 `#stage` 上叠 `no-drag` 透明层。
+- **窗口拖拽用原生 `-webkit-app-region: drag`**(`#stage`),**不要**用 IPC 逐帧 `setPosition`(曾导致卡顿 + setPosition 参数转换崩溃)。可交互区域(输入条)必须标 `no-drag`;要点击宠物时在 `#stage` 上叠 `no-drag` 透明层。**窗口缩放(0056)同理**:renderer 铺 8 条透明 `no-drag` 边缘手柄,只在按下/松开时发 `pet:resize-start/end`(edge ∈ n/s/e/w/ne/nw/se/sw),尺寸计算在主进程 33ms 光标轮询里做(锚定对侧边 `setBounds`,夹取 MIN/MAX),**不做逐帧 IPC**。

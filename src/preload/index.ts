@@ -96,6 +96,9 @@ const petApi: PetApi = {
   getConfig: () => ipcRenderer.invoke('pet:get-config'),
   setConfig: (patch) => ipcRenderer.invoke('pet:set-config', sanitizeConfigUpdate(patch)),
   listPlugins: () => ipcRenderer.invoke('pet:list-plugins'),
+  // 0056 窗口边缘拖拽调整大小:edge 收敛为字符串(主进程白名单校验 8 个方向)
+  resizeStart: (edge) => ipcRenderer.invoke('pet:resize-start', String(edge ?? '')),
+  resizeEnd: () => ipcRenderer.invoke('pet:resize-end'),
 }
 
 contextBridge.exposeInMainWorld('petApi', petApi)

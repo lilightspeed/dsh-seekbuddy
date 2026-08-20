@@ -236,6 +236,15 @@ export interface PetApi {
   setConfig(patch: PetConfigUpdate): Promise<PetConfig>
   /** B3(只读):经 agent 中介读取目标会话的动态插件清单(会占用一次模型回合)。 */
   listPlugins(): Promise<PetPluginListResult>
+  /**
+   * 0056 窗口边缘拖拽调整大小:按下边缘手柄时通知主进程开始(edge ∈
+   * n/s/e/w/ne/nw/se/sw)。主进程在已有的 33ms 光标轮询里按屏幕光标增量
+   * 锚定对侧边 setBounds —— renderer 只发开始/结束两个信号,不做逐帧 IPC
+   * (规避"逐帧 setPosition 卡顿 + 参数转换崩溃"的教训,见 AGENTS.md)。
+   */
+  resizeStart(edge: string): Promise<void>
+  /** 0056:松开/取消边缘拖拽,主进程停止调整大小。 */
+  resizeEnd(): Promise<void>
 }
 
 export type PetConnectionState = {

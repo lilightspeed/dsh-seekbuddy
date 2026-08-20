@@ -15,6 +15,16 @@ import { applySystemRoundedCorners } from './rounded-window.ts'
 /** 窗口基准尺寸(外观缩放以此为 1.0)。 */
 const WINDOW_SIZE = { width: 420, height: 560 }
 
+/**
+ * 0056 窗口边缘拖拽调整大小:允许的拖拽方向。
+ * 主进程在光标轮询里锚定对侧边计算新 bounds,renderer 只发开始/结束信号。
+ */
+const RESIZE_EDGES = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const
+type ResizeEdge = (typeof RESIZE_EDGES)[number]
+/** 手动拖拽调整大小的最小/最大窗口尺寸(px;超出夹取,对侧边保持原位)。 */
+const MIN_WINDOW = { width: 200, height: 280 }
+const MAX_WINDOW = { width: 1600, height: 1600 }
+
 // 全局兜底:注册后 Electron 不再弹默认错误对话框,完整错误打到终端
 // (默认对话框只显示截断堆栈,无法定位是哪条 IPC 消息、哪个参数)。
 process.on('uncaughtException', (error) => {
@@ -135,6 +145,62 @@ async function bootstrap(): Promise<void> {
   let cursorTimer: NodeJS.Timeout | undefined
   /** 上次采样到的窗口位置(拖动检测用,0032);窗口隐藏/重建时重置避免虚假位移。 */
   let prevWindowPos: { x: number; y: number } | null = null
+  /**
+   * 0056 窗口边缘拖拽调整大小进行中:按下边缘手柄时记录起始窗口 bounds 与
+   * 屏幕光标,之后每次光标轮询按增量重算 bounds(锚定对侧边)并 setBounds;
+   * 松开(pet:resize-end)或窗口不可见时清空。
+   */
+  let resizeState: {
+    edge: ResizeEdge
+    startBounds: { x: number; y: number; width: number; height: number }
+    startCursor: { x: number; y: number }
+  } | null = null
+
+  /**
+   * 0056 按当前屏幕光标调整窗口大小:只移动/伸缩被拖动的边,对侧边保持原位。
+   * 夹取到 MIN/MAX 时被拖动边停住(对侧边坐标随之修正,不漂移)。
+   */
+  function applyResize(win: BrowserWindow, cursor: { x: number; y: number }): void {
+    const s = resizeState
+    if (!s) return
+    const dx = cursor.x - s.startCursor.x
+    const dy = cursor.y - s.startCursor.y
+    let x = s.startBounds.x
+    let y = s.startBounds.y
+    let width = s.startBounds.width
+    let height = s.startBounds.height
+    const west = s.edge.includes('w')
+    const east = s.edge.includes('e')
+    const north = s.edge.includes('n')
+    const south = s.edge.includes('s')
+    if (west) {
+      width = s.startBounds.width - dx
+      x = s.startBounds.x + dx
+    }
+    if (east) width = s.startBounds.width + dx
+    if (north) {
+      height = s.startBounds.height - dy
+      y = s.startBounds.y + dy
+    }
+    if (south) height = s.startBounds.height + dy
+    // 夹取:被拖动边停住,对侧边保持原位(修正锚点坐标)
+    if (width < MIN_WINDOW.width) {
+      if (west) x = s.startBounds.x + s.startBounds.width - MIN_WINDOW.width
+      width = MIN_WINDOW.width
+    } else if (width > MAX_WINDOW.width) {
+      if (west) x = s.startBounds.x + s.startBounds.width - MAX_WINDOW.width
+      width = MAX_WINDOW.width
+    }
+    if (height < MIN_WINDOW.height) {
+      if (north) y = s.startBounds.y + s.startBounds.height - MIN_WINDOW.height
+      height = MIN_WINDOW.height
+    } else if (height > MAX_WINDOW.height) {
+      if (north) y = s.startBounds.y + s.startBounds.height - MAX_WINDOW.height
+      height = MAX_WINDOW.height
+    }
+    win.setBounds({ x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) })
+  }
+
   function startCursorPolling(): void {
     if (cursorTimer) return
     cursorTimer = setInterval(() => {
@@ -142,9 +208,13 @@ async function bootstrap(): Promise<void> {
       if (!win || win.isDestroyed() || !win.isVisible()) {
         // 不可见时不采样:拖动状态丢失,恢复可见后从零开始(否则旧位置算出一次性大位移)
         prevWindowPos = null
+        // 0056:窗口不可见时挂起的 resize 状态一并清掉(避免恢复后窗口跟着光标跑)
+        resizeState = null
         return
       }
       const cursor = screen.getCursorScreenPoint()
+      // 0056 边缘拖拽调整大小:在光标轮询里同步 setBounds(30fps,零 IPC 往返)
+      if (resizeState) applyResize(win, cursor)
       const bounds = win.getBounds()
       const x = cursor.x - bounds.x
       const y = cursor.y - bounds.y
@@ -336,6 +406,23 @@ async function bootstrap(): Promise<void> {
     ipcMain.handle('pet:respond-approval', (_event, request: PetApprovalRequest) =>
       petOps?.respondApproval(request) ?? { label: 'approval.respond', ok: false, summary: 'ops not ready' },
     )
+
+    // 0056 窗口边缘拖拽调整大小:renderer 按下/松开两个信号;尺寸计算在光标轮询里
+    ipcMain.handle('pet:resize-start', (_event, edge: unknown) => {
+      if (!mainWindow || mainWindow.isDestroyed()) return
+      const name = String(edge ?? '')
+      if (!(RESIZE_EDGES as readonly string[]).includes(name)) return
+      const bounds = mainWindow.getBounds()
+      const cursor = screen.getCursorScreenPoint()
+      resizeState = {
+        edge: name as ResizeEdge,
+        startBounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+        startCursor: { x: cursor.x, y: cursor.y },
+      }
+    })
+    ipcMain.handle('pet:resize-end', () => {
+      resizeState = null
+    })
 
     // B3(只读)插件监控:agent 中介读取目标会话插件清单
     pluginOps = createPluginOps({

@@ -117,6 +117,70 @@
         inset: 0;
       }
 
+      /* ---- 窗口边缘拖拽调整大小(0056):8 条透明 no-drag 手柄 ----
+         贴窗口四边(8px)/四角(16px),z-index 高于 #stage 的 drag 区域,
+         高于输入条/面板等交互层 —— 手柄只占最外缘,不影响中间区域交互。
+         hover 显示系统 resize 光标;按下经 IPC 通知主进程,由主进程光标轮询
+         锚定对侧边 setBounds(renderer 只发开始/结束信号,无逐帧 IPC)。 */
+      .pet-resize-handle {
+        position: fixed;
+        z-index: 7;
+        -webkit-app-region: no-drag;
+      }
+      .pet-resize-handle.n,
+      .pet-resize-handle.s {
+        left: 10px;
+        right: 10px;
+        height: 8px;
+        cursor: ns-resize;
+      }
+      .pet-resize-handle.n {
+        top: 0;
+      }
+      .pet-resize-handle.s {
+        bottom: 0;
+      }
+      .pet-resize-handle.e,
+      .pet-resize-handle.w {
+        top: 10px;
+        bottom: 10px;
+        width: 8px;
+        cursor: ew-resize;
+      }
+      .pet-resize-handle.e {
+        right: 0;
+      }
+      .pet-resize-handle.w {
+        left: 0;
+      }
+      .pet-resize-handle.ne,
+      .pet-resize-handle.nw,
+      .pet-resize-handle.se,
+      .pet-resize-handle.sw {
+        width: 16px;
+        height: 16px;
+      }
+      .pet-resize-handle.nw {
+        top: 0;
+        left: 0;
+        cursor: nwse-resize;
+      }
+      .pet-resize-handle.ne {
+        top: 0;
+        right: 0;
+        cursor: nesw-resize;
+      }
+      .pet-resize-handle.sw {
+        bottom: 0;
+        left: 0;
+        cursor: nesw-resize;
+      }
+      .pet-resize-handle.se {
+        bottom: 0;
+        right: 0;
+        cursor: nwse-resize;
+      }
+
       /* ---- 液态玻璃通用材质:透明 + 强模糊 + 高饱和 + 顶部镜面高光 ---- */
       .glass {
         position: relative;
