@@ -73,11 +73,14 @@ const EXPRESSION_PARAM_IDS = [
   'ParamMouthFormOpen',
   'ParamArmRChange',
   /** 思考表情(0039)驱动:困惑(ParamDizzy/ParamIrisStyle/ParamBlush)、恍然大悟
-   *  (ParamSymbolExclamation/ParamMouthFormClose)——停止后需平滑回归待机基准。 */
+   *  (ParamSymbolExclamation/ParamMouthFormClose)——停止后需平滑回归待机基准。
+   *  ParamStickerLightbulb(0051):恍然大悟变体 Expression_think_exclaim1(0044
+   *  随机二选一)驱动灯泡贴纸;漏加会卡在 1.0 贴纸不消失。 */
   'ParamDizzy',
   'ParamIrisStyle',
   'ParamBlush',
   'ParamSymbolExclamation',
+  'ParamStickerLightbulb',
   'ParamMouthFormClose',
   /** 思考气泡贴纸(0041,Expression_think_thinking)驱动:头顶"…"气泡 —— 停止后
    *  同样需平滑拉回默认(气泡隐藏),否则贴纸残留(loop 动画被 stopChannel 时
