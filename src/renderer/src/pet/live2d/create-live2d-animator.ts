@@ -136,10 +136,13 @@ function createLive2dAnimatorWithRuntime(
   /** 进入睡眠的时刻(performance.now,ms):motion 阶段兜底(加载失败等异常)计时用。 */
   let sleepStartedAt = 0
   /**
-   * Motion_sleep 素材时长(秒):入睡动作播到该秒即到尾帧,切换循环 Zzz 表情。
-   * 与 animation-registry 的 'sleep-motion' 素材配套,换素材需同步。
+   * Motion_sleep 素材的**睡眠保持帧**(秒,0059 素材更新):5.133s 处为低头闭眼安睡帧
+   * (ParamAngleY=-26、眼睛=0、眉毛压低,5.0s~5.133s 同画面);5.133→5.833s 是新增的
+   * "醒来"段(平滑睁眼抬头)。动画播放到该秒即**冻结**在该帧(见 enterSleep/tick),
+   * 唤醒时恢复播放继续走完睁眼段。与 animation-registry 的 'sleep-motion' 素材配套,
+   * 换素材需同步。
    */
-  const SLEEP_MOTION_DURATION = 4.867
+  const SLEEP_MOTION_DURATION = 5.133
   /**
    * 主进程光标轮询采样间隔(秒,见 main/index.ts startCursorPolling):拖动位移增量
    * (dragDx/dragDy)是 33ms 内的窗口位移 → 除以间隔得速度(px/s),速度差再除以
@@ -177,10 +180,12 @@ function createLive2dAnimatorWithRuntime(
   /**
    * 进入睡眠(0058):目标空闲达到阈值。严格按需求顺序执行:
    * 1. 禁用鼠标视线跟随(updateFollow:sleeping=true 且未摸头 → 关闭);
-   * 2. 播入睡动作 Motion_sleep(action 通道,holdEnd:播完停留尾帧);
-   * 3. 动作到尾帧后由 tick 切阶段循环播放 Zzz 表情(Expression_sleep)。
+   * 2. 播入睡动作 Motion_sleep(action 通道):播到 5.133s 保持帧(低头闭眼)后由
+   *    tick 冻结该通道(setMotionRate 0)—— 画面停在 5s 那一帧,循环 Zzz 表情;
+   * 3. 唤醒时恢复播放(exitSleep setMotionRate 1)→ 继续走完 5.133→5.833 睁眼段。
    * 进入前先停掉摸头/难过等余尾动画(打断会触发导演 interrupted 回调,顺手清
-   * holdActive),保证入睡动作从干净状态开始。
+   * holdActive),保证入睡动作从干净状态开始;并复位该通道倍速(防御上一轮睡眠
+   * 冻结残留 rate 0,新动画从头播)。
    */
   function enterSleep(): void {
     if (sleeping || !loaded) return
@@ -188,6 +193,7 @@ function createLive2dAnimatorWithRuntime(
     sleepPhase = 'motion'
     sleepStartedAt = performance.now()
     holdActive = false
+    runtime.setMotionRate?.('action', 1)
     director.stopChannel('expression')
     director.stopChannel('action')
     director.request(ANIMATIONS['sleep-motion'])
@@ -197,16 +203,18 @@ function createLive2dAnimatorWithRuntime(
 
   /**
    * 退出睡眠(唤醒,0058):停止条件满足 —— (a) 状态离开 idle(切到正在运行的
-   * 会话 → thinking,或任何非 idle 语义状态);(b) 拖动宠物窗口。停掉入睡动作
-   * 与 Zzz 循环,表情参数平滑复位回待机(低头回正/睁眼/Zzz 隐藏,参数均在
-   * EXPRESSION_PARAM_IDS 复位清单);恢复视线跟随;待机计时重新开始。
+   * 会话 → thinking,或任何非 idle 语义状态);(b) 拖动窗口加速度达阈值(0059)。
+   * 0059 素材更新:入睡动画冻结在 5.133s 保持帧,唤醒时**恢复播放** —— 从冻结帧
+   * 继续走完 5.133→5.833s 的平滑睁眼抬头段,播完自然结束自动复位回待机(眼睛
+   * 睁开 + 抬头 + 眉毛回正,"醒来"就是睁眼的瞬间);Zzz 表情立即停止并平滑隐藏
+   * (ParamSymbolZzz 在复位清单)。视线跟随恢复;待机计时重新开始。
    */
   function exitSleep(): void {
     if (!sleeping) return
     sleeping = false
     sleepPhase = 'waiting'
     holdActive = false
-    director.stopChannel('action')
+    runtime.setMotionRate?.('action', 1)
     director.stopChannel('expression')
     idleElapsed = 0
     updateFollow()
@@ -583,10 +591,16 @@ function createLive2dAnimatorWithRuntime(
       if (sleeping) {
         if (sleepPhase === 'motion') {
           const elapsed = runtime.getMotionElapsed?.('action') ?? -1
-          if (
-            elapsed >= SLEEP_MOTION_DURATION ||
-            (elapsed < 0 && performance.now() - sleepStartedAt > SLEEP_MOTION_FALLBACK_MS)
-          ) {
+          if (elapsed >= SLEEP_MOTION_DURATION) {
+            // 0059:冻结在"5s 保持帧"(低头闭眼安睡)—— setMotionRate(0) 经通道
+            // 时间偏移补偿只冻结 action 通道曲线时间(画面定格该帧,不再推进到
+            // 尾段睁眼态),expression 通道的 Zzz 循环照常呼吸;唤醒时 exitSleep
+            // setMotionRate(1) 恢复,继续播放睁眼抬头段
+            runtime.setMotionRate?.('action', 0)
+            sleepPhase = 'expression'
+            director.request(ANIMATIONS['sleep-expression'])
+          } else if (elapsed < 0 && performance.now() - sleepStartedAt > SLEEP_MOTION_FALLBACK_MS) {
+            // 素材加载失败/被异常打断(elapsed 恒 -1)超过兜底时长也切,避免卡空档
             sleepPhase = 'expression'
             director.request(ANIMATIONS['sleep-expression'])
           }

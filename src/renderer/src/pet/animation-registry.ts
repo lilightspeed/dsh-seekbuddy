@@ -167,25 +167,24 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
     autoBlink: false,
   },
   /**
-   * 睡眠动作(0058):目标会话空闲达到阈值后播一遍"入睡"——低头 + 闭眼 + 闭嘴
-   * (素材 4.867s,曲线首尾不一致:ParamAngleY 0→-26、ParamEyeLOpen/ROpen 1→0,
-   * 按 0037 教训强制非循环)。
+   * 睡眠动作(0058;素材 0059 更新:Duration 5.833s,尾段 5.133→5.833s 为"醒来"的
+   * 平滑睁眼抬头段,曲线首尾不一致:ParamAngleY 0→-26→0、ParamEyeLOpen/ROpen
+   * 1→0→1,按 0037 教训强制非循环)。
    * - channel: action —— 身体/姿态类,与表情通道(睡眠 Zzz)并存互不干扰
-   * - holdEnd: true —— 播完后**停留在尾帧**(低头闭眼入睡姿态),由 runtime 捕获
-   *   曲线末帧参数持续恢复;直到睡眠被唤醒(exitSleep → stopChannel('action'))
-   *   才平滑复位回待机(ParamAngleY/EyeLOpen/ROpen/MouthFormClose 均已在
-   *   EXPRESSION_PARAM_IDS 复位清单,见 cubism-runtime.ts)
-   * - holdAngleStack: true(0059)—— 拖动时低头姿态**叠加**物理点头输出而非让位:
+   * - **不设 holdEnd**(0059 修正):睡眠期间不靠 holdEnd 停尾帧(尾帧是睁眼醒来态),
+   *   而是由 animator 在播放到 **5.133s 保持帧**(低头闭眼安睡帧)时 setMotionRate(0)
+   *   冻结该通道 —— 画面停在 5s 那一帧;唤醒时 setMotionRate(1) 恢复,**继续播放**
+   *   5.133→5.833 的睁眼抬头段,播完自然结束 → expressionReset 平滑复位回待机
+   * - holdAngleStack: true(0059)—— 拖动窗口时低头姿态**叠加**物理点头输出而非让位:
    *   轻轻移动宠物时保持"低头睡觉"姿势(物理点头叠显),不会瞬间归零
-   * - 不设 durationMs:hold-end 常驻姿态不能由导演兜底超时停止(唤醒时显式 stop)
-   * - autoBlink false:闭眼由 motion 尾帧接管,睡眠期间不允许眨眼 updater 干扰
+   * - 不设 durationMs:冻结/续播期间不能由导演兜底超时停止(唤醒后自然播完)
+   * - autoBlink false:闭眼由 motion 冻结帧接管,睡眠期间不允许眨眼 updater 干扰
    */
   'sleep-motion': {
     id: 'sleep-motion',
     channel: 'action',
     file: 'Motion_sleep.motion3.json',
     priority: 1,
-    holdEnd: true,
     holdAngleStack: true,
     autoBlink: false,
   },
