@@ -12,6 +12,7 @@ import { createBridge, bridgeActionToEvent, type BridgeHandle } from './mcp/brid
 import { createNotifier } from './notify.ts'
 import { createTray } from './tray.ts'
 import { applySystemRoundedCorners } from './rounded-window.ts'
+import { startNativeResize } from './native-resize.ts'
 
 /**
  * 0056 窗口边缘拖拽调整大小:允许的拖拽方向。
@@ -89,6 +90,11 @@ async function bootstrap(): Promise<void> {
         sandbox: false,
       },
     })
+
+    // 0056e:原生缩放循环的 MIN/MAX 夹取走 WM_GETMINMAXINFO —— 建窗时设好,
+    // 系统 sizing 循环会自动限制,轮询兜底路径的 applyResize 另有手动夹取。
+    win.setMinimumSize(WINDOW_SIZE_MIN.width, WINDOW_SIZE_MIN.height)
+    win.setMaximumSize(WINDOW_SIZE_MAX.width, WINDOW_SIZE_MAX.height)
 
     // 高斯模糊背景(Win11 22H2+):让窗口背后的桌面/其他应用被系统 DWM 模糊,
     // 配合半透明窗口形成毛玻璃效果。低版本系统抛错时静默忽略(保持纯透明)。
@@ -451,12 +457,35 @@ async function bootstrap(): Promise<void> {
 
     // 0056 窗口边缘拖拽调整大小:renderer 按下/松开两个信号;尺寸计算在主进程
     // 专用循环(16ms/60Hz,与显示对齐)里做 —— 不占 33ms 视角跟随轮询(0056b/c)
-    ipcMain.handle('pet:resize-start', (_event, edge: unknown) => {
+    ipcMain.handle('pet:resize-start', async (_event, edge: unknown) => {
       if (!mainWindow || mainWindow.isDestroyed()) return
       const name = String(edge ?? '')
       if (!(RESIZE_EDGES as readonly string[]).includes(name)) return
-      const bounds = mainWindow.getBounds()
+      const win = mainWindow
       const cursor = screen.getCursorScreenPoint()
+      // 0056e:win32 优先**原生系统 sizing 循环**(WM_NCLBUTTONDOWN)—— 框架与
+      // 内容由 OS/DWM 一起移动,宠物/组件不再来回弹跳。SendMessage 阻塞到松开,
+      // 返回后尺寸已定,直接落盘;renderer 的 resize-end 到达时 resizeState 为空,
+      // stopResize 是 no-op,不会二次落盘。
+      if (process.platform === 'win32') {
+        const startedAt = Date.now()
+        const native = await startNativeResize(win, name, cursor)
+        if (native) {
+          const b = win.getBounds()
+          if (config) {
+            config.update({
+              windowWidth: clampWindow(b.width, WINDOW_SIZE_MIN.width, WINDOW_SIZE_MAX.width),
+              windowHeight: clampWindow(b.height, WINDOW_SIZE_MIN.height, WINDOW_SIZE_MAX.height),
+            })
+          }
+          void applySystemRoundedCorners(win)
+          // SendMessage 正常阻塞到松开(≥150ms);**瞬间返回 = 原生循环未接管**
+          // (如透明窗口兼容问题),用户仍按住拖动 → 回落轮询继续
+          if (Date.now() - startedAt >= 150) return
+        }
+      }
+      // 轮询方案(非 win32 / 原生不可用 / 原生未接管):锚定对侧边,60Hz setBounds
+      const bounds = win.getBounds()
       resizeState = {
         edge: name as ResizeEdge,
         startBounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
