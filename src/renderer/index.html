@@ -112,6 +112,12 @@
            输入条/面板等可交互区域必须标 no-drag */
         -webkit-app-region: drag;
       }
+      /* 0056d:边缘拖拽缩放期间临时禁用 drag 区域 —— 否则鼠标移入 #stage 时
+         Chromium 会向 OS 发起原生窗口移动,与 setBounds 缩放互相覆盖,
+         窗口/宠物快速来回跳动(见 window-resize.ts) */
+      body.pet-resizing #stage {
+        -webkit-app-region: no-drag;
+      }
       #stage canvas {
         position: absolute;
         inset: 0;

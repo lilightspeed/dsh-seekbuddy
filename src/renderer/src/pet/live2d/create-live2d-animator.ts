@@ -336,6 +336,13 @@ function createLive2dAnimatorWithRuntime(
   if (window.petApi?.onCursor) {
     unsubscribeCursor = window.petApi.onCursor((pos) => {
       setPointer(pos.x, pos.y)
+      // 0056d:窗口缩放期间置零拖动反馈(拖左/上边时窗口位置会跟着变,若不屏蔽
+      // 会当"拖动宠物"驱动物理,叠加在缩放位移上显得乱跳)—— 缩放只移动窗口,
+      // 不是拖宠物,拖动物理留到缩放结束后再用
+      if (document.body.classList.contains('pet-resizing')) {
+        dragTarget = { x: 0, y: 0 }
+        return
+      }
       // 拖动位移 → 基础归一化(±1 截断)→ 乘强度增益;无拖动时主进程推 0 → 目标回中。
       // 增益 = 1 + 强度×(MAX−1):0% 保持 0032 原效果,100% 放大到 DRAG_MAX_MULTIPLIER。
       // Y 取反:屏幕坐标向下为正,而 ParamDragY 正向定义相反(同 ParamAngleY 的处理,0017)。
@@ -447,7 +454,13 @@ function createLive2dAnimatorWithRuntime(
       followAnchor.x += (anchorGoal.x - followAnchor.x) * (1 - Math.exp(-PAT_ANCHOR_SMOOTH * deltaSeconds))
       followAnchor.y += (anchorGoal.y - followAnchor.y) * (1 - Math.exp(-PAT_ANCHOR_SMOOTH * deltaSeconds))
 
-      if (pointer) follower.update(deltaSeconds, pointer, followAnchor)
+      // 0056d:窗口缩放期间冻结视线跟随 —— 光标在窗口边缘(抓取点),宠物随窗口
+      // 比例位移本身就是"移动";若继续跟踪光标,边缘相对锚点的距离随缩放变化,
+      // 头部会来回摆动,叠加在位移上显得乱跳。缩放期间保持当前视线,结束后
+      // 由 follower 的平滑指数趋近自然过渡到新目标。
+      if (pointer && !document.body.classList.contains('pet-resizing')) {
+        follower.update(deltaSeconds, pointer, followAnchor)
+      }
       // 头部点击区跟随宠物位置(hitarea 精确位置或估算;窗口/位置/大小变化实时适配)
       const h = headAnchor()
       hitEl.style.left = `${h.x}px`

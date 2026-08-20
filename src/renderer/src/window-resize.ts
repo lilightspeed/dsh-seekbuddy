@@ -18,6 +18,18 @@ const RESIZE_EDGES = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const
 export function createWindowResizeHandles(api: PetApi | undefined): () => void {
   if (!api) return () => {}
   const cleanup: (() => void)[] = []
+  /**
+   * 0056d:缩放期间把 #stage 的 `-webkit-app-region: drag` 临时改为 no-drag
+   * (body.pet-resizing 类,见 index.html CSS)。原因:边缘拖拽时鼠标必然移入
+   * #stage 的 drag 区域,Chromium 在拖动中持续对 drag 区域做命中测试 —— 光标
+   * 一旦进入 drag 区域就向 OS 发 WM_NCLBUTTONDOWN(HTCAPTION),**原生窗口移动
+   * 循环**接管窗口位置;它与我们的 setBounds 缩放(锚定对侧边)每帧互相覆盖
+   * → 窗口位置来回跳,宠物(窗口比例定位)跟着**快速来回跳动**。
+   * 缩放期间禁用 drag 区域即掐断原生移动,窗口位置只由 setBounds 决定。
+   */
+  const setResizing = (on: boolean): void => {
+    document.body.classList.toggle('pet-resizing', on)
+  }
   for (const edge of RESIZE_EDGES) {
     const el = document.createElement('div')
     el.className = `pet-resize-handle ${edge}`
@@ -25,10 +37,12 @@ export function createWindowResizeHandles(api: PetApi | undefined): () => void {
     el.addEventListener('pointerdown', (e) => {
       // 按住期间指针事件(含移出窗口/窗口外松开)全部路由到本元素,松开不漏
       el.setPointerCapture(e.pointerId)
+      setResizing(true)
       void api.resizeStart(edge)
     })
     const end = (e: PointerEvent): void => {
       if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
+      setResizing(false)
       void api.resizeEnd()
     }
     el.addEventListener('pointerup', end)
@@ -38,10 +52,14 @@ export function createWindowResizeHandles(api: PetApi | undefined): () => void {
   }
   // 窗口失焦兜底:指针捕获可能被系统打断(Alt-Tab 等),确保 resize 状态不悬挂
   const onBlur = (): void => {
+    setResizing(false)
     void api.resizeEnd()
   }
   window.addEventListener('blur', onBlur)
-  cleanup.push(() => window.removeEventListener('blur', onBlur))
+  cleanup.push(() => {
+    setResizing(false)
+    window.removeEventListener('blur', onBlur)
+  })
   return () => {
     for (const dispose of cleanup) dispose()
   }
