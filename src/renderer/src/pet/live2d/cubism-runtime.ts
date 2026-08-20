@@ -426,7 +426,7 @@ class CubismRuntime implements Live2dRuntime {
    * 立即应用。仅"按下瞬间 seek"用,正常播放/续摸不会写入。
    */
   private readonly pendingSeek = new Map<AnimationChannel, number>()
-  /** 已解析的 motion 缓存(逻辑名 → 实例;null 表示解析失败,不再重试)。 */
+  /** 已解析的 motion 缓存(素材文件 → 实例;**只缓存成功**,失败不缓存、下次播放重试,0055)。 */
   private readonly motionCache = new Map<string, CubismMotion | null>()
   /** 各通道当前正在播放(或正在异步加载)的 motion 逻辑名;无 = 该通道空闲。 */
   private readonly currentMotion = new Map<AnimationChannel, string>()
@@ -1218,13 +1218,17 @@ class CubismRuntime implements Live2dRuntime {
           motion = instance
           // 曲线驱动的参数 id 集(0037u):新动画接管时只保留其曲线"不覆盖"的复位参数
           paramIds = parseMotionParamIds(buf)
+          // 0055:只缓存成功 —— 失败**不**入缓存(旧行为把失败缓存成 null 并"不再重试",
+          // 随机变体(恍然大悟 Exclaim/Exclaim1)某次瞬时失败后该变体整个应用生命周期内
+          // 永不播放,表现就是"只播放其中一个变体")。失败下次播放重试,持续失败每播
+          // 必报错,便于定位。
+          this.motionCache.set(file, motion)
+          this.motionParamIds.set(file, paramIds)
         } catch (error) {
           console.error(`[live2d] motion 加载失败:${file}`, error)
           motion = null
           paramIds = new Set()
         }
-        this.motionCache.set(file, motion)
-        this.motionParamIds.set(file, paramIds)
       }
       if (!motion || this.disposed) {
         if (!motion) {
@@ -1260,7 +1264,7 @@ class CubismRuntime implements Live2dRuntime {
       this.expressionReset = this.keepUncoveredReset(this.expressionReset, paramIds)
       this.motionStartTimes.set(channel, this.channelTime(channel))
       this.motionPaused = false
-      console.info(`[live2d] playMotion("${name}") 开始(channel=${channel})`)
+      console.info(`[live2d] playMotion("${name}") 开始(channel=${channel}, file=${file})`)
     } finally {
       const remaining = (this.pendingLoadCount.get(channel) ?? 1) - 1
       if (remaining <= 0) this.pendingLoadCount.delete(channel)
