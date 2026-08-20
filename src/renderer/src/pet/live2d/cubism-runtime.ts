@@ -846,6 +846,23 @@ class CubismRuntime implements Live2dRuntime {
   }
 
   /**
+   * headY 归一化值 → ParamAngleY 的"相对默认值增量"(与 setParam 同映射)。
+   * addViewHeadYDelta(物理演算后加回)与通道姿态恢复(hold-end 基准 + 跟随增量,
+   * 0058)共用同一映射,保证两处叠加的增量口径一致。
+   */
+  private viewHeadYDelta(model: CubismModel, norm: number): number {
+    const index = this.paramIndex.headY
+    if (index < 0) return 0
+    const min = model.getParameterMinimumValue(index)
+    const max = model.getParameterMaximumValue(index)
+    const def = model.getParameterDefaultValue(index)
+    if (max <= min) return 0
+    // 与 setParam 同映射:norm>=0 → def + norm·(max-def),否则 def + norm·(def-min);
+    // 这里只取"相对默认值的增量",加在物理输出/基准姿态之上。
+    return norm >= 0 ? norm * (max - def) : norm * (def - min)
+  }
+
+  /**
    * 把鼠标跟随的 headY 增量叠加回 ParamAngleY。
    *
    * 素材 physics3.json 的 PhysicsSetting5 以 ParamDragY 为输入、ParamAngleY 为输出
@@ -855,16 +872,9 @@ class CubismRuntime implements Live2dRuntime {
    * 最终 ParamAngleY = 物理拖动输出 + headY 增量。
    */
   private addViewHeadYDelta(model: CubismModel, norm: number): void {
-    const index = this.paramIndex.headY
-    if (index < 0) return
-    const min = model.getParameterMinimumValue(index)
-    const max = model.getParameterMaximumValue(index)
-    const def = model.getParameterDefaultValue(index)
-    if (max <= min) return
-    // 与 setParam 同映射:norm>=0 → def + norm·(max-def),否则 def + norm·(def-min);
-    // 这里只取"相对默认值的增量",加在物理输出之上。
-    const delta = norm >= 0 ? norm * (max - def) : norm * (def - min)
-    model.addParameterValueByIndex(index, delta)
+    const delta = this.viewHeadYDelta(model, norm)
+    if (delta === 0) return
+    model.addParameterValueByIndex(this.paramIndex.headY, delta)
   }
 
   private applyViewLook(model: CubismModel, look: ViewLook): void {
@@ -1121,7 +1131,16 @@ class CubismRuntime implements Live2dRuntime {
           if (ch === 'action') {
             // 基准姿态:weight=0 → 思考姿态,=1 → 物理输出,中间平滑过渡
             const weight = id === 'ParamAngleY' ? this.holdDragBlendY : this.holdDragBlendZ
-            model.setParameterValueByIndex(index, current * weight + value * (1 - weight))
+            // 0058:视角跟随的上下转头增量(headY)叠加在 hold-end 基准姿态上 ——
+            // 睡眠摸头等"跟随开启 + 动作 holdEnd 锁定 ParamAngleY"场景,headY 增量
+            // 不再被基准覆盖(低头睡觉时头仍随鼠标上下转);未跟随(增量 0)行为不变。
+            // 数学上增量恰好保留一次:current 已含增量(1098 行 addViewHeadYDelta),
+            // base 也含增量,混合 = 物理·w + 基准·(1-w) + 增量。
+            let base = value
+            if (id === 'ParamAngleY' && this.pendingLook) {
+              base += this.viewHeadYDelta(model, this.pendingLook.headY)
+            }
+            model.setParameterValueByIndex(index, current * weight + base * (1 - weight))
           } else {
             // 叠加层:角度增量加在 action 基准(或物理)之上(点头在低头姿态上叠显)
             const def = model.getParameterDefaultValue(index)
