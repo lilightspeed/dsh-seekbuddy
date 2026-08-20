@@ -58,21 +58,21 @@ export const PARAM_MANUAL = {
   pupilSize: 'ParamPupilSize',
   hairFront: 'ParamHairFront',
   hairSide: 'ParamHairSide',
-  cheek: 'ParamCheek',
   browLAngle: 'ParamBrowLAngle',
   browRAngle: 'ParamBrowRAngle',
   browLY: 'ParamBrowLY',
   browRY: 'ParamBrowRY',
 } as const
 
-/** 表情 / 说话参数(0037:motion 曲线用,含模型新增的 ParamEyeForm/ParamTear)。 */
+/** 表情 / 说话参数(0037:motion 曲线用;ParamCheek 已弃用,工程文件无此参数,0052)。 */
 export const PARAM_EXPRESSION = {
   eyeLOpen: 'ParamEyeLOpen',
   eyeROpen: 'ParamEyeROpen',
   eyeLSmile: 'ParamEyeLSmile',
   eyeRSmile: 'ParamEyeRSmile',
   eyeForm: 'ParamEyeForm',
-  tear: 'ParamTear',
+  /** 眼泪,备用(模型参数名 ParamTeasrs;当前无素材驱动)。 */
+  tear: 'ParamTeasrs',
 } as const
 
 /**

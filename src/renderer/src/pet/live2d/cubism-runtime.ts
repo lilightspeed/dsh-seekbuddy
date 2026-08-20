@@ -47,9 +47,10 @@ const SHADER_PATH = '/pet/live2d/shaders/'
 const MOTION_BASE_URL = '/pet/live2d/'
 /**
  * 表情动作涉及的表情参数(停止后需平滑复位回待机基准)。
- * 摸头动画曲线:EyeForm / EyeLOpen/ROpen / EyeLSmile/RSmile / BrowLAngle/RAngle / BrowLY/RY / Cheek;
- * 含 ParamTear(后续 sad 素材用)与嘴部(不涉及但复位无害)。SDK 的 fadeOut 拉向"当前值"
- * (每帧 save 快照已含 motion 值),无法回归待机 → 停止后由运行时指数平滑拉回模型默认值(0037)。
+ * 摸头动画曲线:EyeForm / EyeLOpen/ROpen / EyeLSmile/RSmile / BrowLAngle/RAngle / BrowLY/RY;
+ * 含眼泪 ParamTeasrs(备用,当前无素材驱动)与嘴部(不涉及但复位无害)。
+ * SDK 的 fadeOut 拉向"当前值"(每帧 save 快照已含 motion 值),无法回归待机 → 停止后由
+ * 运行时指数平滑拉回模型默认值(0037)。语义口径见 assets/pet/live2d/README.md §2(0052)。
  */
 const EXPRESSION_PARAM_IDS = [
   'ParamEyeForm',
@@ -61,10 +62,9 @@ const EXPRESSION_PARAM_IDS = [
   'ParamBrowRAngle',
   'ParamBrowLY',
   'ParamBrowRY',
-  /** 愤怒表情(打断任务)驱动:ParamAngry(皱眉愤怒度)——停止后需平滑回归待机基准。 */
+  /** 愤怒贴纸(打断任务):ParamAngry 0=不可见/1=可见(0052 澄清,非皱眉强度)。 */
   'ParamAngry',
-  'ParamCheek',
-  'ParamTear',
+  'ParamTeasrs',
   /** sad 表情(0037r)驱动嘴部;摸头不涉及但复位无害。 */
   'ParamMouthOpenY',
   /** 思考动作(0038)驱动:低头(ParamAngleY)、张嘴(ParamMouthFormOpen)、抬手(ParamArmRChange)。
@@ -87,6 +87,12 @@ const EXPRESSION_PARAM_IDS = [
    *  SDK 不清参数,值停在末帧)。 */
   'ParamBubbleEllipsis',
   'ParamBubbleEllipsis2',
+  /** 防御性(0052):模型已含但当前无素材驱动的贴纸参数(zzZ/问号/困惑/叹气,均
+   *  0=隐藏/1=完整),提前入复位清单 —— 后续素材接入即自动复位,不再踩 0051 类漏加。 */
+  'ParamSymbolZzz',
+  'ParamSymbolQuestion',
+  'ParamEmotionConfused',
+  'ParamBreathSigh',
 ] as const
 /** 表情复位平滑速度(1/s):≈0.3s 内基本回归待机。 */
 const EXPRESSION_RESET_SPEED = 10

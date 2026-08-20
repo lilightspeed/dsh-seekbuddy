@@ -21,17 +21,21 @@
 
 ## 2. 参数 ID 总表(按用途分组)
 
+> 语义以素材作者确认口径为准(0052):贴纸类参数 **0=隐藏/无,1=完整显示/全灭终点,中间值=部分状态或动效过程**,默认 0;样式切换类通过贴图隐藏/显示实现,不同值=不同贴图。
+
 ### 视角跟随(鼠标)
 | ID | 含义 |
 |---|---|
-| `ParamAngleX` / `ParamAngleY` / `ParamAngleZ` | 头部角度(左右 / 上下 / 倾斜) |
+| `ParamAngleX` / `ParamAngleY` / `ParamAngleZ` | 头部角度(左右 / 上下 / 倾斜;working 素材驱动 ParamAngleY 低头、exclaim 点头) |
 | `ParamEyeBallX` / `ParamEyeBallY` | 眼珠转动 |
-| `ParamBodyAngleX` / `ParamBodyAngleY` / `ParamBodyAngleZ` | 身体旋转(可选联动) |
+| `ParamBodyAngleX` / `ParamBodyAngleY` / `ParamBodyAngleZ` | 身体旋转(可选联动;⚠️ 当前模型未含,运行时索引 -1 不生效) |
 
 ### 物理驱动(仅由物理写入,运行时不手动设)
 | ID | 含义 |
 |---|---|
-| `ParamBackHairUp` / `ParamBackHairDown` / `ParamBackHairSwing` | 后发上 / 下 / 上下摆动 |
+| `ParamBackHairUp` / `ParamBackHairDown` / `ParamBackHairSwing` | 后发上 / 下 / 上下摆动(Setting1/2 角度物理输出) |
+| `ParamHairSwayX` / `ParamHairSwayY` | 前发摆动(Setting3/4 角度物理输出;拖动时 Setting5/6 亦输出,0036 重放恢复) |
+| `ParamTailRoot` / `ParamTailTip` | 尾巴根部 / 尖端(Setting5/6 拖动输出) |
 
 ### 拖动反馈(运行时输入,物理演算输出 —— 0032)
 | ID | 含义 |
@@ -42,11 +46,10 @@
 ### 手动 / 程序驱动
 | ID | 含义 |
 |---|---|
-| `ParamTailSwing` | 尾巴上下晃动 |
+| `ParamTailSwing` | 尾巴上下晃动(⚠️ 当前模型未含,索引 -1 不生效;物理输出用 ParamTailRoot/Tip) |
 | `ParamBreath` | 呼吸(与 SDK auto-breath 同名) |
 | `ParamPupilSize` | 瞳孔收缩 —— **0 = 正常,1 = 缩到最小**(moc3 已核实 min=0/default=0/max=1)。运行时在空闲(视线跟随)时由"鼠标快速接近"驱动收缩、停驻后缓慢复原(0029) |
-| `ParamHairFront` / `ParamHairSide` | 前发 / 侧发摆动(可手动联动头部角度) |
-| `ParamCheek` | 脸颊泛红 |
+| `ParamHairFront` / `ParamHairSide` | 前发 / 侧发摆动(可手动联动头部角度;⚠️ 当前模型未含,索引 -1 不生效) |
 | `ParamBrowLAngle` / `ParamBrowRAngle` / `ParamBrowLY` / `ParamBrowRY` | 眉毛角度 / 上下 |
 
 ### 表情 / 说话
@@ -55,10 +58,32 @@
 | `ParamEyeLOpen` / `ParamEyeROpen` | 眼睛开闭(眨眼;motion 播放期间由 autoBlink=false 让位) |
 | `ParamEyeLSmile` / `ParamEyeRSmile` | 眼睛微笑 |
 | `ParamEyeForm` | 眼睛形状(1 = 笑眼/眯眼) |
-| `ParamTear` | 眼泪(表情动画用,`Expression_sad` 已驱动) |
-| `ParamMouthOpenY` | 嘴部开合(LipSync/说话;0037 起模型已带,口型素材待制作) |
+| `ParamArmRChange` | 右手抬起(working 思考姿态) |
+| `ParamTeasrs` | 眼泪,备用(当前无素材驱动;⚠️ 模型参数名为 `ParamTeasrs`,代码/旧 README 曾写作 `ParamTear`) |
+| `ParamMouthOpenY` | 嘴部开合(LipSync/说话) |
+| `ParamMouthFormOpen` | 张嘴时的嘴型(贴图隐藏/显示切换,不同值=不同嘴型) |
+| `ParamMouthFormClose` | 闭嘴时的嘴型(同上) |
 | `PartEyeMask` | 眼睛蒙版部件 |
 | `Part2` | 隐藏的表情嘴 `mouth2.psd`(当前隐藏,"未找到对应图层"是预期,勿删) |
+
+### 贴纸参数(0=隐藏/无,1=完整显示或动效终点,中间值=部分状态/动效过程;默认 0)
+| ID | 含义 |
+|---|---|
+| `ParamBubbleEllipsis` | 思考气泡"点点走路":0=`___`(全灭),0→1 依次 `___→.__→.._→...→_..→__.→___`(首尾都是全灭,循环点衔接自然;0050 硬重启防中间态闪帧) |
+| `ParamBubbleEllipsis2` | 思考气泡第二层(素材恒 1.0;语义待确认,疑为气泡框/底,1=显示) |
+| `ParamAngry` | 愤怒贴纸(单贴图):0=不可见,1=可见(0052 澄清,非皱眉强度) |
+| `ParamDizzy` | 眩晕贴纸:0.1→0.9 循环,与 BubbleEllipsis 同类贴纸动效 |
+| `ParamSymbolExclamation` | 感叹号贴纸:0=隐藏,1=显示(exclaim 变体 1) |
+| `ParamStickerLightbulb` | 灯泡贴纸:同感叹号(exclaim 变体 2) |
+| `ParamSymbolZzz` | 睡觉 zzZ 贴纸:0→1 动效 `___→z__→zz_→zzz→_zz→__z→___` |
+| `ParamSymbolQuestion` | 三个问号贴纸:动效同 Zzz |
+| `ParamEmotionConfused` | 困惑表情贴纸:实现同 ParamAngry(贴纸 0=隐藏 1=显示) |
+| `ParamBreathSigh` | 叹气贴纸:0→1 先淡入后淡出 |
+
+### 样式切换(贴图隐藏/显示,不同参数值=不同贴图)
+| ID | 含义 |
+|---|---|
+| `ParamIrisStyle` | 虹膜样式切换(不同值=不同虹膜,dizzy 期间恒 0.65) |
 
 ## 3. 已确认的兼容性事实(避免重复排查)
 
