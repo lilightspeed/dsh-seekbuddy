@@ -27,13 +27,8 @@ export interface ViewFollowerConfig {
   eyeMax: number
   /** 头部最大归一化幅度(0..1]。 */
   headMax: number
-  /**
-   * 身体最大归一化幅度(0..1,0 = 不联动)。
-   * 0030 起设置面板不再提供(身体幅度滑块已删除),缺省取 DEFAULT(0.35)。
-   */
-  bodyMax?: number
   /** 各通道平滑速度(1/s):越大跟得越快。 */
-  smoothing: { eye: number; head: number; body: number }
+  smoothing: { eye: number; head: number }
   /** 跟随被禁用时回到中心的速度(1/s)。 */
   recenterSpeed: number
   /** 瞳孔收缩:径向接近速度(px/s)达到该值 → 收缩到 pupilMax。 */
@@ -51,8 +46,7 @@ export const DEFAULT_FOLLOWER_CONFIG: Required<ViewFollowerConfig> = {
   distanceScale: 320,
   eyeMax: 1,
   headMax: 0.9,
-  bodyMax: 0.35,
-  smoothing: { eye: 12, head: 6, body: 3 },
+  smoothing: { eye: 12, head: 6 },
   recenterSpeed: 5,
   pupilSensitivity: 600,
   pupilMax: 1,
@@ -79,8 +73,8 @@ export interface ViewFollower {
 
 export function createViewFollower(config: ViewFollowerConfig = DEFAULT_FOLLOWER_CONFIG): ViewFollower {
   let enabled = true
-  const current: ViewLook = { headX: 0, headY: 0, headZ: 0, eyeX: 0, eyeY: 0, bodyX: 0, pupilContract: 0 }
-  const target: ViewLook = { headX: 0, headY: 0, headZ: 0, eyeX: 0, eyeY: 0, bodyX: 0, pupilContract: 0 }
+  const current: ViewLook = { headX: 0, headY: 0, headZ: 0, eyeX: 0, eyeY: 0, pupilContract: 0 }
+  const target: ViewLook = { headX: 0, headY: 0, headZ: 0, eyeX: 0, eyeY: 0, pupilContract: 0 }
 
   /** 瞳孔状态:上一帧到锚点的距离(null = 无历史)、低通后的径向接近速度(px/s)、目标/当前收缩幅度。 */
   let prevDist: number | null = null
@@ -108,7 +102,6 @@ export function createViewFollower(config: ViewFollowerConfig = DEFAULT_FOLLOWER
     target.headZ = 0
     target.eyeX = nx * config.eyeMax
     target.eyeY = ny * config.eyeMax
-    target.bodyX = nx * resolve('bodyMax')
   }
 
   function clearTarget(): void {
@@ -117,7 +110,6 @@ export function createViewFollower(config: ViewFollowerConfig = DEFAULT_FOLLOWER
     target.headZ = 0
     target.eyeX = 0
     target.eyeY = 0
-    target.bodyX = 0
   }
 
   /** 径向接近速度 → 收缩目标:低通滤波后按 sensitivity 归一化(0..pupilMax)。 */
@@ -173,13 +165,11 @@ export function createViewFollower(config: ViewFollowerConfig = DEFAULT_FOLLOWER
       // 视角通道平滑(禁用时用较快的回中速度收敛)
       const eye = enabled ? config.smoothing.eye : config.recenterSpeed
       const head = enabled ? config.smoothing.head : config.recenterSpeed
-      const body = enabled ? config.smoothing.body : config.recenterSpeed
       current.headX = approach(current.headX, target.headX, head, deltaSeconds)
       current.headY = approach(current.headY, target.headY, head, deltaSeconds)
       current.headZ = approach(current.headZ, target.headZ, head, deltaSeconds)
       current.eyeX = approach(current.eyeX, target.eyeX, eye, deltaSeconds)
       current.eyeY = approach(current.eyeY, target.eyeY, eye, deltaSeconds)
-      current.bodyX = approach(current.bodyX, target.bodyX, body, deltaSeconds)
 
       // 瞳孔:不对称平滑 —— 起效快(attack),回落慢(release),形成"受惊缩瞳、缓缓复原"
       const pupilSpeed = targetPupil > currentPupil ? resolve('pupilAttack') : resolve('pupilRelease')

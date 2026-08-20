@@ -28,7 +28,6 @@
 |---|---|
 | `ParamAngleX` / `ParamAngleY` / `ParamAngleZ` | 头部角度(左右 / 上下 / 倾斜;working 素材驱动 ParamAngleY 低头、exclaim 点头) |
 | `ParamEyeBallX` / `ParamEyeBallY` | 眼珠转动 |
-| `ParamBodyAngleX` / `ParamBodyAngleY` / `ParamBodyAngleZ` | 身体旋转(可选联动;⚠️ 当前模型未含,运行时索引 -1 不生效) |
 
 ### 物理驱动(仅由物理写入,运行时不手动设)
 | ID | 含义 |
@@ -46,10 +45,8 @@
 ### 手动 / 程序驱动
 | ID | 含义 |
 |---|---|
-| `ParamTailSwing` | 尾巴上下晃动(⚠️ 当前模型未含,索引 -1 不生效;物理输出用 ParamTailRoot/Tip) |
 | `ParamBreath` | 呼吸(与 SDK auto-breath 同名) |
 | `ParamPupilSize` | 瞳孔收缩 —— **0 = 正常,1 = 缩到最小**(moc3 已核实 min=0/default=0/max=1)。运行时在空闲(视线跟随)时由"鼠标快速接近"驱动收缩、停驻后缓慢复原(0029) |
-| `ParamHairFront` / `ParamHairSide` | 前发 / 侧发摆动(可手动联动头部角度;⚠️ 当前模型未含,索引 -1 不生效) |
 | `ParamBrowLAngle` / `ParamBrowRAngle` / `ParamBrowLY` / `ParamBrowRY` | 眉毛角度 / 上下 |
 
 ### 表情 / 说话
@@ -59,7 +56,7 @@
 | `ParamEyeLSmile` / `ParamEyeRSmile` | 眼睛微笑 |
 | `ParamEyeForm` | 眼睛形状(1 = 笑眼/眯眼) |
 | `ParamArmRChange` | 右手抬起(working 思考姿态) |
-| `ParamTeasrs` | 眼泪,备用(当前无素材驱动;⚠️ 模型参数名为 `ParamTeasrs`,代码/旧 README 曾写作 `ParamTear`) |
+| `ParamTeasrs` | 眼泪,备用(当前无素材驱动;模型参数名 `ParamTeasrs`,旧代码/README 曾写作 `ParamTear`) |
 | `ParamMouthOpenY` | 嘴部开合(LipSync/说话) |
 | `ParamMouthFormOpen` | 张嘴时的嘴型(贴图隐藏/显示切换,不同值=不同嘴型) |
 | `ParamMouthFormClose` | 闭嘴时的嘴型(同上) |
@@ -70,15 +67,15 @@
 | ID | 含义 |
 |---|---|
 | `ParamBubbleEllipsis` | 思考气泡"点点走路":0=`___`(全灭),0→1 依次 `___→.__→.._→...→_..→__.→___`(首尾都是全灭,循环点衔接自然;0050 硬重启防中间态闪帧) |
-| `ParamBubbleEllipsis2` | 思考气泡第二层(素材恒 1.0;语义待确认,疑为气泡框/底,1=显示) |
+| `ParamBubbleEllipsis2` | 思考气泡**底座**:0=隐藏,1=显示,默认 0(素材恒 1.0 = 气泡框常显) |
 | `ParamAngry` | 愤怒贴纸(单贴图):0=不可见,1=可见(0052 澄清,非皱眉强度) |
 | `ParamDizzy` | 眩晕贴纸:0.1→0.9 循环,与 BubbleEllipsis 同类贴纸动效 |
 | `ParamSymbolExclamation` | 感叹号贴纸:0=隐藏,1=显示(exclaim 变体 1) |
 | `ParamStickerLightbulb` | 灯泡贴纸:同感叹号(exclaim 变体 2) |
 | `ParamSymbolZzz` | 睡觉 zzZ 贴纸:0→1 动效 `___→z__→zz_→zzz→_zz→__z→___` |
 | `ParamSymbolQuestion` | 三个问号贴纸:动效同 Zzz |
-| `ParamEmotionConfused` | 困惑表情贴纸:实现同 ParamAngry(贴纸 0=隐藏 1=显示) |
-| `ParamBreathSigh` | 叹气贴纸:0→1 先淡入后淡出 |
+| `ParamEmotionConfused` | 困惑表情贴纸:0=隐藏,1=显示(实现同 ParamAngry) |
+| `ParamBreathSigh` | 叹气贴纸:0→1 先淡入后淡出,中段可见,1.0 已淡出完毕=隐藏 |
 
 ### 样式切换(贴图隐藏/显示,不同参数值=不同贴图)
 | ID | 含义 |

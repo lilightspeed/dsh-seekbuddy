@@ -15,7 +15,7 @@ import { CubismPhysicsUpdater } from '@live2d/framework/motion/cubismphysicsupda
 import { CubismUpdateScheduler } from '@live2d/framework/motion/cubismupdatescheduler'
 import { CubismPhysics } from '@live2d/framework/physics/cubismphysics'
 import { CubismWebGLOffscreenManager } from '@live2d/framework/rendering/cubismoffscreenmanager'
-import { PARAM_HEAD, PARAM_EYE, PARAM_BODY, PARAM_MANUAL, PARAM_EXPRESSION, PARAM_DRAG, PARAM_BACK_HAIR, PARAM_HAIR_SWAY, type ViewLook } from './parameters.ts'
+import { PARAM_HEAD, PARAM_EYE, PARAM_MANUAL, PARAM_EXPRESSION, PARAM_DRAG, PARAM_BACK_HAIR, PARAM_HAIR_SWAY, type ViewLook } from './parameters.ts'
 import type { Live2dAppearance, Live2dRuntime, AnimationChannel } from './runtime.ts'
 
 /**
@@ -257,7 +257,6 @@ interface ParamIndexSet {
   headZ: number
   eyeX: number
   eyeY: number
-  bodyX: number
   /** 瞳孔收缩(0..1,0029)。 */
   pupil: number
   /** 拖动物理反馈:左右 / 上下拖动宠物(0032,physics3.json 的输入)。 */
@@ -468,7 +467,6 @@ class CubismRuntime implements Live2dRuntime {
     headZ: -1,
     eyeX: -1,
     eyeY: -1,
-    bodyX: -1,
     pupil: -1,
     dragX: -1,
     dragY: -1,
@@ -771,7 +769,6 @@ class CubismRuntime implements Live2dRuntime {
       headZ: model.getParameterIndex(this.id(PARAM_HEAD.z)),
       eyeX: model.getParameterIndex(this.id(PARAM_EYE.x)),
       eyeY: model.getParameterIndex(this.id(PARAM_EYE.y)),
-      bodyX: model.getParameterIndex(this.id(PARAM_BODY.x)),
       pupil: model.getParameterIndex(this.id(PARAM_MANUAL.pupilSize)),
       dragX: model.getParameterIndex(this.id(PARAM_DRAG.x)),
       dragY: model.getParameterIndex(this.id(PARAM_DRAG.y)),
@@ -855,7 +852,6 @@ class CubismRuntime implements Live2dRuntime {
     this.setParam(model, this.paramIndex.headZ, look.headZ)
     this.setParam(model, this.paramIndex.eyeX, look.eyeX)
     this.setParam(model, this.paramIndex.eyeY, look.eyeY)
-    this.setParam(model, this.paramIndex.bodyX, look.bodyX)
     // 瞳孔收缩:ParamPupilSize 已从 moc3 核实 min=0 / default=0 / max=1(0029),
     // 归一化 0..1 经 setParam 线性映射 → 0=正常,1=缩到最小;与视角方向无关,单独写
     this.setParam(model, this.paramIndex.pupil, look.pupilContract)

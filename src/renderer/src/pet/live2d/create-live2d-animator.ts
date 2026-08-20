@@ -57,7 +57,7 @@ function toFollowerConfig(p: PetPetSettings): ViewFollowerConfig {
     distanceScale: p.distance,
     eyeMax: p.eyeAmplitude,
     headMax: p.headAmplitude,
-    smoothing: { eye: 12 * p.response, head: 6 * p.response, body: 3 * p.response },
+    smoothing: { eye: 12 * p.response, head: 6 * p.response },
     recenterSpeed: 5 * p.response,
     pupilSensitivity: p.pupilSensitivity,
     pupilMax: p.pupilMax,

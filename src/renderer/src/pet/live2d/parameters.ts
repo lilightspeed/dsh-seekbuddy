@@ -18,13 +18,6 @@ export const PARAM_EYE = {
   y: 'ParamEyeBallY',
 } as const
 
-/** 视角跟随:身体旋转(可选联动,度)。 */
-export const PARAM_BODY = {
-  x: 'ParamBodyAngleX',
-  y: 'ParamBodyAngleY',
-  z: 'ParamBodyAngleZ',
-} as const
-
 /**
  * 物理驱动:后发。由 physics3.json 自动写入;0036 起未拖动时由角度物理输出重放恢复
  * (拖动 Setting5/6 的绝对赋值会把它清零,见 cubism-runtime.ts restoreHairFromAnglePhysics)。
@@ -53,11 +46,8 @@ export const PARAM_DRAG = {
 
 /** 手动 / 程序驱动参数。 */
 export const PARAM_MANUAL = {
-  tailSwing: 'ParamTailSwing',
   breath: 'ParamBreath',
   pupilSize: 'ParamPupilSize',
-  hairFront: 'ParamHairFront',
-  hairSide: 'ParamHairSide',
   browLAngle: 'ParamBrowLAngle',
   browRAngle: 'ParamBrowRAngle',
   browLY: 'ParamBrowLY',
@@ -90,8 +80,6 @@ export interface ViewLook {
   eyeX: number
   /** 眼珠 Y(上下)。 */
   eyeY: number
-  /** 身体旋转 X(左右,可选联动)。 */
-  bodyX: number
   /**
    * 瞳孔收缩(0..1;0 = 正常,1 = 缩到最小)—— 本结构里唯一 0..1 通道,其余均为 -1..1。
    * 由 follower 的"鼠标快速接近"检测驱动(0029):空闲(跟随启用)时鼠标快速靠近
