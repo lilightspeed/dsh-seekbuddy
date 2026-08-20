@@ -280,10 +280,18 @@ export interface CubismRuntimeOptions {
   /** motion 逻辑名 → 素材文件/循环配置;由 animation-registry 派生注入(0037s 单点配置)。
    *  holdEnd(0038):非循环动画播完后保持末尾姿态(思考),由运行时捕获曲线末帧参数持续恢复。
    *  files(0044):同动画的候选素材(随机变体),每次播放随机选一,按实际文件分别缓存。
-   *  hardLoopRestart(0050):循环点硬重启(MotionBehavior_V1),见 AnimationSpec 注释。 */
+   *  hardLoopRestart(0050):循环点硬重启(MotionBehavior_V1),见 AnimationSpec 注释。
+   *  holdAngleStack(0059):hold-end 姿态的角度叠加模式,见 AnimationSpec 注释。 */
   motions?: Record<
     string,
-    { file: string; loop: boolean; holdEnd?: boolean; files?: string[]; hardLoopRestart?: boolean }
+    {
+      file: string
+      loop: boolean
+      holdEnd?: boolean
+      files?: string[]
+      hardLoopRestart?: boolean
+      holdAngleStack?: boolean
+    }
   >
 }
 
@@ -442,10 +450,17 @@ class CubismRuntime implements Live2dRuntime {
    * 旧的那个收尾不能解除新动画的保护。
    */
   private readonly pendingLoadCount = new Map<AnimationChannel, number>()
-  /** motion 素材配置(逻辑名 → file/loop/files/hardLoopRestart),构造注入(0037s/0044/0050)。 */
+  /** motion 素材配置(逻辑名 → file/loop/files/hardLoopRestart/holdAngleStack),构造注入(0037s/0044/0050/0059)。 */
   private readonly motions: Record<
     string,
-    { file: string; loop: boolean; holdEnd?: boolean; files?: string[]; hardLoopRestart?: boolean }
+    {
+      file: string
+      loop: boolean
+      holdEnd?: boolean
+      files?: string[]
+      hardLoopRestart?: boolean
+      holdAngleStack?: boolean
+    }
   >
   /**
    * 各通道当前实际播放的素材文件(0044):随机变体(恍然大悟)每次播放可能不同,
@@ -1129,18 +1144,31 @@ class CubismRuntime implements Live2dRuntime {
         if (id === 'ParamAngleY' || id === 'ParamAngleZ') {
           const current = model.getParameterValueByIndex(index)
           if (ch === 'action') {
-            // 基准姿态:weight=0 → 思考姿态,=1 → 物理输出,中间平滑过渡
-            const weight = id === 'ParamAngleY' ? this.holdDragBlendY : this.holdDragBlendZ
-            // 0058:视角跟随的上下转头增量(headY)叠加在 hold-end 基准姿态上 ——
-            // 睡眠摸头等"跟随开启 + 动作 holdEnd 锁定 ParamAngleY"场景,headY 增量
-            // 不再被基准覆盖(低头睡觉时头仍随鼠标上下转);未跟随(增量 0)行为不变。
-            // 数学上增量恰好保留一次:current 已含增量(1098 行 addViewHeadYDelta),
-            // base 也含增量,混合 = 物理·w + 基准·(1-w) + 增量。
-            let base = value
-            if (id === 'ParamAngleY' && this.pendingLook) {
-              base += this.viewHeadYDelta(model, this.pendingLook.headY)
+            // 0059:hold-end 姿态的角度混合模式(按当前 action 动画的配置分流):
+            // - holdAngleStack(睡眠姿态):**叠加输出** —— 基准尾帧 + 物理输出 +
+            //   视角跟随增量三者相加。current 在物理演算(addViewHeadYDelta)后 =
+            //   物理输出 + headY 增量,故 result = value + current = 低头(-26) +
+            //   点头(物理) + 跟随(增量),轻轻拖动时低头姿态**保持**,物理点头叠加
+            //   其上,不再"瞬间归零";停止拖动物理衰减回 0 → 平滑回到低头。
+            // - 缺省(执行任务姿态 working):0040 让位混合 —— weight=0 → 基准姿态,
+            //   =1 → 物理输出,中间平滑过渡(被晃时姿态让位给物理)。
+            const motionName = this.currentMotion.get(ch)
+            const stack = motionName !== undefined && this.motions[motionName]?.holdAngleStack === true
+            if (stack) {
+              model.setParameterValueByIndex(index, value + current)
+            } else {
+              const weight = id === 'ParamAngleY' ? this.holdDragBlendY : this.holdDragBlendZ
+              // 0058:视角跟随的上下转头增量(headY)叠加在 hold-end 基准姿态上 ——
+              // 睡眠摸头等"跟随开启 + 动作 holdEnd 锁定 ParamAngleY"场景,headY 增量
+              // 不再被基准覆盖(低头睡觉时头仍随鼠标上下转);未跟随(增量 0)行为不变。
+              // 数学上增量恰好保留一次:current 已含增量(1098 行 addViewHeadYDelta),
+              // base 也含增量,混合 = 物理·w + 基准·(1-w) + 增量。
+              let base = value
+              if (id === 'ParamAngleY' && this.pendingLook) {
+                base += this.viewHeadYDelta(model, this.pendingLook.headY)
+              }
+              model.setParameterValueByIndex(index, current * weight + base * (1 - weight))
             }
-            model.setParameterValueByIndex(index, current * weight + base * (1 - weight))
           } else {
             // 叠加层:角度增量加在 action 基准(或物理)之上(点头在低头姿态上叠显)
             const def = model.getParameterDefaultValue(index)

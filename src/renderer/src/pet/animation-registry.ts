@@ -171,6 +171,8 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
    *   曲线末帧参数持续恢复;直到睡眠被唤醒(exitSleep → stopChannel('action'))
    *   才平滑复位回待机(ParamAngleY/EyeLOpen/ROpen/MouthFormClose 均已在
    *   EXPRESSION_PARAM_IDS 复位清单,见 cubism-runtime.ts)
+   * - holdAngleStack: true(0059)—— 拖动时低头姿态**叠加**物理点头输出而非让位:
+   *   轻轻移动宠物时保持"低头睡觉"姿势(物理点头叠显),不会瞬间归零
    * - 不设 durationMs:hold-end 常驻姿态不能由导演兜底超时停止(唤醒时显式 stop)
    * - autoBlink false:闭眼由 motion 尾帧接管,睡眠期间不允许眨眼 updater 干扰
    */
@@ -180,6 +182,7 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
     file: 'Motion_sleep.motion3.json',
     priority: 1,
     holdEnd: true,
+    holdAngleStack: true,
     autoBlink: false,
   },
   /**
@@ -207,13 +210,27 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
   },
 }
 
-/** runtime 需要的 file/loop/holdEnd/files/hardLoopRestart 映射(由 ANIMATIONS 派生,单点配置,0037s)。 */
+/** runtime 需要的 file/loop/holdEnd/files/hardLoopRestart/holdAngleStack 映射(由 ANIMATIONS 派生,单点配置,0037s)。 */
 export const MOTION_FILES: Record<
   string,
-  { file: string; loop: boolean; holdEnd?: boolean; files?: string[]; hardLoopRestart?: boolean }
+  {
+    file: string
+    loop: boolean
+    holdEnd?: boolean
+    files?: string[]
+    hardLoopRestart?: boolean
+    holdAngleStack?: boolean
+  }
 > = Object.fromEntries(
   Object.entries(ANIMATIONS).map(([id, spec]) => {
-    const entry: { file: string; loop: boolean; holdEnd?: boolean; files?: string[]; hardLoopRestart?: boolean } = {
+    const entry: {
+      file: string
+      loop: boolean
+      holdEnd?: boolean
+      files?: string[]
+      hardLoopRestart?: boolean
+      holdAngleStack?: boolean
+    } = {
       file: spec.file,
       loop: spec.loop ?? false,
     }
@@ -221,6 +238,7 @@ export const MOTION_FILES: Record<
     if (spec.holdEnd !== undefined) entry.holdEnd = spec.holdEnd
     if (spec.files !== undefined) entry.files = [...spec.files]
     if (spec.hardLoopRestart !== undefined) entry.hardLoopRestart = spec.hardLoopRestart
+    if (spec.holdAngleStack !== undefined) entry.holdAngleStack = spec.holdAngleStack
     return [id, entry]
   }),
 )

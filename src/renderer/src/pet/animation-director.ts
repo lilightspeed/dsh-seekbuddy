@@ -38,6 +38,13 @@ export interface AnimationSpec {
    * 循环点闪出中间帧;硬重启则直接落在下一状态,中间态永不出现。仅 runtime 消费。
    */
   hardLoopRestart?: boolean
+  /**
+   * hold-end 姿态的**角度叠加模式**(0059):true = 通道姿态恢复 ParamAngleY/Z 时,
+   * 基准尾帧 + 物理输出 + 视角跟随增量三者**相加**输出(睡眠姿态 sleep-motion 的
+   * 语义:低头睡觉 + 拖动点头共存,轻轻拖动不丢失低头);缺省 = 0040 让位混合
+   * (执行任务姿态 working 的语义:被晃时姿态逐渐让位给物理)。仅 runtime 消费。
+   */
+  holdAngleStack?: boolean
   /** 优先级,默认 0;同通道内,新请求 priority > 当前正在播的才允许打断。 */
   priority?: number
   /** 同 id 重复请求:默认幂等忽略;true = 重置计时重播(续摸语义)。 */
