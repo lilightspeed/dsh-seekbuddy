@@ -30,12 +30,6 @@ export interface AnimationSpec {
   files?: string[]
   /** 是否循环;默认 false(素材曲线首尾对齐前一律非循环,见 0037)。 */
   loop?: boolean
-  /**
-   * 素材播放淡入时长(秒,0042):覆盖 runtime 的 MOTION_FADE_IN_SECONDS 默认值。
-   * 0 = 禁用淡入(曲线直写)。循环贴纸(如思考气泡)必须为 0 —— 淡入会从当前参数值
-   * 混合起播,前几帧闪出中间帧状态(气泡点点全亮);且会随循环点重设淡入造成周期性闪动。
-   */
-  fadeInSeconds?: number
   /** 优先级,默认 0;同通道内,新请求 priority > 当前正在播的才允许打断。 */
   priority?: number
   /** 同 id 重复请求:默认幂等忽略;true = 重置计时重播(续摸语义)。 */

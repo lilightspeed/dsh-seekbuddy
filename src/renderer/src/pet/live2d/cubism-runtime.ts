@@ -46,11 +46,6 @@ const SHADER_PATH = '/pet/live2d/shaders/'
 /** motion 基础 URL(publicDir=assets)。 */
 const MOTION_BASE_URL = '/pet/live2d/'
 /**
- * motion 起始淡入时长(秒)。素材 json 未写 FadeInTime 时 SDK 默认 1.0s ——
- * 表情渐入太慢会看起来"点了没反应"(加上眨眼被接管,模型近乎静止),这里压到 0.15s。
- */
-const MOTION_FADE_IN_SECONDS = 0.15
-/**
  * 表情动作涉及的表情参数(停止后需平滑复位回待机基准)。
  * 摸头动画曲线:EyeForm / EyeLOpen/ROpen / EyeLSmile/RSmile / BrowLAngle/RAngle / BrowLY/RY / Cheek;
  * 含 ParamTear(后续 sad 素材用)与嘴部(不涉及但复位无害)。SDK 的 fadeOut 拉向"当前值"
@@ -274,11 +269,10 @@ export interface CubismRuntimeOptions {
   appearance: Live2dAppearance
   /** motion 逻辑名 → 素材文件/循环配置;由 animation-registry 派生注入(0037s 单点配置)。
    *  holdEnd(0038):非循环动画播完后保持末尾姿态(思考),由运行时捕获曲线末帧参数持续恢复。
-   *  fadeInSeconds(0043):覆盖默认淡入(0 = 禁用;循环贴纸必须禁用,见 AnimationSpec 注释)。
    *  files(0044):同动画的候选素材(随机变体),每次播放随机选一,按实际文件分别缓存。 */
   motions?: Record<
     string,
-    { file: string; loop: boolean; holdEnd?: boolean; fadeInSeconds?: number; files?: string[] }
+    { file: string; loop: boolean; holdEnd?: boolean; files?: string[] }
   >
 }
 
@@ -425,10 +419,10 @@ class CubismRuntime implements Live2dRuntime {
   private readonly motionCache = new Map<string, CubismMotion | null>()
   /** 各通道当前正在播放(或正在异步加载)的 motion 逻辑名;无 = 该通道空闲。 */
   private readonly currentMotion = new Map<AnimationChannel, string>()
-  /** motion 素材配置(逻辑名 → file/loop/fadeIn/files),构造注入(0037s/0043/0044)。 */
+  /** motion 素材配置(逻辑名 → file/loop/files),构造注入(0037s/0044)。 */
   private readonly motions: Record<
     string,
-    { file: string; loop: boolean; holdEnd?: boolean; fadeInSeconds?: number; files?: string[] }
+    { file: string; loop: boolean; holdEnd?: boolean; files?: string[] }
   >
   /**
    * 各通道当前实际播放的素材文件(0044):随机变体(恍然大悟)每次播放可能不同,
@@ -482,7 +476,7 @@ class CubismRuntime implements Live2dRuntime {
     appearance: Live2dAppearance,
     motions: Record<
       string,
-      { file: string; loop: boolean; holdEnd?: boolean; fadeInSeconds?: number; files?: string[] }
+      { file: string; loop: boolean; holdEnd?: boolean; files?: string[] }
     >,
   ) {
     this.canvas = canvas
@@ -1174,16 +1168,13 @@ class CubismRuntime implements Live2dRuntime {
         // create 内 _loop 赋值被注释),按素材配置显式 setLoop。
         const instance = CubismMotion.create(buf, buf.byteLength)
         instance.setLoop(config.loop)
-        // 素材未写 FadeInTime 时 SDK 默认 1.0s,表情渐入太慢(看起来没反应),压短到 0.15s;
-        // 循环贴纸(思考气泡,0043)配置 fadeInSeconds:0 覆盖 —— 淡入会从当前参数值混合起播
-        // (前几帧闪出中间帧状态:点点参数 0.5 = 全部点点),且循环点重设淡入造成周期性闪动,
-        // 曲线直写则骤显骤灭,与素材"气泡非淡入淡出"一致。
-        instance.setFadeInTime(config.fadeInSeconds ?? MOTION_FADE_IN_SECONDS)
-        // 素材未写 FadeOutTime 时 SDK 默认 1.0s(ACubismMotion.parse)→ 短动作(思考 0.5s)
-        // 被全程淡出压扁,曲线到不了终点值(0038 实测:ParamArmRChange 只到 0.52,两只手
-        // 各约 50% 半透明;编辑器无此默认淡出)。SDK fadeOut 拉向"当前值"本就无法回归待机
-        // (0037 坑 3,复位由 expressionReset 负责),这里直接禁用:setFadeOutTime(0) →
-        // fadeWeight 恒 1,曲线按素材原值走。对摸头/sad 同样更干净(末尾不再被 1s 淡出拖尾)。
+        // 0047:所有表情动画**不做**淡入淡出 —— 淡入淡出由用户在 Live2D 素材里自己制作。
+        // SDK 默认 fadeIn 1.0s / fadeOut 1.0s(素材未写 FadeIn/FadeOutTime 时)会强行给
+        // 每个表情加渐变(渐入太慢"点了没反应"、淡出把短动作压扁到不了终点值),与素材内
+        // 自带的淡入淡出叠加 → 播出的效果和 Live2D 里预览不一致。这里统一
+        // setFadeInTime(0)+setFadeOutTime(0)(fadeWeight 恒 1),曲线按素材原值直写,
+        // 完全交给素材作者在编辑器里画的 FadeInTime/FadeOutTime 决定渐变。
+        instance.setFadeInTime(0)
         instance.setFadeOutTime(0)
         // 关键:不 setEffectIds 时 _eyeBlinkParameterIds/_lipSyncParameterIds 为 null,
         // doUpdateParameters 首帧就抛 null.length TypeError → 动画器 tick 崩溃、模型
@@ -1345,8 +1336,8 @@ class CubismRuntime implements Live2dRuntime {
   /**
    * 实际执行跳帧:把队列里非 finished entry 的 startTime 前移,使
    * 曲线求值时间(= userTimeSeconds - startTime)直接落在目标秒(0037v)。
-   * 同步调整 fadeInStartTime 保证淡入权重为 1(定位即完整状态,不渐进淡入),
-   * 并把自身 motionStartTimes 对齐(getMotionElapsed 保持一致)。
+   * 淡入已全局禁用(0047,setFadeInTime(0)→ fadeWeight 恒 1),故无需再调整
+   * fadeInStartTime;只对齐 startTime 与自身 motionStartTimes(getMotionElapsed 保持一致)。
    * 目标 clamp 到 [0, duration-1 帧]:越过素材时长会触发 isFinished,动画立即结束。
    */
   private applySeek(channel: AnimationChannel, seconds: number): void {
@@ -1372,7 +1363,6 @@ class CubismRuntime implements Live2dRuntime {
       // userTimeSeconds 覆盖 startTime,必须提前钉死,seek 才不被抹掉
       entry.setIsStarted(true)
       entry.setStartTime(chTime - clamped)
-      entry.setFadeInStartTime(chTime - Math.max(clamped, MOTION_FADE_IN_SECONDS))
     }
     this.motionStartTimes.set(channel, chTime - clamped)
   }

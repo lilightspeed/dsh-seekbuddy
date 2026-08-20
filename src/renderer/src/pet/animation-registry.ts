@@ -90,9 +90,6 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
     file: 'Expression_think_thinking.motion3.json',
     loop: true,
     priority: 0,
-    // 0043:禁用淡入 —— 循环贴纸的淡入会从当前参数值混合起播,前几帧闪出中间帧状态
-    // (点点参数 0.5 = 全部点点,即动画第 21 帧);且循环点重设淡入会造成周期性闪动。
-    fadeInSeconds: 0,
     autoBlink: false,
   },
   /**
@@ -100,8 +97,9 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
    * - channel: expression —— 与 action 通道的执行任务姿态(working)并存,顶替
    *   思考表情(think-thinking,priority 0 < 本表 1),素材驱动的 ParamDizzy/
    *   IrisStyle/Blush/MouthOpenY/FormClose 与执行任务姿态参数不相交
-   * - loop: true —— 长推理段持续晕眩感;ParamDizzy 曲线 0.1→0.9 循环点跳变由 V2
-   *   correctEndPoint + loop fade-in 平滑(坑 4)
+   * - loop: true —— 长推理段持续晕眩感。ParamDizzy 曲线 0.1→0.9 循环点跳变本来靠 loop
+   *   fade-in 平滑(坑 4),但淡入已全局禁用(0047,由用户在 Live2D 里做渐变)——若循环点
+   *   跳变太突兀,应让素材作者在编辑器里对齐曲线首尾/画好淡入淡出,不要依赖运行时补。
    * - 段结束(onThinkingSegmentEnd)时由 animator 停 expression 并平滑复位;
    *   一次 turn 可含多段,每段独立触发
    */
@@ -135,19 +133,18 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
   },
 }
 
-/** runtime 需要的 file/loop/holdEnd/fadeInSeconds/files 映射(由 ANIMATIONS 派生,单点配置,0037s)。 */
+/** runtime 需要的 file/loop/holdEnd/files 映射(由 ANIMATIONS 派生,单点配置,0037s)。 */
 export const MOTION_FILES: Record<
   string,
-  { file: string; loop: boolean; holdEnd?: boolean; fadeInSeconds?: number; files?: string[] }
+  { file: string; loop: boolean; holdEnd?: boolean; files?: string[] }
 > = Object.fromEntries(
   Object.entries(ANIMATIONS).map(([id, spec]) => {
-    const entry: { file: string; loop: boolean; holdEnd?: boolean; fadeInSeconds?: number; files?: string[] } = {
+    const entry: { file: string; loop: boolean; holdEnd?: boolean; files?: string[] } = {
       file: spec.file,
       loop: spec.loop ?? false,
     }
     // exactOptionalPropertyTypes:可选属性不能赋显式 undefined,条件写入
     if (spec.holdEnd !== undefined) entry.holdEnd = spec.holdEnd
-    if (spec.fadeInSeconds !== undefined) entry.fadeInSeconds = spec.fadeInSeconds
     if (spec.files !== undefined) entry.files = [...spec.files]
     return [id, entry]
   }),
