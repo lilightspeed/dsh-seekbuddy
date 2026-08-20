@@ -187,9 +187,11 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
    * 被唤醒(停止条件满足:切到运行中的会话 / 拖动宠物窗口)。
    * - channel: expression —— 脸部/贴纸表情,与 action 通道的入睡姿态并存;
    *   驱动 ParamSymbolZzz(0=隐藏/1=完整,已在 EXPRESSION_PARAM_IDS 复位清单)
-   * - loop: true —— 睡眠期间持续"Zzz 一明一暗"呼吸闪烁(素材曲线内部已画
-   *   渐隐渐现,循环点 3.233s=1→0s=0 由 V2 correctEndPoint 平滑扫回,短暂半透明
-   *   可接受,不设 hardLoopRestart)
+   * - loop: true —— 睡眠期间持续"Zzz 一明一暗"呼吸闪烁
+   * - hardLoopRestart(0058 修正,0050 坑):曲线首尾不一致(3.233s=1 → 0s=0),
+   *   V2 的 correctEndPoint 会在循环点把终点值线性扫回起点、**途经中间态 0.5**
+   *   (半透明 Zzz),每圈循环点闪出中间帧 —— 用户实测可见。硬重启直接 1→0 跳变,
+   *   与素材曲线内部已有的 1→0 渐隐段(1.078→2.156s)衔接,中间态永不出现
    * - 不设 durationMs:循环动画无自然结束,睡眠被唤醒时 stopChannel('expression')
    *   显式停止并平滑复位(Zzz 贴纸隐藏)
    * - autoBlink false:睡眠期间眼睛由入睡动作尾帧接管
@@ -200,6 +202,7 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
     file: 'Expression_sleep.motion3.json',
     loop: true,
     priority: 1,
+    hardLoopRestart: true,
     autoBlink: false,
   },
 }
