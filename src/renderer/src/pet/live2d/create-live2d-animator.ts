@@ -16,7 +16,7 @@ export interface Live2dAnimatorOptions {
   host?: HTMLElement
   /** 初始宠物外观/手感(默认 DEFAULT_PET_CONFIG.pet;设置面板加载后经 applyPetSettings 覆盖)。 */
   initialPetSettings?: PetPetSettings
-  /** 视角跟随锚点(角色头部中心,窗口 px);默认跟随宠物位置(由 petSettings 决定)。 */
+  /** 宠物模型中心锚点(窗口 px,由 petSettings 定位);无 HitArea 时兼作视线跟随回退锚点(0061)。 */
   anchor?: () => { x: number; y: number }
   /** 是否跟随鼠标;默认 DSH 不工作(非 thinking)时跟随。 */
   shouldFollow?: (state: PetState) => boolean
@@ -86,7 +86,7 @@ function createLive2dAnimatorWithRuntime(
     ? { ...options.followerConfig }
     : toFollowerConfig(petSettings)
   const follower = createViewFollower(followerConfig)
-  // 跟随锚点 = 宠物模型中心(随位置设置实时移动)
+  // 模型中心锚点(随位置设置实时移动);0061 起视线跟随优先用 HitAreaHead 中心(viewAnchor),此处仅作无 hitarea 回退
   const anchor = options.anchor ?? (() => ({ x: window.innerWidth * petSettings.positionX, y: window.innerHeight * petSettings.positionY }))
 
   let state: PetState = 'idle'
@@ -278,9 +278,10 @@ function createLive2dAnimatorWithRuntime(
   const PAT_SHAKE_SPEED = 6
   let patShakeLevel = 0
   /**
-   * 按住摸头锚点(0037o):按住期间视线跟随以"头部判定区域中心"为参照——鼠标按在
-   * 方框正中心时目标≈0(不偏移),按在四周时头部轻柔朝鼠标方向转;松开平滑回
-   * 模型中心。锚点同样指数平滑,避免按下瞬间目标跳变。
+   * 视线跟随锚点(0037o,0061):以 HitAreaHead 中心为参照(0061 起常态即如此,
+   * 不再区分按住/松开) —— 鼠标在头部判定区域中心时视线平视,按在四周时头部
+   * 轻柔朝鼠标方向转。锚点指数平滑,避免目标位置突变(如设置里移动宠物位置)
+   * 时视线瞬间跳变。
    */
   const PAT_ANCHOR_SMOOTH = 10
   let followAnchor: { x: number; y: number } | null = null
@@ -363,6 +364,20 @@ function createLive2dAnimatorWithRuntime(
       width: PAT_HIT_SIZE,
       height: PAT_HIT_SIZE,
     }
+  }
+
+  /**
+   * 视线跟随锚点(0061):鼠标放在 **HitAreaHead 中心** 时视线平视(眼珠/头部转动
+   * 参数默认),实现"视线精准跟随鼠标"。原锚点是宠物模型中心(anchor,positionX/Y
+   * 定位点)—— 鼠标放在宠物中心(身体处)即平视,而头部在中心上方,鼠标悬在
+   * 头附近时偏移仍大,头部大幅偏转,"盯着鼠标"的观感差。改为头部判定区域中心:
+   * 鼠标放头部正前方 → 平视,偏离头部 → 按偏移转动,跟随更精准。
+   * 无 hitarea(素材未导出)回退 anchor(宠物模型中心,与旧行为一致)。
+   */
+  function viewAnchor(): { x: number; y: number } {
+    const hit = runtime.getHeadPoint?.()
+    if (hit) return { x: hit.x + hit.width / 2, y: hit.y + hit.height / 2 }
+    return anchor()
   }
 
   /**
@@ -643,12 +658,9 @@ function createLive2dAnimatorWithRuntime(
       followerConfig.headMax = shakeBase.headMax * (1 + patShakeLevel * 0.5)
       followerConfig.smoothing = { ...shakeBase.smoothing, head: shakeBase.smoothing.head * (1 + patShakeLevel * 0.4) }
 
-      // 按住摸头锚点(0037o):按住 → 平滑移到头部判定区域中心(中心按下不偏移),
-      // 松开 → 平滑回模型中心;同样指数趋近避免目标跳变。
-      const headBox = headAnchor()
-      const anchorGoal = holdActive
-        ? { x: headBox.x + headBox.width / 2, y: headBox.y + headBox.height / 2 }
-        : anchor()
+      // 视线跟随锚点(0037o/0061):目标恒为 HitAreaHead 中心(鼠标在头部中心即
+      // 平视,偏离才转动,视线精准跟随);指数平滑防目标突变(宠物位置变化)跳变。
+      const anchorGoal = viewAnchor()
       if (!followAnchor) followAnchor = { ...anchorGoal }
       followAnchor.x += (anchorGoal.x - followAnchor.x) * (1 - Math.exp(-PAT_ANCHOR_SMOOTH * deltaSeconds))
       followAnchor.y += (anchorGoal.y - followAnchor.y) * (1 - Math.exp(-PAT_ANCHOR_SMOOTH * deltaSeconds))
