@@ -65,11 +65,13 @@ function toFollowerConfig(p: PetPetSettings): ViewFollowerConfig {
 }
 
 function clamp01(value: number): number {
-  return Math.min(1, Math.max(0, value))
+  return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0
 }
 
 function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value))
+  // 0059:非有限值兜底到 min —— 配置字段缺失/NaN 时不传播 NaN(否则 idleElapsed >= NaN
+  // 恒 false,睡眠永不触发且难以排查);主进程 config.ts 的 clamp 同语义
+  return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : min
 }
 
 function createLive2dAnimatorWithRuntime(

@@ -428,28 +428,45 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
   petShowHitMesh?.addEventListener('change', () => {
     hooks.onPetSettingsChange?.({ petShowHitMesh: petShowHitMesh.checked })
   })
-  // 思考表情阈值(0039):数字输入,change(失焦/回车)时应用并落盘,clamp 与主进程一致
-  thinkAInput?.addEventListener('change', () => {
-    const a = Number(thinkAInput?.value)
-    if (!Number.isFinite(a)) return
-    hooks.onPetSettingsChange?.({ petThinkExclaimAfterSec: Math.min(600, Math.max(0, a)) })
+  // 思考表情阈值(0039):数字输入,输入即保存(300ms 防抖)—— 不用 change(依赖失焦):
+  // 窗口拖动(drag 区域)会吞掉 blur,聚焦中输入后直接拖走宠物会丢输入(0059 实测)
+  let thinkATimer: ReturnType<typeof setTimeout> | undefined
+  thinkAInput?.addEventListener('input', () => {
+    if (thinkATimer) clearTimeout(thinkATimer)
+    thinkATimer = setTimeout(() => {
+      const a = Number(thinkAInput?.value)
+      if (!Number.isFinite(a)) return
+      hooks.onPetSettingsChange?.({ petThinkExclaimAfterSec: Math.min(600, Math.max(0, a)) })
+    }, 300)
   })
-  thinkBInput?.addEventListener('change', () => {
-    const b = Number(thinkBInput?.value)
-    if (!Number.isFinite(b)) return
-    hooks.onPetSettingsChange?.({ petThinkDizzyAfterSec: Math.min(600, Math.max(0.1, b)) })
+  let thinkBTimer: ReturnType<typeof setTimeout> | undefined
+  thinkBInput?.addEventListener('input', () => {
+    if (thinkBTimer) clearTimeout(thinkBTimer)
+    thinkBTimer = setTimeout(() => {
+      const b = Number(thinkBInput?.value)
+      if (!Number.isFinite(b)) return
+      hooks.onPetSettingsChange?.({ petThinkDizzyAfterSec: Math.min(600, Math.max(0.1, b)) })
+    }, 300)
   })
-  // 入睡阈值(0058):数字输入,change(失焦/回车)时应用并落盘,clamp 与主进程一致
-  sleepAfterInput?.addEventListener('change', () => {
-    const s = Number(sleepAfterInput?.value)
-    if (!Number.isFinite(s)) return
-    hooks.onPetSettingsChange?.({ petSleepAfterSec: Math.min(86400, Math.max(10, s)) })
+  // 入睡阈值(0058):同上,input 即保存(300ms 防抖),不依赖失焦/change
+  let sleepTimer: ReturnType<typeof setTimeout> | undefined
+  sleepAfterInput?.addEventListener('input', () => {
+    if (sleepTimer) clearTimeout(sleepTimer)
+    sleepTimer = setTimeout(() => {
+      const s = Number(sleepAfterInput?.value)
+      if (!Number.isFinite(s)) return
+      hooks.onPetSettingsChange?.({ petSleepAfterSec: Math.min(86400, Math.max(10, s)) })
+    }, 300)
   })
-  // 唤醒加速度阈值(0059):数字输入,change(失焦/回车)时应用并落盘,clamp 与主进程一致
-  wakeAccelInput?.addEventListener('change', () => {
-    const a = Number(wakeAccelInput?.value)
-    if (!Number.isFinite(a)) return
-    hooks.onPetSettingsChange?.({ petWakeAccel: Math.min(20000, Math.max(500, a)) })
+  // 唤醒加速度阈值(0059):同上,input 即保存(300ms 防抖)
+  let wakeAccelTimer: ReturnType<typeof setTimeout> | undefined
+  wakeAccelInput?.addEventListener('input', () => {
+    if (wakeAccelTimer) clearTimeout(wakeAccelTimer)
+    wakeAccelTimer = setTimeout(() => {
+      const a = Number(wakeAccelInput?.value)
+      if (!Number.isFinite(a)) return
+      hooks.onPetSettingsChange?.({ petWakeAccel: Math.min(20000, Math.max(500, a)) })
+    }, 300)
   })
 
   // ---- B2 雷达 tab:全会话活动(运行中/完成/出错),点击设目标 ----

@@ -338,7 +338,8 @@ async function boot(): Promise<void> {
     // 宠物设置变更:主进程落盘后,把新配置应用给 animator(实时生效)
     onPetSettingsChange: (patch) => {
       void api.setConfig(patch).then((cfg) => {
-        animator.applyPetSettings?.(cfg.pet)
+        // 0059:cfg 为 null(主进程配置未就绪)时跳过,避免 cfg.pet 抛错
+        if (cfg) animator.applyPetSettings?.(cfg.pet)
       })
     },
     // 有效发送目标(显式或自动回退)变化 → 刷新"发送/停止"按钮 + 最近对话浮层切会话重拉基线
