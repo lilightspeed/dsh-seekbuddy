@@ -24,4 +24,9 @@ export interface PetAnimator {
   onThinkingSegmentStart?(): void
   /** 0039:推理段结束(非 reasoning 块/step-end/turn-end 收尾)。 */
   onThinkingSegmentEnd?(): void
+  /**
+   * 任务被打断(用户停止/中断,DSH turn/end reason = aborted/interrupted):
+   * 播放"愤怒"表情一次。可选:占位后端不实现(main.ts 用 ?. 调用)。
+   */
+  playInterrupted?(): void
 }

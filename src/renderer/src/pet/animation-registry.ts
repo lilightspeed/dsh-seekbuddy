@@ -6,7 +6,7 @@ import type { AnimationSpec } from './animation-director.ts'
  * runtime 需要的 file/loop 映射由本表派生注入(见 MOTION_FILES)。
  */
 /** 动画逻辑 id(新增动画在此扩展 union;索引访问带 noUncheckedIndexedAccess 下不返回 undefined)。 */
-type AnimationId = 'pat-head' | 'sad' | 'working' | 'think-thinking' | 'think-dizzy' | 'think-exclaim'
+type AnimationId = 'pat-head' | 'sad' | 'angry' | 'working' | 'think-thinking' | 'think-dizzy' | 'think-exclaim'
 
 /** 动画注册表 —— 全部动画的单点登记处(doc/09 §3.2),详见各条目注释。 */
 export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
@@ -48,6 +48,23 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
     id: 'sad',
     channel: 'expression',
     file: 'Expression_sad.motion3.json',
+    priority: 1,
+    durationMs: 3500,
+    autoBlink: false,
+  },
+  /**
+   * 愤怒表情(打断任务):任务被打断(用户停止/中断,DSH turn/end reason =
+   * aborted/interrupted)后播放一次 —— "为什么要打断我"。
+   * - channel: expression —— 脸部表情,与 action 通道的执行任务姿态互不干扰
+   *   (进入愤怒前 animator 已随离开 thinking 停掉 action,不会叠加)
+   * - 非循环,素材 3s 自然结束自动平滑复位;ParamAngry 已入 EXPRESSION_PARAM_IDS
+   * - priority 1:可打断摸头(0);与 sad(1) 同优先级不互抢,播完为止
+   * - autoBlink false:愤怒期间眉毛/眼睛由 motion 接管
+   */
+  angry: {
+    id: 'angry',
+    channel: 'expression',
+    file: 'Expression_angry.motion3.json',
     priority: 1,
     durationMs: 3500,
     autoBlink: false,

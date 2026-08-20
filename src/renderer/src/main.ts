@@ -401,6 +401,12 @@ async function boot(): Promise<void> {
         if (event.reason === 'error' || event.reason === 'max-tokens' || event.reason === 'blocked') {
           actor.send({ type: 'DSH_ERROR' })
           showBubble(`✗ 回合异常:${event.reason}`, 3500)
+        } else if (event.reason === 'aborted' || event.reason === 'interrupted') {
+          // 任务被打断(用户停止/中断):先让状态机离开 thinking 回 idle(不走 happy
+          // 庆祝),再播放愤怒表情 —— 此时表情门控已放开,请求直接生效。
+          actor.send({ type: 'DSH_INTERRUPTED' })
+          animator.playInterrupted?.()
+          showBubble('■ 已停止', 2000)
         } else {
           actor.send({ type: 'DSH_DONE' })
           showBubble('✓ 完成', 2500)

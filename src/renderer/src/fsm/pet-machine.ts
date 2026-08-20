@@ -9,6 +9,8 @@ export type PetMachineEvent =
   | { type: 'DSH_DONE' }
   | { type: 'DSH_ERROR' }
   | { type: 'TALK' }
+  /** 任务被打断(用户停止/中断,DSH turn/end reason = aborted/interrupted):直接回待机,播愤怒表情。 */
+  | { type: 'DSH_INTERRUPTED' }
 
 /**
  * 状态机:只输出语义状态,不关心动画怎么播。
@@ -23,11 +25,17 @@ export const petMachine = createMachine({
       on: { DSH_WORKING: 'thinking', DSH_ERROR: 'sad', DSH_DONE: 'happy', TALK: 'talking' },
     },
     thinking: {
-      on: { DSH_DONE: 'happy', DSH_ERROR: 'sad', TALK: 'talking' },
+      on: {
+        DSH_DONE: 'happy',
+        DSH_ERROR: 'sad',
+        TALK: 'talking',
+        // 打断任务:不走 happy(庆祝)直接回 idle —— 愤怒表情作为 idle 期效果播放
+        DSH_INTERRUPTED: 'idle',
+      },
     },
     happy: {
       after: { 2500: { target: 'idle' } },
-      on: { DSH_WORKING: 'thinking', DSH_ERROR: 'sad', TALK: 'talking' },
+      on: { DSH_WORKING: 'thinking', DSH_ERROR: 'sad', TALK: 'talking', DSH_INTERRUPTED: 'idle' },
     },
     sad: {
       after: { 3500: { target: 'idle' } },

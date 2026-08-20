@@ -516,6 +516,15 @@ function createLive2dAnimatorWithRuntime(
         director.request(ANIMATIONS['think-exclaim'])
       }
     },
+    /**
+     * 任务被打断(用户停止/中断):播放愤怒表情一次(expression 通道)。
+     * 调用时机:main.ts 已先发 DSH_INTERRUPTED —— 状态机离开 thinking 回 idle,
+     * applyState 已停掉执行任务姿态并放开表情门控,这里请求即可生效;
+     * 非循环素材播完自然结束自动平滑复位(ParamAngry 等已入 EXPRESSION_PARAM_IDS)。
+     */
+    playInterrupted(): void {
+      director.request(ANIMATIONS['angry'])
+    },
     dispose(): void {
       unsubscribeCursor?.()
       window.removeEventListener('pointermove', onPointerMove)

@@ -61,6 +61,8 @@ const EXPRESSION_PARAM_IDS = [
   'ParamBrowRAngle',
   'ParamBrowLY',
   'ParamBrowRY',
+  /** 愤怒表情(打断任务)驱动:ParamAngry(皱眉愤怒度)——停止后需平滑回归待机基准。 */
+  'ParamAngry',
   'ParamCheek',
   'ParamTear',
   /** sad 表情(0037r)驱动嘴部;摸头不涉及但复位无害。 */
