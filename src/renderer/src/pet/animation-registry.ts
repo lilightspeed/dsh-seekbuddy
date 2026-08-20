@@ -6,7 +6,16 @@ import type { AnimationSpec } from './animation-director.ts'
  * runtime 需要的 file/loop 映射由本表派生注入(见 MOTION_FILES)。
  */
 /** 动画逻辑 id(新增动画在此扩展 union;索引访问带 noUncheckedIndexedAccess 下不返回 undefined)。 */
-type AnimationId = 'pat-head' | 'sad' | 'angry' | 'working' | 'think-thinking' | 'think-dizzy' | 'think-exclaim'
+type AnimationId =
+  | 'pat-head'
+  | 'sad'
+  | 'angry'
+  | 'working'
+  | 'think-thinking'
+  | 'think-dizzy'
+  | 'think-exclaim'
+  | 'sleep-motion'
+  | 'sleep-expression'
 
 /** 动画注册表 —— 全部动画的单点登记处(doc/09 §3.2),详见各条目注释。 */
 export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
@@ -151,6 +160,46 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
     files: ['Expression_think_exclaim.motion3.json', 'Expression_think_exclaim1.motion3.json'],
     priority: 1,
     durationMs: 3500,
+    autoBlink: false,
+  },
+  /**
+   * 睡眠动作(0058):目标会话空闲达到阈值后播一遍"入睡"——低头 + 闭眼 + 闭嘴
+   * (素材 4.867s,曲线首尾不一致:ParamAngleY 0→-26、ParamEyeLOpen/ROpen 1→0,
+   * 按 0037 教训强制非循环)。
+   * - channel: action —— 身体/姿态类,与表情通道(睡眠 Zzz)并存互不干扰
+   * - holdEnd: true —— 播完后**停留在尾帧**(低头闭眼入睡姿态),由 runtime 捕获
+   *   曲线末帧参数持续恢复;直到睡眠被唤醒(exitSleep → stopChannel('action'))
+   *   才平滑复位回待机(ParamAngleY/EyeLOpen/ROpen/MouthFormClose 均已在
+   *   EXPRESSION_PARAM_IDS 复位清单,见 cubism-runtime.ts)
+   * - 不设 durationMs:hold-end 常驻姿态不能由导演兜底超时停止(唤醒时显式 stop)
+   * - autoBlink false:闭眼由 motion 尾帧接管,睡眠期间不允许眨眼 updater 干扰
+   */
+  'sleep-motion': {
+    id: 'sleep-motion',
+    channel: 'action',
+    file: 'Motion_sleep.motion3.json',
+    priority: 1,
+    holdEnd: true,
+    autoBlink: false,
+  },
+  /**
+   * 睡眠表情(0058):入睡动作播完停留尾帧后,**循环播放**头顶 Zzz 贴纸,直到睡眠
+   * 被唤醒(停止条件满足:切到运行中的会话 / 拖动宠物窗口)。
+   * - channel: expression —— 脸部/贴纸表情,与 action 通道的入睡姿态并存;
+   *   驱动 ParamSymbolZzz(0=隐藏/1=完整,已在 EXPRESSION_PARAM_IDS 复位清单)
+   * - loop: true —— 睡眠期间持续"Zzz 一明一暗"呼吸闪烁(素材曲线内部已画
+   *   渐隐渐现,循环点 3.233s=1→0s=0 由 V2 correctEndPoint 平滑扫回,短暂半透明
+   *   可接受,不设 hardLoopRestart)
+   * - 不设 durationMs:循环动画无自然结束,睡眠被唤醒时 stopChannel('expression')
+   *   显式停止并平滑复位(Zzz 贴纸隐藏)
+   * - autoBlink false:睡眠期间眼睛由入睡动作尾帧接管
+   */
+  'sleep-expression': {
+    id: 'sleep-expression',
+    channel: 'expression',
+    file: 'Expression_sleep.motion3.json',
+    loop: true,
+    priority: 1,
     autoBlink: false,
   },
 }

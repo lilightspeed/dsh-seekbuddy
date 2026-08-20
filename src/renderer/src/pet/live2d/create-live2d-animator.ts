@@ -113,10 +113,94 @@ function createLive2dAnimatorWithRuntime(
   }
 
   /**
+   * 睡眠功能(0058):目标会话空闲(状态机 idle)累计达到阈值后,宠物入睡 ——
+   * 序列:禁用鼠标视线跟随 → 播入睡动作(Motion_sleep,holdEnd 停留尾帧:低头
+   * 闭眼)→ 循环播放 Zzz 表情(Expression_sleep)直到唤醒。停止条件二选一:
+   * (a) 状态离开 idle(切到正在运行的会话 / 目标 turn-start 等 → thinking 等);
+   * (b) 用户拖动宠物窗口(主进程 33ms 推 dragDx/dragDy ≥ 阈值)。
+   * 睡眠中摸头/点身体**不**唤醒(需求 4);摸头保留"视线跟随"交互 —— 睡着时
+   * 被摸头,头仍随鼠标转(patStrength 增益 + 锚点切换照常),松开恢复禁用(需求 5)。
+   * 只算目标空闲:状态机已按目标会话过滤非目标活动(0046),idle 计时天然是
+   * "当前选中目标"的待机时长,其他并行会话不影响。
+   */
+  /** 入睡阈值(秒,设置面板可调):目标空闲达到该时长后触发睡眠。 */
+  let sleepAfterSec = DEFAULT_PET_CONFIG.pet.sleepAfterSec
+  /** idle 累计时长(秒):仅 state==='idle' 时递增,离开 idle / 睡眠结束归零。 */
+  let idleElapsed = 0
+  /** 是否处于睡眠状态(入睡动作 + Zzz 循环播放中)。 */
+  let sleeping = false
+  /** 睡眠序列阶段:进入睡眠 → 播入睡动作(到尾帧)→ 循环 Zzz 表情。 */
+  let sleepPhase: 'waiting' | 'motion' | 'expression' = 'waiting'
+  /** 进入睡眠的时刻(performance.now,ms):motion 阶段兜底(加载失败等异常)计时用。 */
+  let sleepStartedAt = 0
+  /**
+   * Motion_sleep 素材时长(秒):入睡动作播到该秒即到尾帧,切换循环 Zzz 表情。
+   * 与 animation-registry 的 'sleep-motion' 素材配套,换素材需同步。
+   */
+  const SLEEP_MOTION_DURATION = 4.867
+  /**
+   * 睡眠唤醒的拖动位移阈值(px):主进程 33ms 采样窗口位置增量,静止恒为 0;
+   * 单次采样位移 ≥ 该值视为"拖动窗口",唤醒睡眠。3px 容忍极慢拖动/系统微移。
+   */
+  const DRAG_WAKE_PX = 3
+  /** motion 阶段兜底超时(ms):入睡动作素材加载失败/被异常打断(elapsed 恒 -1)时,
+   *  到点直接切 Zzz 循环,避免卡在"没动作也没表情"的空档。 */
+  const SLEEP_MOTION_FALLBACK_MS = 6000
+
+  /**
    * 动画导演(doc/09):集中仲裁表情/动作动画 —— 同通道互斥、优先级打断、hold 冻结、
    * 兜底超时、自然结束检测、眨眼接管。animator 只发 request,不再手写互斥标志位。
    */
   const director: AnimationDirector = createAnimationDirector(runtime)
+
+  /**
+   * 视线跟随开关统一入口(0058):睡眠中默认禁用(睡觉不随鼠标转头),但**摸头
+   * 期间恢复启用** —— "睡着时仍可被摸头":头随鼠标转(patStrength 增益 + 锚点
+   * 切换照常由 tick 按 holdActive 驱动),摸完松开回到禁用。其余情况沿原有
+   * shouldFollow(thinking 时关闭)。
+   */
+  function updateFollow(): void {
+    follower.setEnabled(shouldFollow(state) && (!sleeping || holdActive))
+  }
+
+  /**
+   * 进入睡眠(0058):目标空闲达到阈值。严格按需求顺序执行:
+   * 1. 禁用鼠标视线跟随(updateFollow:sleeping=true 且未摸头 → 关闭);
+   * 2. 播入睡动作 Motion_sleep(action 通道,holdEnd:播完停留尾帧);
+   * 3. 动作到尾帧后由 tick 切阶段循环播放 Zzz 表情(Expression_sleep)。
+   * 进入前先停掉摸头/难过等余尾动画(打断会触发导演 interrupted 回调,顺手清
+   * holdActive),保证入睡动作从干净状态开始。
+   */
+  function enterSleep(): void {
+    if (sleeping || !loaded) return
+    sleeping = true
+    sleepPhase = 'motion'
+    sleepStartedAt = performance.now()
+    holdActive = false
+    director.stopChannel('expression')
+    director.stopChannel('action')
+    director.request(ANIMATIONS['sleep-motion'])
+    updateFollow()
+    console.info(`[live2d] 进入睡眠(目标空闲 ${Math.round(idleElapsed)}s 达到阈值 ${sleepAfterSec}s)`)
+  }
+
+  /**
+   * 退出睡眠(唤醒,0058):停止条件满足 —— (a) 状态离开 idle(切到正在运行的
+   * 会话 → thinking,或任何非 idle 语义状态);(b) 拖动宠物窗口。停掉入睡动作
+   * 与 Zzz 循环,表情参数平滑复位回待机(低头回正/睁眼/Zzz 隐藏,参数均在
+   * EXPRESSION_PARAM_IDS 复位清单);恢复视线跟随;待机计时重新开始。
+   */
+  function exitSleep(): void {
+    if (!sleeping) return
+    sleeping = false
+    sleepPhase = 'waiting'
+    holdActive = false
+    director.stopChannel('action')
+    director.stopChannel('expression')
+    idleElapsed = 0
+    updateFollow()
+    console.info('[live2d] 退出睡眠')
+  }
 
   /**
    * 拖动物理反馈(0032/0034):主进程 33ms 推送窗口位置增量(px),按窗口尺寸归一化后
@@ -257,22 +341,34 @@ function createLive2dAnimatorWithRuntime(
    * 按下摸头(0037l):idle + 命中判定区域 → 播放摸头并进入按住模式。
    * 播放中重复按下:导演幂等忽略(续摸);动画结束后再按会重播。
    * 动画的冻结(到 holdAt 定格闭眼)/眨眼接管/兜底计时全部由导演管理,此处只发请求。
+   * 0058:睡眠中摸头 —— 不播摸头动画、不终止睡眠(需求 4),只保留"视线跟随"
+   * 交互(需求 5):holdActive=true 驱动 tick 的摸头增益/锚点切换,updateFollow
+   * 在睡眠中恢复视线跟随;松开/移出由 releasePatHold 回到禁用。
    */
   function onPatDown(x: number, y: number): void {
     if (state !== 'idle') return
     // 命中判定:无 hitarea(undefined)回落为 overlay 区域即命中
     if (runtime.hitTestPoint && runtime.hitTestPoint(x, y) === false) return
     holdActive = true
+    if (sleeping) {
+      updateFollow()
+      return
+    }
     director.request(ANIMATIONS['pat-head'])
     director.setHold('expression', true)
     // 力度增益由 tick 每帧平滑爬升(0037o),不在按下瞬间跳变
   }
 
   /** 松开鼠标或移出判定区域:解除冻结,动画从保持帧继续播放到自然结束复位。
-   *  力度增益由 tick 每帧平滑回落(0037o),不在松开瞬间跳变。 */
+   *  力度增益由 tick 每帧平滑回落(0037o),不在松开瞬间跳变。
+   *  0058:睡眠摸头松开 —— 视线跟随回到睡眠禁用状态(睡眠不终止)。 */
   function releasePatHold(): void {
     if (!holdActive) return
     holdActive = false
+    if (sleeping) {
+      updateFollow()
+      return
+    }
     director.setHold('expression', false)
   }
 
@@ -299,7 +395,11 @@ function createLive2dAnimatorWithRuntime(
    * 的 action 通道独占逻辑已移除)。
    */
   director.onEnd((e) => {
-    if (e.id === 'pat-head') holdActive = false
+    if (e.id === 'pat-head') {
+      holdActive = false
+      // 0058:睡眠中摸头被中断(如入睡动作接管 expression 通道)→ 视线跟随回睡眠禁用
+      if (sleeping) updateFollow()
+    }
   })
 
   /**
@@ -314,9 +414,11 @@ function createLive2dAnimatorWithRuntime(
    * 点击身体(0037r):idle + 命中 HitAreaBody → 播放 sad 表情一遍(非循环,
    * 自然结束自动平滑复位)。播放中重复点击幂等忽略;sad priority 1 > 摸头 0,
    * 会自动打断进行中的摸头(导演仲裁),按住状态由 onEnd 回调清理。
+   * 0058:睡眠中点身体 —— 不播难过表情、不终止睡眠(需求 4:点击热区不终止睡眠)。
    */
   function onBodyDown(x: number, y: number): void {
     if (state !== 'idle') return
+    if (sleeping) return
     // 命中判定:无 hitarea(undefined)回落为 overlay 区域即命中
     if (runtime.hitTestBodyPoint && runtime.hitTestBodyPoint(x, y) === false) return
     director.request(ANIMATIONS['sad'])
@@ -336,6 +438,12 @@ function createLive2dAnimatorWithRuntime(
   if (window.petApi?.onCursor) {
     unsubscribeCursor = window.petApi.onCursor((pos) => {
       setPointer(pos.x, pos.y)
+      // 0058 停止条件(b):睡眠中用户拖动宠物窗口 → 唤醒。主进程 33ms 采样
+      // 窗口位置增量(dragDx/dragDy,静止恒 0),单次采样位移 ≥ 阈值即视为拖动;
+      // 窗口缩放(边缘拖拽)同样移动窗口位置,一并唤醒(用户动了窗口)。
+      if (sleeping && (Math.abs(pos.dragDx ?? 0) >= DRAG_WAKE_PX || Math.abs(pos.dragDy ?? 0) >= DRAG_WAKE_PX)) {
+        exitSleep()
+      }
       // 0056d:窗口缩放期间置零拖动反馈(拖左/上边时窗口位置会跟着变,若不屏蔽
       // 会当"拖动宠物"驱动物理,叠加在缩放位移上显得乱跳)—— 缩放只移动窗口,
       // 不是拖宠物,拖动物理留到缩放结束后再用
@@ -360,7 +468,8 @@ function createLive2dAnimatorWithRuntime(
   window.addEventListener('pointermove', onPointerMove)
 
   function applyState(prev: PetState | null, next: PetState): void {
-    follower.setEnabled(shouldFollow(next))
+    // 0058:视线跟随统一入口(睡眠中默认禁用、摸头期间恢复),替代原 shouldFollow 直调
+    updateFollow()
     // 表情通道门控:idle 与 thinking 放开(思考期间播放思考表情叠加:困惑循环,0039),
     // 其余瞬时态(happy/sad/talking)锁定 —— 进入即停掉进行中的表情并拒绝新请求
     director.setGate('expression', next !== 'idle' && next !== 'thinking')
@@ -404,10 +513,13 @@ function createLive2dAnimatorWithRuntime(
       patStrength: clamp(settings.patStrength, 0, 8),
       thinkExclaimAfterSec: clamp(settings.thinkExclaimAfterSec, 0, 600),
       thinkDizzyAfterSec: clamp(settings.thinkDizzyAfterSec, 0, 600),
+      sleepAfterSec: clamp(settings.sleepAfterSec, 10, 86400),
     }
     // 外层独立变量供 applyState/tick 闭包读取(思考表情阈值,0039):必须同步更新
     thinkExclaimAfterSec = petSettings.thinkExclaimAfterSec
     thinkDizzyAfterSec = petSettings.thinkDizzyAfterSec
+    // 外层独立变量供 tick 闭包读取(入睡阈值,0058):必须同步更新,否则改了不生效
+    sleepAfterSec = petSettings.sleepAfterSec
     // 外层独立变量供 onCursor 闭包读取(增益计算):必须同步更新,否则滑块调了不生效(0035)
     dragStrength = petSettings.dragStrength
     // 网格可视化开关(0037):立即显示/隐藏
@@ -432,9 +544,35 @@ function createLive2dAnimatorWithRuntime(
     play(next: PetState): void {
       const prev = state
       state = next
+      // 0058 停止条件(a):状态离开 idle(切到正在运行的会话 → thinking,或任意
+      // 非 idle 语义状态)→ 唤醒;回到 idle → 待机计时重新开始(新一轮空闲)
+      if (next !== 'idle') exitSleep()
+      else idleElapsed = 0
       if (loaded) applyState(prev, next)
     },
     tick(deltaSeconds: number): void {
+      // 0058 睡眠推进:
+      // - 睡眠中(motion 阶段):入睡动作播到尾帧(Motion_sleep 素材 4.867s)→
+      //   切换循环 Zzz 表情(expression 阶段,直到唤醒才停);素材加载失败/被
+      //   异常打断(elapsed 恒 -1)超过兜底时长也切,避免卡在"没动作也没表情"。
+      // - 待机(非睡眠):累计 idle 时长,达到阈值触发睡眠。状态机已按目标会话
+      //   过滤非目标活动(0046),idle 时长即"当前选中目标"的待机时长,其他
+      //   并行会话的运行/结束不影响此计时。
+      if (sleeping) {
+        if (sleepPhase === 'motion') {
+          const elapsed = runtime.getMotionElapsed?.('action') ?? -1
+          if (
+            elapsed >= SLEEP_MOTION_DURATION ||
+            (elapsed < 0 && performance.now() - sleepStartedAt > SLEEP_MOTION_FALLBACK_MS)
+          ) {
+            sleepPhase = 'expression'
+            director.request(ANIMATIONS['sleep-expression'])
+          }
+        }
+      } else if (state === 'idle') {
+        idleElapsed += deltaSeconds
+        if (idleElapsed >= sleepAfterSec) enterSleep()
+      }
       // 按住摸头力度增益平滑(0037o):按下缓升、松开缓降——headMax 突变会让
       // follower 目标值跳变,按下瞬间头部甩出去;指数趋近避免跳变。
       const shakeGoal = holdActive ? petSettings.patStrength : 0

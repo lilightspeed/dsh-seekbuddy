@@ -48,6 +48,8 @@ function sanitizeConfigUpdate(patch: PetConfigUpdate | undefined): PetConfigUpda
   // 思考表情阈值(0039,秒):toFinite 收敛
   if (patch?.petThinkExclaimAfterSec !== undefined) out.petThinkExclaimAfterSec = toFinite(patch.petThinkExclaimAfterSec)
   if (patch?.petThinkDizzyAfterSec !== undefined) out.petThinkDizzyAfterSec = toFinite(patch.petThinkDizzyAfterSec)
+  // 入睡阈值(0058,秒):toFinite 收敛
+  if (patch?.petSleepAfterSec !== undefined) out.petSleepAfterSec = toFinite(patch.petSleepAfterSec)
   return out
 }
 

@@ -72,6 +72,12 @@ export interface PetPetSettings {
    * 运行时对 A/B 做 min/max 归一,顺序填反也不会破坏逻辑。
    */
   thinkDizzyAfterSec: number
+  /**
+   * 入睡阈值(秒,0058):目标会话空闲(宠物处于 idle 状态)累计达到该时长后
+   * 触发睡眠 —— 只算当前选中"目标"的待机时长,其余并行会话的活动不影响计时
+   * (状态机只跟踪目标会话,0046)。10..86400s,0/负值由 clamp 兜底到 10。
+   */
+  sleepAfterSec: number
 }
 
 export interface PetConfig {
@@ -108,6 +114,8 @@ export const DEFAULT_PET_CONFIG: PetConfig = {
     // 思考表情阈值(0039):按"推理段"计时 —— ≥5s 的段结束恍然大悟;>15s 的段期间循环困惑
     thinkExclaimAfterSec: 5,
     thinkDizzyAfterSec: 15,
+    // 入睡阈值(0058):目标空闲 120s(2 分钟)后自动入睡
+    sleepAfterSec: 120,
   },
   voice: { enabled: true },
   launchAtLogin: false,
@@ -147,4 +155,6 @@ export interface PetConfigUpdate {
   petThinkExclaimAfterSec?: number
   /** 思考表情阈值 B(秒,0039):思考期间循环"困惑"的最短时长。 */
   petThinkDizzyAfterSec?: number
+  /** 入睡阈值(秒,0058):目标会话空闲达到该时长后触发睡眠。 */
+  petSleepAfterSec?: number
 }

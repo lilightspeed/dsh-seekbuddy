@@ -76,6 +76,8 @@ export class PetConfigStore {
     // 思考表情阈值(0039):A 0..600s,B 0.1..600s;A>=B 由 animator 归一,不在此强改
     if (patch.petThinkExclaimAfterSec !== undefined) next.pet.thinkExclaimAfterSec = clamp(patch.petThinkExclaimAfterSec, 0, 600)
     if (patch.petThinkDizzyAfterSec !== undefined) next.pet.thinkDizzyAfterSec = clamp(patch.petThinkDizzyAfterSec, 0.1, 600)
+    // 入睡阈值(0058):10..86400s(设置面板 min=10,0 由 clamp 兜底到 10 = 最短待机即睡)
+    if (patch.petSleepAfterSec !== undefined) next.pet.sleepAfterSec = clamp(patch.petSleepAfterSec, 10, 86400)
     if (patch.voiceEnabled !== undefined) next.voice.enabled = Boolean(patch.voiceEnabled)
     if (patch.launchAtLogin !== undefined) next.launchAtLogin = Boolean(patch.launchAtLogin)
     if (patch.targetSessionId !== undefined) {
@@ -147,6 +149,7 @@ export class PetConfigStore {
           if (typeof raw.pet.patStrength === 'number') next.pet.patStrength = clamp(raw.pet.patStrength, 0, 8)
           if (typeof raw.pet.thinkExclaimAfterSec === 'number') next.pet.thinkExclaimAfterSec = clamp(raw.pet.thinkExclaimAfterSec, 0, 600)
           if (typeof raw.pet.thinkDizzyAfterSec === 'number') next.pet.thinkDizzyAfterSec = clamp(raw.pet.thinkDizzyAfterSec, 0.1, 600)
+          if (typeof raw.pet.sleepAfterSec === 'number') next.pet.sleepAfterSec = clamp(raw.pet.sleepAfterSec, 10, 86400)
         }
         if (typeof raw.voice?.enabled === 'boolean') next.voice.enabled = raw.voice.enabled
         if (typeof raw.launchAtLogin === 'boolean') next.launchAtLogin = raw.launchAtLogin
