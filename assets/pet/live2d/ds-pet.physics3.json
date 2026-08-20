@@ -1,10 +1,10 @@
 {
 	"Version": 3,
 	"Meta": {
-		"PhysicsSettingCount": 6,
-		"TotalInputCount": 6,
-		"TotalOutputCount": 16,
-		"VertexCount": 15,
+		"PhysicsSettingCount": 8,
+		"TotalInputCount": 8,
+		"TotalOutputCount": 19,
+		"VertexCount": 20,
 		"Fps": 60,
 		"EffectiveForces": {
 			"Gravity": {
@@ -40,6 +40,14 @@
 			{
 				"Id": "PhysicsSetting6",
 				"Name": "左右拖动宠物"
+			},
+			{
+				"Id": "PhysicsSetting7",
+				"Name": "裙子左右摆动"
+			},
+			{
+				"Id": "PhysicsSetting8",
+				"Name": "裙子上下摆动"
 			}
 		]
 	},
@@ -532,6 +540,149 @@
 						"Y": 20
 					},
 					"Mobility": 0.91,
+					"Delay": 1,
+					"Acceleration": 1,
+					"Radius": 10
+				}
+			],
+			"Normalization": {
+				"Position": {
+					"Minimum": -10,
+					"Default": 0,
+					"Maximum": 10
+				},
+				"Angle": {
+					"Minimum": -10,
+					"Default": 0,
+					"Maximum": 10
+				}
+			}
+		},
+		{
+			"Id": "PhysicsSetting7",
+			"Input": [
+				{
+					"Source": {
+						"Target": "Parameter",
+						"Id": "ParamDragX"
+					},
+					"Weight": 43,
+					"Type": "X",
+					"Reflect": false
+				}
+			],
+			"Output": [
+				{
+					"Destination": {
+						"Target": "Parameter",
+						"Id": "Param"
+					},
+					"VertexIndex": 1,
+					"Scale": 1,
+					"Weight": 100,
+					"Type": "Angle",
+					"Reflect": false
+				},
+				{
+					"Destination": {
+						"Target": "Parameter",
+						"Id": "Param2"
+					},
+					"VertexIndex": 2,
+					"Scale": 1,
+					"Weight": 100,
+					"Type": "Angle",
+					"Reflect": false
+				}
+			],
+			"Vertices": [
+				{
+					"Position": {
+						"X": 0,
+						"Y": 0
+					},
+					"Mobility": 1,
+					"Delay": 1,
+					"Acceleration": 1,
+					"Radius": 0
+				},
+				{
+					"Position": {
+						"X": 0,
+						"Y": 7.2
+					},
+					"Mobility": 0.78,
+					"Delay": 1,
+					"Acceleration": 1,
+					"Radius": 7.2
+				},
+				{
+					"Position": {
+						"X": 0,
+						"Y": 13.4
+					},
+					"Mobility": 0.85,
+					"Delay": 1,
+					"Acceleration": 1,
+					"Radius": 6.2
+				}
+			],
+			"Normalization": {
+				"Position": {
+					"Minimum": -10,
+					"Default": 0,
+					"Maximum": 10
+				},
+				"Angle": {
+					"Minimum": -10,
+					"Default": 0,
+					"Maximum": 10
+				}
+			}
+		},
+		{
+			"Id": "PhysicsSetting8",
+			"Input": [
+				{
+					"Source": {
+						"Target": "Parameter",
+						"Id": "ParamDragY"
+					},
+					"Weight": 43,
+					"Type": "X",
+					"Reflect": false
+				}
+			],
+			"Output": [
+				{
+					"Destination": {
+						"Target": "Parameter",
+						"Id": "Param4"
+					},
+					"VertexIndex": 1,
+					"Scale": 1,
+					"Weight": 100,
+					"Type": "Angle",
+					"Reflect": false
+				}
+			],
+			"Vertices": [
+				{
+					"Position": {
+						"X": 0,
+						"Y": 0
+					},
+					"Mobility": 1,
+					"Delay": 1,
+					"Acceleration": 1,
+					"Radius": 0
+				},
+				{
+					"Position": {
+						"X": 0,
+						"Y": 10
+					},
+					"Mobility": 0.96,
 					"Delay": 1,
 					"Acceleration": 1,
 					"Radius": 10

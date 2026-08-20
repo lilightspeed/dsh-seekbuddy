@@ -210,6 +210,21 @@
 			"Id": "ParamHairSwayY",
 			"GroupId": "ParamGroup4",
 			"Name": "前发上下飘动"
+		},
+		{
+			"Id": "Param",
+			"GroupId": "ParamGroup4",
+			"Name": "裙子整体飘动(左右)"
+		},
+		{
+			"Id": "Param2",
+			"GroupId": "ParamGroup4",
+			"Name": "裙子下摆飘动(左右)"
+		},
+		{
+			"Id": "Param4",
+			"GroupId": "ParamGroup4",
+			"Name": "裙子整体 飘动(上下)"
 		}
 	],
 	"ParameterGroups": [
