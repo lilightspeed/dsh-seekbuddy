@@ -50,6 +50,8 @@ function sanitizeConfigUpdate(patch: PetConfigUpdate | undefined): PetConfigUpda
   if (patch?.petThinkDizzyAfterSec !== undefined) out.petThinkDizzyAfterSec = toFinite(patch.petThinkDizzyAfterSec)
   // 入睡阈值(0058,秒):toFinite 收敛
   if (patch?.petSleepAfterSec !== undefined) out.petSleepAfterSec = toFinite(patch.petSleepAfterSec)
+  // 唤醒加速度阈值(0059,px/s²):toFinite 收敛
+  if (patch?.petWakeAccel !== undefined) out.petWakeAccel = toFinite(patch.petWakeAccel)
   return out
 }
 

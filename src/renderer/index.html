@@ -1195,9 +1195,10 @@
           </div>
           <div class="setting-group">
             <div class="setting-label">睡眠(0058)</div>
-            <div class="setting-hint">目标会话空闲(宠物待机)达到阈值后自动入睡:低头闭眼 + 头顶 Zzz。睡眠中摸头不会被吵醒(摸头时头仍会随鼠标转动),切换运行中的会话或拖动宠物窗口会唤醒。</div>
+            <div class="setting-hint">目标会话空闲(宠物待机)达到阈值后自动入睡:低头闭眼 + 头顶 Zzz。睡眠中摸头不会被吵醒(摸头时头仍会随鼠标转动),切换运行中的会话会唤醒;拖动窗口时"轻轻移动"不惊动宠物(拖动物理照常),"突然拖动/快速拖动"加速度达标才唤醒。</div>
             <div class="setting-row">
               <label class="setting-num"><span>入睡阈值(秒)</span><input id="set-sleep-after" type="number" min="10" max="86400" step="10" /></label>
+              <label class="setting-num"><span>唤醒加速度(px/s²)</span><input id="set-wake-accel" type="number" min="500" max="20000" step="100" /></label>
             </div>
           </div>
           <div class="setting-group">

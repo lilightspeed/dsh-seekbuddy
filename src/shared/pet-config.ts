@@ -78,6 +78,12 @@ export interface PetPetSettings {
    * (状态机只跟踪目标会话,0046)。10..86400s,0/负值由 clamp 兜底到 10。
    */
   sleepAfterSec: number
+  /**
+   * 睡眠唤醒的拖动加速度阈值(px/s²,0059):睡眠中拖动窗口按**加速度**(速度变化率)
+   * 判定是否"惊动"宠物 —— 轻轻移动(匀速/慢速)时加速度低于阈值,宠物不醒、
+   * 拖动物理反馈照常生效;"突然拖动/快速拖动"加速度达到阈值才唤醒。500..20000。
+   */
+  wakeAccel: number
 }
 
 export interface PetConfig {
@@ -116,6 +122,8 @@ export const DEFAULT_PET_CONFIG: PetConfig = {
     thinkDizzyAfterSec: 15,
     // 入睡阈值(0058):目标空闲 120s(2 分钟)后自动入睡
     sleepAfterSec: 120,
+    // 唤醒加速度阈值(0059):速度变化率 ≥2500 px/s² 视为"惊动",唤醒睡眠
+    wakeAccel: 2500,
   },
   voice: { enabled: true },
   launchAtLogin: false,
@@ -157,4 +165,6 @@ export interface PetConfigUpdate {
   petThinkDizzyAfterSec?: number
   /** 入睡阈值(秒,0058):目标会话空闲达到该时长后触发睡眠。 */
   petSleepAfterSec?: number
+  /** 睡眠唤醒的拖动加速度阈值(px/s²,0059):轻轻移动不醒,加速度达标才唤醒。 */
+  petWakeAccel?: number
 }

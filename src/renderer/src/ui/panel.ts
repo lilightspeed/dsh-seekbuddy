@@ -296,6 +296,8 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     if (thinkBInput && document.activeElement !== thinkBInput) thinkBInput.value = String(p.thinkDizzyAfterSec)
     // 入睡阈值(0058):输入框正在编辑时不回填,避免打断输入
     if (sleepAfterInput && document.activeElement !== sleepAfterInput) sleepAfterInput.value = String(p.sleepAfterSec)
+    // 唤醒加速度阈值(0059):输入框正在编辑时不回填,避免打断输入
+    if (wakeAccelInput && document.activeElement !== wakeAccelInput) wakeAccelInput.value = String(p.wakeAccel)
     refreshPetLabels()
   }
 
@@ -370,6 +372,8 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
   const thinkBInput = document.querySelector<HTMLInputElement>('#set-think-b')
   // 入睡阈值(0058):数字输入,秒;change 时落盘(见下方事件绑定)
   const sleepAfterInput = document.querySelector<HTMLInputElement>('#set-sleep-after')
+  // 唤醒加速度阈值(0059):数字输入,px/s²;change 时落盘(见下方事件绑定)
+  const wakeAccelInput = document.querySelector<HTMLInputElement>('#set-wake-accel')
   const petSliders: Array<HTMLInputElement | null> = [petX, petY, petScale, petHead, petEye, petPupilSensitivity, petPupilMax, petDeadZone, petDistance, petResponse, petDrag, petPatStrength]
 
   /** 从滑块值构造宠物设置补丁(扁平 pet* 键,全量 11 项 + 网格开关)。 */
@@ -440,6 +444,12 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     const s = Number(sleepAfterInput?.value)
     if (!Number.isFinite(s)) return
     hooks.onPetSettingsChange?.({ petSleepAfterSec: Math.min(86400, Math.max(10, s)) })
+  })
+  // 唤醒加速度阈值(0059):数字输入,change(失焦/回车)时应用并落盘,clamp 与主进程一致
+  wakeAccelInput?.addEventListener('change', () => {
+    const a = Number(wakeAccelInput?.value)
+    if (!Number.isFinite(a)) return
+    hooks.onPetSettingsChange?.({ petWakeAccel: Math.min(20000, Math.max(500, a)) })
   })
 
   // ---- B2 雷达 tab:全会话活动(运行中/完成/出错),点击设目标 ----

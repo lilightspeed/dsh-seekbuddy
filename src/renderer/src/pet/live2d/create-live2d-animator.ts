@@ -117,7 +117,9 @@ function createLive2dAnimatorWithRuntime(
    * 序列:禁用鼠标视线跟随 → 播入睡动作(Motion_sleep,holdEnd 停留尾帧:低头
    * 闭眼)→ 循环播放 Zzz 表情(Expression_sleep)直到唤醒。停止条件二选一:
    * (a) 状态离开 idle(切到正在运行的会话 / 目标 turn-start 等 → thinking 等);
-   * (b) 用户拖动宠物窗口(主进程 33ms 推 dragDx/dragDy ≥ 阈值)。
+   * (b) 用户拖动宠物窗口且**加速度**达到阈值(0059:轻轻移动不醒 —— 匀速/慢速
+   * 拖动时速度变化率低,宠物继续睡、拖动物理反馈照常;突然拖动/快速拖动才"惊动"
+   * 唤醒)。
    * 睡眠中摸头/点身体**不**唤醒(需求 4);摸头保留"视线跟随"交互 —— 睡着时
    * 被摸头,头仍随鼠标转(patStrength 增益 + 锚点切换照常),松开恢复禁用(需求 5)。
    * 只算目标空闲:状态机已按目标会话过滤非目标活动(0046),idle 计时天然是
@@ -139,10 +141,19 @@ function createLive2dAnimatorWithRuntime(
    */
   const SLEEP_MOTION_DURATION = 4.867
   /**
-   * 睡眠唤醒的拖动位移阈值(px):主进程 33ms 采样窗口位置增量,静止恒为 0;
-   * 单次采样位移 ≥ 该值视为"拖动窗口",唤醒睡眠。3px 容忍极慢拖动/系统微移。
+   * 主进程光标轮询采样间隔(秒,见 main/index.ts startCursorPolling):拖动位移增量
+   * (dragDx/dragDy)是 33ms 内的窗口位移 → 除以间隔得速度(px/s),速度差再除以
+   * 间隔得加速度(px/s²)。轮询间隔固定 33ms,负载波动造成的误差在阈值手感内。
    */
-  const DRAG_WAKE_PX = 3
+  const DRAG_SAMPLE_DT = 0.033
+  /**
+   * 睡眠唤醒的拖动加速度阈值(px/s²,设置面板可调):加速度 = 相邻采样速度差 / 采样
+   * 间隔。轻轻移动(匀速/慢速)时速度变化率低 → 不醒,拖动物理反馈照常;"突然
+   * 拖动/快速拖动"速度突变 → 达到阈值才"惊动"唤醒。
+   */
+  let wakeAccel = DEFAULT_PET_CONFIG.pet.wakeAccel
+  /** 上次采样的拖动速度(px/s):本采样速度与它的差 ÷ 采样间隔 = 加速度。 */
+  let prevDragV = { x: 0, y: 0 }
   /** motion 阶段兜底超时(ms):入睡动作素材加载失败/被异常打断(elapsed 恒 -1)时,
    *  到点直接切 Zzz 循环,避免卡在"没动作也没表情"的空档。 */
   const SLEEP_MOTION_FALLBACK_MS = 6000
@@ -438,10 +449,18 @@ function createLive2dAnimatorWithRuntime(
   if (window.petApi?.onCursor) {
     unsubscribeCursor = window.petApi.onCursor((pos) => {
       setPointer(pos.x, pos.y)
-      // 0058 停止条件(b):睡眠中用户拖动宠物窗口 → 唤醒。主进程 33ms 采样
-      // 窗口位置增量(dragDx/dragDy,静止恒 0),单次采样位移 ≥ 阈值即视为拖动;
-      // 窗口缩放(边缘拖拽)同样移动窗口位置,一并唤醒(用户动了窗口)。
-      if (sleeping && (Math.abs(pos.dragDx ?? 0) >= DRAG_WAKE_PX || Math.abs(pos.dragDy ?? 0) >= DRAG_WAKE_PX)) {
+      // 0059 停止条件(b):睡眠中拖动窗口按**加速度**判定是否"惊动"宠物。
+      // 位移增量(dragDx/dragDy)÷ 采样间隔 = 速度(px/s);速度差 ÷ 采样间隔 =
+      // 加速度(px/s²)。轻轻移动(匀速/慢速)时速度变化率低 → 不醒,拖动物理
+      // 反馈(dragTarget 计算在下方照常)继续生效;"突然拖动/快速拖动"速度突变
+      // → 达到阈值才唤醒。速度样本无条件更新:睡眠退出后拖动静止收敛回 0,
+      // 下次入睡再拖动时加速度从真实基线算起(避免陈旧速度样本误判)。
+      const vx = (pos.dragDx ?? 0) / DRAG_SAMPLE_DT
+      const vy = (pos.dragDy ?? 0) / DRAG_SAMPLE_DT
+      const ax = (vx - prevDragV.x) / DRAG_SAMPLE_DT
+      const ay = (vy - prevDragV.y) / DRAG_SAMPLE_DT
+      prevDragV = { x: vx, y: vy }
+      if (sleeping && Math.hypot(ax, ay) >= wakeAccel) {
         exitSleep()
       }
       // 0056d:窗口缩放期间置零拖动反馈(拖左/上边时窗口位置会跟着变,若不屏蔽
@@ -514,12 +533,15 @@ function createLive2dAnimatorWithRuntime(
       thinkExclaimAfterSec: clamp(settings.thinkExclaimAfterSec, 0, 600),
       thinkDizzyAfterSec: clamp(settings.thinkDizzyAfterSec, 0, 600),
       sleepAfterSec: clamp(settings.sleepAfterSec, 10, 86400),
+      wakeAccel: clamp(settings.wakeAccel, 500, 20000),
     }
     // 外层独立变量供 applyState/tick 闭包读取(思考表情阈值,0039):必须同步更新
     thinkExclaimAfterSec = petSettings.thinkExclaimAfterSec
     thinkDizzyAfterSec = petSettings.thinkDizzyAfterSec
     // 外层独立变量供 tick 闭包读取(入睡阈值,0058):必须同步更新,否则改了不生效
     sleepAfterSec = petSettings.sleepAfterSec
+    // 外层独立变量供 onCursor 闭包读取(唤醒加速度阈值,0059):必须同步更新
+    wakeAccel = petSettings.wakeAccel
     // 外层独立变量供 onCursor 闭包读取(增益计算):必须同步更新,否则滑块调了不生效(0035)
     dragStrength = petSettings.dragStrength
     // 网格可视化开关(0037):立即显示/隐藏

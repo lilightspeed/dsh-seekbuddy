@@ -469,6 +469,8 @@ async function bootstrap(): Promise<void> {
     if (typeof patch?.petThinkDizzyAfterSec === 'number' && Number.isFinite(patch.petThinkDizzyAfterSec)) out.petThinkDizzyAfterSec = Math.min(600, Math.max(0.1, patch.petThinkDizzyAfterSec))
     // 入睡阈值(0058):10..86400s(设置面板 min=10,0 由 clamp 兜底到 10 = 最短待机即睡)
     if (typeof patch?.petSleepAfterSec === 'number' && Number.isFinite(patch.petSleepAfterSec)) out.petSleepAfterSec = Math.min(86400, Math.max(10, patch.petSleepAfterSec))
+    // 唤醒加速度阈值(0059):500..20000 px/s²
+    if (typeof patch?.petWakeAccel === 'number' && Number.isFinite(patch.petWakeAccel)) out.petWakeAccel = Math.min(20000, Math.max(500, patch.petWakeAccel))
     return out
   }
 
