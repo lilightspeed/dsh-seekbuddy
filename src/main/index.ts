@@ -21,12 +21,15 @@ import { applySystemRoundedCorners } from './rounded-window.ts'
 const RESIZE_EDGES = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const
 type ResizeEdge = (typeof RESIZE_EDGES)[number]
 /**
- * 0056 边缘拖拽的**专用**采样间隔(ms):≈125Hz,远超 33ms 光标轮询的 30fps ——
- * 30fps 下每步 setBounds 是 33ms 一跳,窗口边缘肉眼可见地顿挫;8ms 采样让
- * DWM 每帧都能拿到最新尺寸,缩放连续平滑。与视角跟随的 33ms 轮询解耦
- * (跟随不需要更高频率,避免无谓开销)。
+ * 0056 边缘拖拽的**专用**采样间隔(ms):60Hz,与显示刷新对齐 —— 显示器每帧
+ * 最多展示一次窗口位置,高于刷新率的 setBounds 是纯浪费:只会让 renderer 收到
+ * 更多 resize 事件(layout + canvas 重分配 + 视图矩阵重建),超出其帧产出的
+ * 部分表现为**内容(宠物/组件)跳帧**,而窗口边缘(由 DWM 合成)反而看不出差别。
+ * 早期 33ms(30fps)边缘顿挫、8ms(125fps)边缘平滑但内容跳动,16ms 是两者之间
+ * 与显示对齐的稳态:边缘逐帧平滑,renderer 每帧至多处理一次尺寸变化。
+ * 视角跟随的 33ms 轮询保持不变(跟随不需要更高频率)。
  */
-const RESIZE_POLL_MS = 8
+const RESIZE_POLL_MS = 16
 
 // 全局兜底:注册后 Electron 不再弹默认错误对话框,完整错误打到终端
 // (默认对话框只显示截断堆栈,无法定位是哪条 IPC 消息、哪个参数)。
@@ -160,7 +163,7 @@ async function bootstrap(): Promise<void> {
     startBounds: { x: number; y: number; width: number; height: number }
     startCursor: { x: number; y: number }
   } | null = null
-  /** 0056b:拖拽期间专用的高频缩放循环(仅 resizeState 非空时运行,8ms ≈ 125Hz)。 */
+  /** 0056b:拖拽期间专用的缩放循环(仅 resizeState 非空时运行,60Hz 与显示对齐)。 */
   let resizeTimer: NodeJS.Timeout | undefined
 
   /**
@@ -255,7 +258,7 @@ async function bootstrap(): Promise<void> {
         return
       }
       const cursor = screen.getCursorScreenPoint()
-      // 0056b:缩放改由专用高频循环(8ms)驱动,不再占用 33ms 视角跟随轮询
+      // 0056c:缩放改由专用循环(16ms/60Hz)驱动,不再占用 33ms 视角跟随轮询
       const bounds = win.getBounds()
       const x = cursor.x - bounds.x
       const y = cursor.y - bounds.y
@@ -447,7 +450,7 @@ async function bootstrap(): Promise<void> {
     )
 
     // 0056 窗口边缘拖拽调整大小:renderer 按下/松开两个信号;尺寸计算在主进程
-    // 专用高频循环(8ms)里做 —— 不占 33ms 视角跟随轮询,缩放更平滑(0056b)
+    // 专用循环(16ms/60Hz,与显示对齐)里做 —— 不占 33ms 视角跟随轮询(0056b/c)
     ipcMain.handle('pet:resize-start', (_event, edge: unknown) => {
       if (!mainWindow || mainWindow.isDestroyed()) return
       const name = String(edge ?? '')

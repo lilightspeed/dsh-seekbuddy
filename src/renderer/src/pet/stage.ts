@@ -19,8 +19,10 @@ export async function createStage(): Promise<PetStage> {
 
   const layer = new Container()
   layer.position.set(window.innerWidth / 2, window.innerHeight * 0.44)
-  // 阶段 5 窗口缩放:resizeTo 只缩放渲染器,角色层锚点需手动跟随窗口尺寸
-  window.addEventListener('resize', () => {
+  // 0056c:角色层锚点**每帧**跟随窗口尺寸 —— resize 事件可能被系统/Chromium 合并
+  // (低于主进程 setBounds 频率),事件驱动会让占位宠物在缩放期间滞后跳变;
+  // ticker 已由 main.ts 驱动,这里只更新一个 Vector2,开销可忽略。
+  app.ticker.add(() => {
     layer.position.set(window.innerWidth / 2, window.innerHeight * 0.44)
   })
   app.stage.addChild(layer)

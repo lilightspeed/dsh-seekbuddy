@@ -489,8 +489,6 @@ class CubismRuntime implements Live2dRuntime {
     hairSwayY: -1,
   }
 
-  private readonly onResize = (): void => this.resize()
-
   constructor(
     canvas: HTMLCanvasElement,
     gl: WebGL2RenderingContext,
@@ -508,7 +506,6 @@ class CubismRuntime implements Live2dRuntime {
     this.motions = motions
     this.frameBuffer = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null
     this.resize()
-    window.addEventListener('resize', this.onResize)
   }
 
   /** canvas 尺寸/DPR 与视图矩阵随窗口同步。 */
@@ -522,6 +519,21 @@ class CubismRuntime implements Live2dRuntime {
     }
     this.gl.viewport(0, 0, this.gl.drawingBufferWidth, this.gl.drawingBufferHeight)
     this.rebuildView()
+  }
+
+  /**
+   * 0056c:宿主(CSS)尺寸 → canvas 缓冲/视图矩阵的**每帧核对**。
+   * 窗口 `resize` 事件可能被系统/Chromium 合并(频率低于主进程 setBounds),
+   * 只靠事件驱动会让缓冲/矩阵停在旧尺寸 —— 模型按旧宽高比绘制再被 CSS 拉伸,
+   * 拖拽缩放期间宠物比例扭曲、逐帧跳动。改为每帧便宜比对一次(一次
+   * clientWidth/Height 读取 + 整数比较,未变即无操作),变化立即重同步,
+   * 与事件到达时机解耦。事件监听因此冗余,已移除(见构造函数/dispose)。
+   */
+  private syncHostSize(): void {
+    const dpr = window.devicePixelRatio || 1
+    const w = Math.max(1, Math.round(this.host.clientWidth * dpr))
+    const h = Math.max(1, Math.round(this.host.clientHeight * dpr))
+    if (this.canvas.width !== w || this.canvas.height !== h) this.resize()
   }
 
   /** 按外观(位置/大小)重建视图矩阵:模型画布中心在原点(Y 向上),缩放到 scale 倍后平移到目标点。 */
@@ -978,6 +990,10 @@ class CubismRuntime implements Live2dRuntime {
     if (!userModel || !model) return
     if (this.gl.isContextLost()) return
 
+    // 0056c:宿主尺寸每帧核对(见 syncHostSize 注释)—— resize 事件可能被合并,
+    // 不依赖事件驱动,缓冲/视图矩阵始终追平当前窗口尺寸,缩放期间宠物不扭曲跳动
+    this.syncHostSize()
+
     // 官方示例的 load/save 节奏(0019):呼吸等"加算型"更新器(CubismBreath 用
     // addParameterValueById = current + value)若跨帧累加,会被参数 clamp 钉死在极值。
     // 每帧先恢复基准、写入跟随参数、再保存基准,调度器效果只生效一帧、下帧重算。
@@ -1419,7 +1435,6 @@ class CubismRuntime implements Live2dRuntime {
     if (this.disposed) return
     this.disposed = true
     this.ready = false
-    window.removeEventListener('resize', this.onResize)
     this.scheduler?.release()
     this.scheduler = null
     for (const queue of this.motionQueues.values()) queue.release()
