@@ -114,17 +114,19 @@ export const ANIMATIONS: Record<AnimationId, AnimationSpec> = {
     autoBlink: false,
   },
   /**
-   * 恍然大悟表情(0039/0044):**推理段**结束且段时长 ≥ 阈值 A 时**播放一次**;
+   * 恍然大悟表情(0039/0044/0046):**推理段**结束且段时长 ≥ 阈值 A 时**播放一次**;
    * 一次 turn 可含多段,每段结束各自判定(思考 → 工具调用 → 再思考…)。
-   * - channel: action —— 段末思考姿态已 stop(复位),恍然大悟独占身体通道;
-   *   驱动 ParamAngleY(摇头)/ParamSymbolExclamation(感叹号)/眼睛/嘴,与表情通道无关
-   * - 非循环,素材 2.9s 自然结束自动复位;播完后若 turn 仍在 thinking 恢复思考姿态
-   *   (onEnd 回调),段间余尾由下一段/turn 结束截断复位
+   * - channel: expression(0046,原 action)——它是**表情**,不该抢占/替换 action 通道的
+   *   执行任务姿态(working)。播放时 action 通道的 working(低头+抬手)继续常驻,恍然大悟
+   *   叠加其上:面部参数(眼睛/嘴/感叹号)覆盖,ParamAngleY 点头增量与 working 的低头
+   *   **叠加**(runtime 按通道对角度参数做加算,见 cubism-runtime update)。
+   * - 非循环,素材 2.9s 自然结束自动复位;播放结束回到 working 常驻姿态(不再需要
+   *   animator 重新 request working —— working 从未被 stop)
    * - files(0044):两套相似素材(Expression_think_exclaim / Exclaim1),每次播放随机选一
    */
   'think-exclaim': {
     id: 'think-exclaim',
-    channel: 'action',
+    channel: 'expression',
     file: 'Expression_think_exclaim.motion3.json',
     files: ['Expression_think_exclaim.motion3.json', 'Expression_think_exclaim1.motion3.json'],
     priority: 1,

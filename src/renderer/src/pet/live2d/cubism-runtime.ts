@@ -436,10 +436,11 @@ class CubismRuntime implements Live2dRuntime {
    */
   private readonly currentFile = new Map<AnimationChannel, string>()
   /**
-   * hold-end 动作的"曲线末帧"参数值(0038):每个通道一份,记录该通道 motion 最近一次
-   * 写入的曲线参数值。播放期间每帧随 doUpdateMotion 更新;motion 自然结束后(思考)
-   * 保持末帧值,由 update() 在物理/视角跟随之后恢复 —— 低头/抬手/表情姿态定格在
-   * 动画末尾,而不是被跟随与物理清零。stopChannel 清除(离开 thinking 时平滑复位)。
+   * 各通道的"曲线参数输出"快照(0038/0046):每个通道一份,记录该通道 motion 最近一次
+   * 写入的曲线参数值。**所有通道**每帧随 doUpdateMotion 捕获(0046:expression 通道的
+   * 恍然大悟等也需要,否则点头 ParamAngleY 会被物理/action 姿态覆盖)。hold-end 动作
+   * (思考)自然结束后保持末帧值,由 update() 末尾按通道组合恢复(动作=基准、表情=增量
+   * 叠加);非 hold-end 播完自动清退。stopChannel 清除(离开 thinking 时平滑复位)。
    */
   private readonly motionFrameParams = new Map<AnimationChannel, Map<string, number>>()
   /**
@@ -983,14 +984,17 @@ class CubismRuntime implements Live2dRuntime {
         }
       }
       for (const [ch, queue] of this.motionQueues) {
-        // 0038 hold-end 捕获:本帧队列里是否还有未结束 entry —— 决定了 doUpdateMotion
+        // 通道输出捕获:本帧队列里是否还有未结束 entry —— 决定了 doUpdateMotion
         // 是否会写曲线(含"最后一帧":SDK 在 time≥duration 时仍按末尾点求值并写入,然后
         // 才标记 finished 并清出队列)。必须先查再播,结束后的常驻帧不能覆盖已捕获的末帧。
+        // 0046:捕获**所有通道**(不再只 holdEnd)——expression 通道的恍然大悟等也要把
+        // 曲线参数值(尤其 ParamAngleY 点头)留给 update() 末尾的角度叠加恢复,否则
+        // 会被物理演算(ParamDragY→ParamAngleY)与 action 姿态覆盖掉,点头看不到。
         const wasWriting = queue.getCubismMotionQueueEntries().some((e) => e && !e.isFinished())
         queue.doUpdateMotion(model, this.channelTime(ch))
         if (!wasWriting) continue
         const name = this.currentMotion.get(ch)
-        if (!name || !this.motions[name]?.holdEnd) continue
+        if (!name) continue
         // 捕获该通道 motion 刚写入的曲线参数值(在视角跟随/物理之前,值仍属 motion);
         // paramIds 按实际播放的文件查(0044:随机变体各自解析)
         const file = this.currentFile.get(ch)
@@ -1058,13 +1062,19 @@ class CubismRuntime implements Live2dRuntime {
     // 物理输出 ParamDragY→ParamAngleY 会覆盖视角跟随的 headY(上下转头),
     // 这里把 headY 增量叠加回去:拖动点头(物理)与鼠标转头(跟随)共存。
     if (this.pendingLook) this.addViewHeadYDelta(model, this.pendingLook.headY)
-    // 0038 hold-end 姿态恢复(思考):motion 曲线末帧的参数值在物理/视角跟随之后重新写回,
-    // 让低头/抬手/表情定格在动画末尾,不被跟随(ParamAngleY)与物理(ParamAngleY/Z)清零。
-    // ParamAngleY/Z 按对应拖动轴的 holdDragBlend 权重与物理输出混合(0040):拖动中姿态
-    // 逐渐让位给拖动物理(点头/摇晃),停止后平滑回归思考姿态 —— 替代早期"拖动时整体
-    // 跳过"的二进制切换(拖动开始瞬间物理输出尚未建立,头部从低头 -15 跳到 ≈0 的"瞬间
-    // 上台";纯水平拖动也会误触发)。
-    for (const [ch, frame] of this.motionFrameParams) {
+    // 0038/0046 通道姿态恢复(思考):各通道 motion 曲线参数值在物理/视角跟随之后重新写回,
+    // 让低头/抬手/表情定格在动画末尾/当前帧,不被跟随(ParamAngleY)与物理(ParamAngleY/Z)
+    // 清零。**按通道组合**(0046):
+    // - action 通道(执行任务姿态 working)是"基准姿态":ParamAngleY/Z 按对应拖动轴的
+    //   holdDragBlend 权重与物理输出混合(0040)——拖动中姿态逐渐让位给拖动物理(点头/摇晃),
+    //   停止后平滑回归思考姿态(替代早期"拖动时整体跳过"的二进制切换);其余参数绝对覆盖。
+    // - expression 通道(恍然大悟等)是"叠加层":ParamAngleY/Z 以**相对默认值的增量**加在
+    //   当前值(即 action 姿态/物理之上)上 —— 恍然大悟的点头在 working 的低头姿态上叠显,
+    //   而不是覆盖;其余参数绝对覆盖(表情面部/感叹号照常显示)。
+    // 处理顺序固定 action → expression,保证角度增量加在 action 基准之上。
+    for (const ch of ['action', 'expression'] as const) {
+      const frame = this.motionFrameParams.get(ch)
+      if (!frame) continue
       if (!this.currentMotion.has(ch)) {
         this.motionFrameParams.delete(ch)
         continue
@@ -1073,10 +1083,16 @@ class CubismRuntime implements Live2dRuntime {
         const index = model.getParameterIndex(this.id(id))
         if (index < 0) continue
         if (id === 'ParamAngleY' || id === 'ParamAngleZ') {
-          // 当前值 = 物理输出;weight=0 → 思考姿态,=1 → 物理输出,中间平滑过渡
-          const weight = id === 'ParamAngleY' ? this.holdDragBlendY : this.holdDragBlendZ
           const current = model.getParameterValueByIndex(index)
-          model.setParameterValueByIndex(index, current * weight + value * (1 - weight))
+          if (ch === 'action') {
+            // 基准姿态:weight=0 → 思考姿态,=1 → 物理输出,中间平滑过渡
+            const weight = id === 'ParamAngleY' ? this.holdDragBlendY : this.holdDragBlendZ
+            model.setParameterValueByIndex(index, current * weight + value * (1 - weight))
+          } else {
+            // 叠加层:角度增量加在 action 基准(或物理)之上(点头在低头姿态上叠显)
+            const def = model.getParameterDefaultValue(index)
+            model.setParameterValueByIndex(index, current + (value - def))
+          }
         } else {
           model.setParameterValueByIndex(index, value)
         }

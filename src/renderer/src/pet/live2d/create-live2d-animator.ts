@@ -294,14 +294,12 @@ function createLive2dAnimatorWithRuntime(
   /**
    * 摸头动画结束/被打断(自然播完、sad 接管、离开 idle):清理按住状态。
    * 力度增益与按住锚点由 tick 按 holdActive=false 指数平滑回落(0037o),不瞬间跳变。
-   * 0039:恍然大悟自然播完、turn 仍在 thinking(段间/工具调用期)→ 恢复执行任务姿态;
-   * 被打断(下一推理段开始)时由 onThinkingSegmentStart 负责重建,这里不动。
+   * 0046:恍然大悟现在在 expression 通道播放,与 action 通道的 working(执行任务姿态)
+   * 并存 —— 它自然播完后 working 从未被 stop,无需在这里恢复(原"播放后 request working"
+   * 的 action 通道独占逻辑已移除)。
    */
   director.onEnd((e) => {
     if (e.id === 'pat-head') holdActive = false
-    if (e.id === 'think-exclaim' && e.reason === 'finished' && state === 'thinking') {
-      director.request(ANIMATIONS['working'])
-    }
   })
 
   /**
@@ -371,9 +369,10 @@ function createLive2dAnimatorWithRuntime(
       director.stopChannel('action')
       director.request(ANIMATIONS['working'])
     } else if (prev === 'thinking') {
-      // 离开 thinking(turn 结束):气泡/困惑表情停止;执行任务姿态停止(恍然大悟若在播让它播完)
+      // 离开 thinking(turn 结束):气泡/困惑/恍然大悟表情停止;执行任务姿态(working)停止。
+      // 0046:恍然大悟在 expression 通道,这里一并 stop,不再判断 isActive('think-exclaim')。
       director.stopChannel('expression')
-      if (!director.isActive('think-exclaim')) director.stopChannel('action')
+      director.stopChannel('action')
     } else {
       // 常规状态切换:action 通道无动画时为空操作(离开 thinking 的 stop 在上一分支处理)
       director.stopChannel('action')
@@ -504,7 +503,8 @@ function createLive2dAnimatorWithRuntime(
       if (state === 'thinking') director.request(ANIMATIONS['think-thinking'])
     },
     /**
-     * 0039 推理段结束:按段时长判定 —— ≥ 阈值 A 播放"恍然大悟"一次(执行任务姿态让位);
+     * 0039 推理段结束:按段时长判定 —— ≥ 阈值 A 播放"恍然大悟"一次(expression 通道,
+     * 0046 起不再 stop action 通道的 working —— 恍然大悟叠加在执行任务姿态上,不冲突);
      * < A 保持执行任务姿态。气泡/困惑(expression)已在段末停止并复位。
      */
     onThinkingSegmentEnd(): void {
@@ -513,7 +513,6 @@ function createLive2dAnimatorWithRuntime(
       segmentStartedAt = 0
       director.stopChannel('expression')
       if (elapsedSec >= thinkThresholds().a) {
-        director.stopChannel('action')
         director.request(ANIMATIONS['think-exclaim'])
       }
     },
