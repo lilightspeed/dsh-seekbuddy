@@ -430,6 +430,18 @@ class CubismRuntime implements Live2dRuntime {
   private readonly motionCache = new Map<string, CubismMotion | null>()
   /** 各通道当前正在播放(或正在异步加载)的 motion 逻辑名;无 = 该通道空闲。 */
   private readonly currentMotion = new Map<AnimationChannel, string>()
+  /**
+   * 各通道"素材加载中"的计数(0054):playMotion 同步登记 currentMotion 后,素材仍可能
+   * 在异步加载(fetch + SDK 解析,首播未命中缓存时跨若干帧)。update() 的"非循环播完
+   * 自动复位"以 queue.isFinished() 判定 —— stopChannel 刚清空的队列同样满足
+   * isFinished(),若无本计数,新动画在加载间隙会被误判"已自然播完"而清掉
+   * currentMotion:导演下一帧见 isChannelActive=false 清理条目,startMotion 完成时又因
+   * currentMotion 已变而放弃启动 —— 愤怒表情"停止任务"后**首次**播放必现(停止清空
+   * 队列 → 请求愤怒 → 加载中 → 下一帧被复位清掉 → 永不播放、永不进缓存)。
+   * 用计数而非布尔:同通道旧动画加载中被新动画顶替时,两个 startMotion 可能并发在途,
+   * 旧的那个收尾不能解除新动画的保护。
+   */
+  private readonly pendingLoadCount = new Map<AnimationChannel, number>()
   /** motion 素材配置(逻辑名 → file/loop/files/hardLoopRestart),构造注入(0037s/0044/0050)。 */
   private readonly motions: Record<
     string,
@@ -1017,6 +1029,10 @@ class CubismRuntime implements Live2dRuntime {
     // 认为该通道仍活跃、条目不被清理),也不复位;等 animator 离开 thinking 时
     // stopChannel 才整体复位。
     for (const channel of [...this.currentMotion.keys()]) {
+      // 0054:素材仍在异步加载(playMotion 已登记但 startMotion 未完成)——队列可能
+      // 因刚被 stopChannel 清空而 isFinished()=true,不能当成"自然播完"复位
+      // (否则愤怒表情"停止任务"后首次播放被清掉,永不显示)。
+      if (this.pendingLoadCount.has(channel)) continue
       const queue = this.motionQueues.get(channel)
       if (queue?.isFinished()) {
         const name = this.currentMotion.get(channel)
@@ -1157,88 +1173,99 @@ class CubismRuntime implements Live2dRuntime {
   }
 
   private async startMotion(name: string, channel: AnimationChannel): Promise<void> {
-    const config = this.motions[name]
-    if (!config) {
-      console.warn(`[live2d] playMotion("${name}") 未知 motion 名(未在 registry 注册)`)
-      this.currentMotion.delete(channel)
-      return
-    }
-    // 0044:随机变体 —— 配置了候选素材(files)时每次播放随机选一个文件
-    const file = this.pickMotionFile(config)
-
-    // 缓存按实际文件分开(两套"恍然大悟"素材各自解析一份)
-    let motion = this.motionCache.get(file)
-    let paramIds = this.motionParamIds.get(file)
-    if (motion === undefined || paramIds === undefined) {
-      try {
-        const buf = await fetchArrayBuffer(MOTION_BASE_URL + file)
-        // SDK 5-r.5 的 CubismMotion.create 不读 json 的 Loop 字段(见 SDK 源码,
-        // create 内 _loop 赋值被注释),按素材配置显式 setLoop。
-        const instance = CubismMotion.create(buf, buf.byteLength)
-        instance.setLoop(config.loop)
-        // 0050:循环点硬重启 —— 序列动画(思考气泡点点走路)配置 hardLoopRestart:
-        // V2 循环在终点做 correctEndPoint 插值,把曲线值从终点线性扫回起点(途经
-        // 中间态如全亮 ...),每圈循环点闪出中间帧;切到 MotionBehavior_V1 后循环点
-        // 直接硬跳回起点(相邻序列状态),中间态永不出现。与淡入淡出无关(见 0047)。
-        if (config.hardLoopRestart) instance.setMotionBehavior(MotionBehavior.MotionBehavior_V1)
-        // 0047:所有表情动画**不做**淡入淡出 —— 淡入淡出由用户在 Live2D 素材里自己制作。
-        // SDK 默认 fadeIn 1.0s / fadeOut 1.0s(素材未写 FadeIn/FadeOutTime 时)会强行给
-        // 每个表情加渐变(渐入太慢"点了没反应"、淡出把短动作压扁到不了终点值),与素材内
-        // 自带的淡入淡出叠加 → 播出的效果和 Live2D 里预览不一致。这里统一
-        // setFadeInTime(0)+setFadeOutTime(0)(fadeWeight 恒 1),曲线按素材原值直写,
-        // 完全交给素材作者在编辑器里画的 FadeInTime/FadeOutTime 决定渐变。
-        instance.setFadeInTime(0)
-        instance.setFadeOutTime(0)
-        // 关键:不 setEffectIds 时 _eyeBlinkParameterIds/_lipSyncParameterIds 为 null,
-        // doUpdateParameters 首帧就抛 null.length TypeError → 动画器 tick 崩溃、模型
-        // 定格"完全静止"(0037 实测)。本模型 EyeBlink/LipSync 组为空,传空数组即可。
-        instance.setEffectIds([], [])
-        motion = instance
-        // 曲线驱动的参数 id 集(0037u):新动画接管时只保留其曲线"不覆盖"的复位参数
-        paramIds = parseMotionParamIds(buf)
-      } catch (error) {
-        console.error(`[live2d] motion 加载失败:${file}`, error)
-        motion = null
-        paramIds = new Set()
-      }
-      this.motionCache.set(file, motion)
-      this.motionParamIds.set(file, paramIds)
-    }
-    if (!motion || this.disposed) {
-      if (!motion) {
+    // 0054:登记"素材加载中"(同步段,在首个 await 之前执行)—— update() 的
+    // 自然结束复位据此跳过本通道,防止 stopChannel 清空队列后新动画在加载间隙
+    // 被误判"已播完"而清除(愤怒表情"停止任务"后首次播放的竞态)。try/finally
+    // 保证所有退出路径(未知 motion/加载失败/被顶替放弃/成功)都解除登记。
+    this.pendingLoadCount.set(channel, (this.pendingLoadCount.get(channel) ?? 0) + 1)
+    try {
+      const config = this.motions[name]
+      if (!config) {
+        console.warn(`[live2d] playMotion("${name}") 未知 motion 名(未在 registry 注册)`)
         this.currentMotion.delete(channel)
-        this.currentFile.delete(channel)
-        this.pendingSeek.delete(channel)
+        return
       }
-      return
-    }
-    // 加载期间被 stopChannel / 换了新动画 → 放弃本次 start(避免过期动画抢播)
-    if (this.currentMotion.get(channel) !== name) {
-      this.pendingSeek.delete(channel)
-      return
-    }
-    // 记录本次实际播放的文件(hold-end 捕获 / 调试用)
-    this.currentFile.set(channel, file)
+      // 0044:随机变体 —— 配置了候选素材(files)时每次播放随机选一个文件
+      const file = this.pickMotionFile(config)
 
-    // 物理互斥(doc/09 §3.5):同通道 start 前先停旧动画 —— 即使绕过仲裁层直接
-    // 调用,同一通道也不可能两条动画并行(0037s 修"两个动画重叠"的直接手段)。
-    const queue = this.getMotionQueue(channel)
-    queue.stopAllMotions()
-    queue.startMotion(motion, false)
-    // 0037v:按下摸头瞬间的"跳到保持帧"请求在素材加载完成前到达 → 这里立即应用,
-    // 动画第一帧就定位在 holdAt(脸红闭眼),而不是从 0 开始自然播放到保持点。
-    const pending = this.pendingSeek.get(channel)
-    if (pending !== undefined) {
-      this.pendingSeek.delete(channel)
-      this.applySeek(channel, pending)
+      // 缓存按实际文件分开(两套"恍然大悟"素材各自解析一份)
+      let motion = this.motionCache.get(file)
+      let paramIds = this.motionParamIds.get(file)
+      if (motion === undefined || paramIds === undefined) {
+        try {
+          const buf = await fetchArrayBuffer(MOTION_BASE_URL + file)
+          // SDK 5-r.5 的 CubismMotion.create 不读 json 的 Loop 字段(见 SDK 源码,
+          // create 内 _loop 赋值被注释),按素材配置显式 setLoop。
+          const instance = CubismMotion.create(buf, buf.byteLength)
+          instance.setLoop(config.loop)
+          // 0050:循环点硬重启 —— 序列动画(思考气泡点点走路)配置 hardLoopRestart:
+          // V2 循环在终点做 correctEndPoint 插值,把曲线值从终点线性扫回起点(途经
+          // 中间态如全亮 ...),每圈循环点闪出中间帧;切到 MotionBehavior_V1 后循环点
+          // 直接硬跳回起点(相邻序列状态),中间态永不出现。与淡入淡出无关(见 0047)。
+          if (config.hardLoopRestart) instance.setMotionBehavior(MotionBehavior.MotionBehavior_V1)
+          // 0047:所有表情动画**不做**淡入淡出 —— 淡入淡出由用户在 Live2D 素材里自己制作。
+          // SDK 默认 fadeIn 1.0s / fadeOut 1.0s(素材未写 FadeIn/FadeOutTime 时)会强行给
+          // 每个表情加渐变(渐入太慢"点了没反应"、淡出把短动作压扁到不了终点值),与素材内
+          // 自带的淡入淡出叠加 → 播出的效果和 Live2D 里预览不一致。这里统一
+          // setFadeInTime(0)+setFadeOutTime(0)(fadeWeight 恒 1),曲线按素材原值直写,
+          // 完全交给素材作者在编辑器里画的 FadeInTime/FadeOutTime 决定渐变。
+          instance.setFadeInTime(0)
+          instance.setFadeOutTime(0)
+          // 关键:不 setEffectIds 时 _eyeBlinkParameterIds/_lipSyncParameterIds 为 null,
+          // doUpdateParameters 首帧就抛 null.length TypeError → 动画器 tick 崩溃、模型
+          // 定格"完全静止"(0037 实测)。本模型 EyeBlink/LipSync 组为空,传空数组即可。
+          instance.setEffectIds([], [])
+          motion = instance
+          // 曲线驱动的参数 id 集(0037u):新动画接管时只保留其曲线"不覆盖"的复位参数
+          paramIds = parseMotionParamIds(buf)
+        } catch (error) {
+          console.error(`[live2d] motion 加载失败:${file}`, error)
+          motion = null
+          paramIds = new Set()
+        }
+        this.motionCache.set(file, motion)
+        this.motionParamIds.set(file, paramIds)
+      }
+      if (!motion || this.disposed) {
+        if (!motion) {
+          this.currentMotion.delete(channel)
+          this.currentFile.delete(channel)
+          this.pendingSeek.delete(channel)
+        }
+        return
+      }
+      // 加载期间被 stopChannel / 换了新动画 → 放弃本次 start(避免过期动画抢播)
+      if (this.currentMotion.get(channel) !== name) {
+        this.pendingSeek.delete(channel)
+        return
+      }
+      // 记录本次实际播放的文件(hold-end 捕获 / 调试用)
+      this.currentFile.set(channel, file)
+
+      // 物理互斥(doc/09 §3.5):同通道 start 前先停旧动画 —— 即使绕过仲裁层直接
+      // 调用,同一通道也不可能两条动画并行(0037s 修"两个动画重叠"的直接手段)。
+      const queue = this.getMotionQueue(channel)
+      queue.stopAllMotions()
+      queue.startMotion(motion, false)
+      // 0037v:按下摸头瞬间的"跳到保持帧"请求在素材加载完成前到达 → 这里立即应用,
+      // 动画第一帧就定位在 holdAt(脸红闭眼),而不是从 0 开始自然播放到保持点。
+      const pending = this.pendingSeek.get(channel)
+      if (pending !== undefined) {
+        this.pendingSeek.delete(channel)
+        this.applySeek(channel, pending)
+      }
+      // 新动画接管:上一动画被打断后的复位若整体取消,其曲线"不覆盖"的参数会残留
+      // (如 sad 不驱动摸头的闭眼/微笑 → 两个表情叠加,0037u)——只保留新动画不驱动
+      // 的参数继续复位,新动画驱动的参数交给曲线;记录起点(已播时长 = motionTime - start)。
+      this.expressionReset = this.keepUncoveredReset(this.expressionReset, paramIds)
+      this.motionStartTimes.set(channel, this.channelTime(channel))
+      this.motionPaused = false
+      console.info(`[live2d] playMotion("${name}") 开始(channel=${channel})`)
+    } finally {
+      const remaining = (this.pendingLoadCount.get(channel) ?? 1) - 1
+      if (remaining <= 0) this.pendingLoadCount.delete(channel)
+      else this.pendingLoadCount.set(channel, remaining)
     }
-    // 新动画接管:上一动画被打断后的复位若整体取消,其曲线"不覆盖"的参数会残留
-    // (如 sad 不驱动摸头的闭眼/微笑 → 两个表情叠加,0037u)——只保留新动画不驱动
-    // 的参数继续复位,新动画驱动的参数交给曲线;记录起点(已播时长 = motionTime - start)。
-    this.expressionReset = this.keepUncoveredReset(this.expressionReset, paramIds)
-    this.motionStartTimes.set(channel, this.channelTime(channel))
-    this.motionPaused = false
-    console.info(`[live2d] playMotion("${name}") 开始(channel=${channel})`)
   }
 
   /**
@@ -1402,6 +1429,7 @@ class CubismRuntime implements Live2dRuntime {
     this.pendingSeek.clear()
     this.motionRate.clear()
     this.channelTimeOffset.clear()
+    this.pendingLoadCount.clear()
     this.motionPaused = false
     this.expressionReset = null
     if (this.breath) CubismBreath.delete(this.breath)
