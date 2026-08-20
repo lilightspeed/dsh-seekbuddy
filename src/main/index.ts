@@ -464,6 +464,11 @@ async function bootstrap(): Promise<void> {
     if (typeof patch?.petShowHitMesh === 'boolean') out.petShowHitMesh = patch.petShowHitMesh
     // 摸头力度(0037n/0037q):0..8(按住摸头期间的角度灵敏度增益)
     if (typeof patch?.petPatStrength === 'number' && Number.isFinite(patch.petPatStrength)) out.petPatStrength = Math.min(8, Math.max(0, patch.petPatStrength))
+    // 思考表情阈值(0039):A 0..600s,B 0.1..600s(A>=B 由 animator 归一,不在此强改)
+    if (typeof patch?.petThinkExclaimAfterSec === 'number' && Number.isFinite(patch.petThinkExclaimAfterSec)) out.petThinkExclaimAfterSec = Math.min(600, Math.max(0, patch.petThinkExclaimAfterSec))
+    if (typeof patch?.petThinkDizzyAfterSec === 'number' && Number.isFinite(patch.petThinkDizzyAfterSec)) out.petThinkDizzyAfterSec = Math.min(600, Math.max(0.1, patch.petThinkDizzyAfterSec))
+    // 入睡阈值(0058):10..86400s(设置面板 min=10,0 由 clamp 兜底到 10 = 最短待机即睡)
+    if (typeof patch?.petSleepAfterSec === 'number' && Number.isFinite(patch.petSleepAfterSec)) out.petSleepAfterSec = Math.min(86400, Math.max(10, patch.petSleepAfterSec))
     return out
   }
 
