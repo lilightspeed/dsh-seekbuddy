@@ -511,13 +511,25 @@ async function bootstrap(): Promise<void> {
     }
   }
 
-  /** 0062:极简模式视觉 —— win32 关闭 acrylic 高斯模糊背景(仅显示宠物),退出恢复。
-   *  acrylic 是 DWM 对**整个窗口矩形**的模糊材质,renderer 隐藏 #bg 并不能去掉它;
-   *  极简模式窗口≈宠物大小,若不关闭,宠物背后一圈仍是模糊的桌面。 */
+  /** 0062:极简模式窗口交互/视觉 ——
+   *  1) **禁用边缘缩放**:窗口已收缩到宠物大小,边缘留白很窄,误触原生边缘缩放
+   *     会改掉窗口尺寸(程序化 setBounds 收缩/放大不受 resizable 影响);
+   *  2) **背景全透明**:win32 关闭 acrylic 高斯模糊材质(仅显示宠物),退出恢复。
+   *     acrylic 是 DWM 对**整个窗口矩形**的模糊材质,renderer 隐藏 #bg 并不能去掉它;
+   *     极简模式窗口≈宠物大小,若不关闭,宠物背后一圈仍是模糊的桌面。 */
   function applyPetOnlyVisual(enabled: boolean): void {
-    if (!mainWindow || mainWindow.isDestroyed() || process.platform !== 'win32') return
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    // 0062b:极简模式 setResizable(false) —— 禁用鼠标拖动窗口边缘的原生缩放
+    try {
+      mainWindow.setResizable(!enabled)
+    } catch (error) {
+      console.warn(`[pet] setResizable(${!enabled}) 失败:`, error)
+    }
+    if (process.platform !== 'win32') return
     try {
       mainWindow.setBackgroundMaterial(enabled ? 'none' : 'acrylic')
+      // 兜底:确保窗口默认背景为全透明(页面区域本就透明,这里防建窗/材质切换间隙)
+      mainWindow.setBackgroundColor('#00000000')
     } catch (error) {
       console.warn(`[pet] backgroundMaterial(${enabled ? 'none' : 'acrylic'}) 不可用:`, error)
     }
@@ -698,6 +710,9 @@ async function bootstrap(): Promise<void> {
     })
 
     mainWindow = createWindow()
+    // 0062b:启动即按持久化极简模式应用窗口交互/视觉(createWindow 已按配置选材质,
+    // 这里统一兜底:极简模式禁用边缘缩放 + 背景全透明,普通模式恢复)
+    applyPetOnlyVisual(config.get().appearance.petOnly)
     startCursorPolling()
     restartConnection()
 
