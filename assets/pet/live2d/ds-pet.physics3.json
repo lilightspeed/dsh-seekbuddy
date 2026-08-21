@@ -566,7 +566,7 @@
 						"Target": "Parameter",
 						"Id": "ParamDragX"
 					},
-					"Weight": 43,
+					"Weight": 67,
 					"Type": "X",
 					"Reflect": false
 				}
@@ -611,7 +611,7 @@
 						"X": 0,
 						"Y": 7.2
 					},
-					"Mobility": 0.78,
+					"Mobility": 0.85,
 					"Delay": 1,
 					"Acceleration": 1,
 					"Radius": 7.2
@@ -621,7 +621,7 @@
 						"X": 0,
 						"Y": 13.4
 					},
-					"Mobility": 0.85,
+					"Mobility": 0.88,
 					"Delay": 1,
 					"Acceleration": 1,
 					"Radius": 6.2
