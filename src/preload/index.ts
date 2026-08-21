@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import type { PetApi, PetApprovalRequest, PetCursorPosition, PetEvent } from '../shared/pet-event.ts'
+import type { PetApi, PetApprovalRequest, PetCursorPosition, PetEvent, PetQuestionRequest } from '../shared/pet-event.ts'
 import type { PetConfigUpdate } from '../shared/pet-config.ts'
 
 /**
@@ -18,6 +18,20 @@ function sanitizeApproval(request: PetApprovalRequest | undefined): PetApprovalR
     sessionId: String(request?.sessionId ?? ''),
     approvalId: String(request?.approvalId ?? ''),
     outcome: request?.outcome === 'rejected' ? 'rejected' : 'allowed-once',
+  }
+}
+
+/** 0060:提问回包收敛 —— rpcId/sessionId 字符串化,answers 数组逐项收敛。 */
+function sanitizeQuestion(request: PetQuestionRequest | undefined): PetQuestionRequest {
+  const answers = Array.isArray(request?.answers) ? request.answers : []
+  return {
+    rpcId: String(request?.rpcId ?? ''),
+    sessionId: String(request?.sessionId ?? ''),
+    answers: answers.map((a) => ({
+      id: String(a?.id ?? ''),
+      selected: Array.isArray(a?.selected) ? a.selected.map(String) : [],
+      ...(a?.custom ? { custom: String(a.custom) } : {}),
+    })),
   }
 }
 
@@ -98,6 +112,7 @@ const petApi: PetApi = {
   selectSession: (sessionId) => ipcRenderer.invoke('pet:select-session', sessionId == null ? null : String(sessionId)),
   createSession: () => ipcRenderer.invoke('pet:create-session'),
   respondApproval: (request) => ipcRenderer.invoke('pet:respond-approval', sanitizeApproval(request)),
+  respondQuestion: (request) => ipcRenderer.invoke('pet:respond-question', sanitizeQuestion(request)),
   getConfig: () => ipcRenderer.invoke('pet:get-config'),
   setConfig: (patch) => ipcRenderer.invoke('pet:set-config', sanitizeConfigUpdate(patch)),
   listPlugins: () => ipcRenderer.invoke('pet:list-plugins'),

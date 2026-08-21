@@ -81,6 +81,18 @@ export type PetEvent =
   | { type: 'pet:expression'; state: 'idle' | 'thinking' | 'happy' | 'sad' | 'talking' }
   /** 阶段 4 反向链路:MCP 工具触发系统通知。 */
   | { type: 'pet:notify'; title: string; body: string }
+  /**
+   * 0060:DSH `ask_user_question` → 宠物提问卡。question/requested 是 answerable
+   * server-request(与 approval 同机制):rpcId 是稳定对账键,回包必须 echo 它。
+   */
+  | { type: 'question:pending'; rpcId: string; sessionId: string; questions: PetQuestionItem[] }
+  /** 0060:提问已结算(answered / cancelled),关掉对应提问卡。 */
+  | {
+      type: 'question:resolved'
+      sessionId: string
+      questionRpcId: string
+      outcome: 'answered' | 'cancelled'
+    }
   | { type: 'op:result'; label: string; ok: boolean; summary: string }
 
 /** 会话列表里的一行(renderer 只消费扁平字段)。 */
@@ -184,6 +196,35 @@ export interface PetApprovalRequest {
   outcome: 'allowed-once' | 'rejected'
 }
 
+/** 提问的一个选项(扁平化自 DSH AskUserQuestionOption)。 */
+export interface PetQuestionOption {
+  label: string
+  description?: string
+}
+
+/** 提问条目(扁平化自 DSH AskUserQuestionItem;renderer 不依赖 DSH 类型)。 */
+export interface PetQuestionItem {
+  /** 调用方提供的问题 id,原样回显在答案里。 */
+  id: string
+  /** 问题文本。 */
+  question: string
+  /** 可选短标题/分组标签。 */
+  header?: string
+  /** 可选补充说明。 */
+  detail?: string
+  /** 可选选项列表(无则只给自由输入)。 */
+  options?: PetQuestionOption[]
+  /** 是否允许多选(缺省 = 单选)。 */
+  multiSelect?: boolean
+}
+
+/** renderer → 主进程的提问回包请求(echo 服务端 rpcId,answers 按问题 id 对应)。 */
+export interface PetQuestionRequest {
+  rpcId: string
+  sessionId: string
+  answers: { id: string; selected: string[]; custom?: string }[]
+}
+
 /** 主进程轮询的光标位置(窗口局部坐标,CSS px;窗口外时 renderer 按边缘夹取)。 */
 export interface PetCursorPosition {
   x: number
@@ -228,6 +269,8 @@ export interface PetApi {
   createSession(): Promise<PetCreateResult>
   /** 回包审批(echo rpcId,允许/拒绝)。 */
   respondApproval(request: PetApprovalRequest): Promise<PetOpResult>
+  /** 0060:回包提问(echo rpcId,answers 按问题 id 对应)。 */
+  respondQuestion(request: PetQuestionRequest): Promise<PetOpResult>
   /** 阶段 5:读完整配置(DSH 地址/外观/自启/目标会话)。 */
   getConfig(): Promise<PetConfig>
   /** 阶段 5:应用扁平配置补丁;主进程执行副作用(重连/窗口/自启)后返回新配置。 */

@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { app, BrowserWindow, ipcMain, screen } from 'electron'
 import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
-import type { PetConnectionState, PetEvent, PetOpResult, PetApprovalRequest } from '../shared/pet-event.ts'
+import type { PetConnectionState, PetEvent, PetOpResult, PetApprovalRequest, PetQuestionRequest } from '../shared/pet-event.ts'
 import type { PetConfigUpdate } from '../shared/pet-config.ts'
 import { WINDOW_SIZE, WINDOW_SIZE_MAX, WINDOW_SIZE_MIN } from '../shared/pet-config.ts'
 import { PetConfigStore, type PetConfigPatch } from './config.ts'
@@ -519,6 +519,9 @@ async function bootstrap(): Promise<void> {
     ipcMain.handle('pet:create-session', () => petOps?.createSession() ?? { ok: false, summary: 'ops not ready' })
     ipcMain.handle('pet:respond-approval', (_event, request: PetApprovalRequest) =>
       petOps?.respondApproval(request) ?? { label: 'approval.respond', ok: false, summary: 'ops not ready' },
+    )
+    ipcMain.handle('pet:respond-question', (_event, request: PetQuestionRequest) =>
+      petOps?.respondQuestion(request) ?? { label: 'question.respond', ok: false, summary: 'ops not ready' },
     )
 
     // 0056/0057 窗口边缘拖拽调整大小。win32:Electron 原生边缘缩放(创建即

@@ -1,4 +1,4 @@
-import { RpcId, type ApprovalResponsePayload, type ClientResponse } from '@deepseek-ai/dsh-host-apiproxy/api'
+import { RpcId, type ApprovalResponsePayload, type ClientResponse, type QuestionResponsePayload } from '@deepseek-ai/dsh-host-apiproxy/api'
 import type { SessionId, SessionEvent } from '@deepseek-ai/dsh-client-connection/client'
 import type {
   PetApprovalRequest,
@@ -6,6 +6,7 @@ import type {
   PetHistoryEntry,
   PetHistoryResult,
   PetOpResult,
+  PetQuestionRequest,
   PetSessionListResult,
   PetSessionSummary,
   PetSummaryEntry,
@@ -27,6 +28,8 @@ export interface PetOps {
   selectSession(sessionId: string | null): PetOpResult
   createSession(): Promise<PetCreateResult>
   respondApproval(request: PetApprovalRequest): Promise<PetOpResult>
+  /** 0060:回包提问(echo 服务端 rpcId;answers 按问题 id 对应,一次 ask 批量回答)。 */
+  respondQuestion(request: PetQuestionRequest): Promise<PetOpResult>
   stopTurn(): Promise<PetOpResult>
 }
 
@@ -210,6 +213,40 @@ export function createPetOps(
     }
   }
 
+  async function respondQuestion(request: PetQuestionRequest): Promise<PetOpResult> {
+    const connection = getConnection()
+    if (!connection) return { label: 'question.respond', ok: false, summary: 'connection not ready' }
+    if (!Array.isArray(request.answers) || request.answers.length === 0) {
+      return { label: 'question.respond', ok: false, summary: 'invalid answers' }
+    }
+    try {
+      // QuestionResponsePayload 的品牌字段是编译期标记;此处从 renderer 扁平对象回填,
+      // 协议形状由 QuestionResponsePayload 承担,wire 校验在 /api/respond 端。
+      const value = {
+        sessionId: String(request.sessionId),
+        answer: {
+          answers: request.answers.map((a) => ({
+            id: String(a.id),
+            selected: Array.isArray(a.selected) ? a.selected.map(String) : [],
+            ...(a.custom === undefined || a.custom === '' ? {} : { custom: String(a.custom) }),
+          })),
+        },
+      } as unknown as QuestionResponsePayload
+      const message: ClientResponse = {
+        type: 'client-response',
+        rpcId: RpcId(String(request.rpcId)),
+        result: { ok: true, value },
+      }
+      const receipt = await connection.api.respond(message)
+      if (!receipt.accepted) {
+        return { label: 'question.respond', ok: false, summary: `not accepted: ${receipt.reason}` }
+      }
+      return { label: 'question.respond', ok: true, summary: `answered → ${request.answers.length} question(s)` }
+    } catch (error) {
+      return { label: 'question.respond', ok: false, summary: String(error) }
+    }
+  }
+
   async function stopTurn(): Promise<PetOpResult> {
     const connection = getConnection()
     if (!connection) return { label: 'session.cancel', ok: false, summary: 'connection not ready' }
@@ -227,7 +264,7 @@ export function createPetOps(
     }
   }
 
-  return { listSessions, getHistory, getHistorySummary, selectSession, createSession, respondApproval, stopTurn }
+  return { listSessions, getHistory, getHistorySummary, selectSession, createSession, respondApproval, respondQuestion, stopTurn }
 }
 
 /** 会话标题:list 行的 projections.values.title(投影缓存;无则 null)。 */

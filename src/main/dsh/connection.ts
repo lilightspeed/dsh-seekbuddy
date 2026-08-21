@@ -1,5 +1,5 @@
 import type { HostFrame, MuxFrame, RpcRequest } from '@deepseek-ai/dsh-host-apiproxy/api'
-import type { ConnectionState, HostDescription, PetEvent } from '../../shared/pet-event.ts'
+import type { ConnectionState, HostDescription, PetEvent, PetQuestionItem } from '../../shared/pet-event.ts'
 import { DshApiClient } from './client.ts'
 import { summaryEntryOf } from './summary.ts'
 
@@ -141,6 +141,36 @@ export function createConnection(
           type: 'approval:resolved',
           sessionId: String(frame.sessionId),
           approvalId: String(frame.approvalId),
+          outcome: frame.outcome,
+        })
+        break
+      }
+      case 'question/requested': {
+        // 0060:与 approval 同为 answerable server-request,envelope.rpcId 是
+        // 稳定对账键;question/requested 可含多个问题(一次 ask 批量回答)。
+        const questions: PetQuestionItem[] = frame.questions.map((q) => ({
+          id: String(q.id),
+          question: String(q.question),
+          ...(q.header === undefined ? {} : { header: String(q.header) }),
+          ...(q.detail === undefined ? {} : { detail: String(q.detail) }),
+          ...(q.options === undefined
+            ? {}
+            : { options: q.options.map((o) => ({ label: String(o.label), ...(o.description === undefined ? {} : { description: String(o.description) }) })) }),
+          ...(q.multiSelect === undefined ? {} : { multiSelect: q.multiSelect }),
+        }))
+        onEvent({
+          type: 'question:pending',
+          rpcId: String(rpcId),
+          sessionId: String(frame.sessionId),
+          questions,
+        })
+        break
+      }
+      case 'question/resolved': {
+        onEvent({
+          type: 'question:resolved',
+          sessionId: String(frame.sessionId),
+          questionRpcId: String(frame.questionRpcId),
           outcome: frame.outcome,
         })
         break

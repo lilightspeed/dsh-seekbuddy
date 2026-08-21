@@ -5,6 +5,7 @@ import type { PetAnimator } from './pet/animator.ts'
 import { createLive2dAnimator } from './pet/live2d/create-live2d-animator.ts'
 import { createStage } from './pet/stage.ts'
 import { createApprovalCenter, type PendingApproval } from './ui/approvals.ts'
+import { createQuestionCenter, type PendingQuestion } from './ui/questions.ts'
 import { markdownToDom } from './ui/markdown.ts'
 import { createNotifyQueue } from './ui/notify.ts'
 import { createPanel } from './ui/panel.ts'
@@ -32,11 +33,19 @@ const approvalToolEl = document.querySelector<HTMLDivElement>('#approval-tool')
 const approvalReasonEl = document.querySelector<HTMLDivElement>('#approval-reason')
 const approvalAllowBtn = document.querySelector<HTMLButtonElement>('#approval-allow')
 const approvalRejectBtn = document.querySelector<HTMLButtonElement>('#approval-reject')
+// 0060 浮动提问卡(DSH ask_user_question → 宠物窗口直接回答)
+const questionCardEl = document.querySelector<HTMLDivElement>('#question-card')
+const questionTitleEl = document.querySelector<HTMLDivElement>('#question-title')
+const questionBodyEl = document.querySelector<HTMLDivElement>('#question-body')
+const questionSubmitBtn = document.querySelector<HTMLButtonElement>('#question-submit')
+const questionCancelBtn = document.querySelector<HTMLButtonElement>('#question-cancel')
 
 let bubbleTimer: ReturnType<typeof setTimeout> | undefined
 let connText = 'connecting'
 /** 当前浮动卡显示的审批条目。 */
 let cardApproval: PendingApproval | null = null
+/** 0060:当前浮动卡显示的提问条目。 */
+let cardQuestion: PendingQuestion | null = null
 /** 当前有效发送目标(显式选择或自动回退;由面板回调同步)。 */
 let targetSessionId: string | null = null
 /** 运行中的会话集合(dsh:session-update 增量维护;列表快照播种)。 */
@@ -115,6 +124,106 @@ function renderApprovalCard(list: PendingApproval[]): void {
   if (approvalToolEl) approvalToolEl.textContent = cardApproval.toolName
   if (approvalReasonEl) approvalReasonEl.textContent = cardApproval.reason ?? cardApproval.sessionId
   approvalCardEl.classList.remove('hidden')
+}
+
+/**
+ * 0060 浮动提问卡:显示最新一条待回答提问;无待回答则隐藏。
+ * 与审批卡同层贴输入条,审批卡可见时上移避让(避免互相遮挡)。
+ */
+function renderQuestionCard(list: PendingQuestion[]): void {
+  cardQuestion = list[0] ?? null
+  if (!questionCardEl) return
+  if (!cardQuestion) {
+    questionCardEl.classList.add('hidden')
+    return
+  }
+  const approvalVisible = approvalCardEl !== null && !approvalCardEl.classList.contains('hidden')
+  const baseBottom = 52
+  questionCardEl.style.bottom = approvalVisible && approvalCardEl
+    ? `${approvalCardEl.offsetHeight + baseBottom + 8}px`
+    : `${baseBottom}px`
+  if (questionTitleEl) {
+    questionTitleEl.textContent = cardQuestion.questions.length > 1
+      ? `❓ DSH 向你提问(${cardQuestion.questions.length} 题)`
+      : '❓ DSH 向你提问'
+  }
+  buildQuestionBody(cardQuestion)
+  questionCardEl.classList.remove('hidden')
+}
+
+/** 0060:按提问条目构建问题 DOM(文本 + 选项 + 自定义输入)。 */
+function buildQuestionBody(item: PendingQuestion): void {
+  if (!questionBodyEl) return
+  questionBodyEl.textContent = ''
+  item.questions.forEach((q, qi) => {
+    const box = document.createElement('div')
+    box.className = 'q-item'
+    const text = document.createElement('div')
+    text.className = 'q-text'
+    text.textContent = q.question
+    box.appendChild(text)
+    if (q.detail) {
+      const detail = document.createElement('div')
+      detail.className = 'q-detail'
+      detail.textContent = q.detail
+      box.appendChild(detail)
+    }
+    if (q.options && q.options.length > 0) {
+      const opts = document.createElement('div')
+      opts.className = 'q-options'
+      const groupName = `q-${item.rpcId}-${qi}`
+      q.options.forEach((o) => {
+        const row = document.createElement('label')
+        row.className = 'q-option'
+        const input = document.createElement('input')
+        input.type = q.multiSelect ? 'checkbox' : 'radio'
+        if (!q.multiSelect) input.name = groupName
+        input.value = o.label
+        const lab = document.createElement('span')
+        lab.className = 'opt-label'
+        lab.textContent = o.label
+        if (o.description) {
+          const desc = document.createElement('span')
+          desc.className = 'opt-desc'
+          desc.textContent = o.description
+          lab.appendChild(desc)
+        }
+        row.append(input, lab)
+        // 选中态由 input change 驱动(单选 radio 原生互斥;多选 checkbox 逐个切换),
+        // 同步 .selected 高亮样式
+        input.addEventListener('change', () => {
+          opts.querySelectorAll<HTMLInputElement>('input').forEach((el) => {
+            el.closest<HTMLElement>('.q-option')?.classList.toggle('selected', el.checked)
+          })
+        })
+        opts.appendChild(row)
+      })
+      box.appendChild(opts)
+    }
+    const custom = document.createElement('input')
+    custom.className = 'q-custom'
+    custom.type = 'text'
+    custom.placeholder = q.options && q.options.length > 0 ? '其他(可选)…' : '输入回答…'
+    box.appendChild(custom)
+    questionBodyEl?.appendChild(box)
+  })
+}
+
+/** 0060:从提问卡 DOM 收集本次回答(selected = 选项 label;自定义输入进 custom)。 */
+function collectAnswers(item: PendingQuestion): { id: string; selected: string[]; custom?: string }[] {
+  if (!questionBodyEl) return []
+  const boxes = questionBodyEl.querySelectorAll<HTMLElement>('.q-item')
+  const answers: { id: string; selected: string[]; custom?: string }[] = []
+  boxes.forEach((box, i) => {
+    const q = item.questions[i]
+    if (!q) return
+    const selected = [...box.querySelectorAll<HTMLInputElement>('input[type="radio"], input[type="checkbox"]')]
+      .filter((el) => el.checked)
+      .map((el) => el.value)
+    const customValue = box.querySelector<HTMLInputElement>('.q-custom')?.value.trim() ?? ''
+    answers.push({ id: q.id, selected, ...(customValue === '' ? {} : { custom: customValue }) })
+  })
+  return answers
 }
 
 /**
@@ -312,6 +421,23 @@ async function boot(): Promise<void> {
   })
   approvals.subscribe(renderApprovalCard)
 
+  // 0060 提问中心(浮动提问卡;与审批中心同构,DSH ask_user_question → 宠物回答)
+  const questions = createQuestionCenter(api, {
+    onFlash: (text, ok) => {
+      if (ok) {
+        actor.send({ type: 'TALK' })
+        showBubble(text, 2200)
+      } else {
+        actor.send({ type: 'DSH_ERROR' })
+        showBubble(text, 3500)
+      }
+    },
+    onCountChange: () => {
+      renderQuestionCard(questions.list())
+    },
+  })
+  questions.subscribe(renderQuestionCard)
+
   // B2 多会话雷达:活动表 + 面板订阅
   const activity = createActivityStore()
 
@@ -364,6 +490,25 @@ async function boot(): Promise<void> {
   })
   approvalRejectBtn?.addEventListener('click', () => {
     if (cardApproval) void approvals.respond(cardApproval, 'rejected')
+  })
+
+  // 0060 提问卡按钮:提交 → 汇总回答回包;取消 → 放弃(不回包,DSH 侧等待直到回合被取消)
+  questionSubmitBtn?.addEventListener('click', () => {
+    if (!cardQuestion) return
+    const answers = collectAnswers(cardQuestion)
+    const anyFilled = answers.some((a) => a.selected.length > 0 || a.custom !== undefined)
+    if (!anyFilled) {
+      actor.send({ type: 'DSH_ERROR' })
+      showBubble('请先作答再提交', 2500)
+      return
+    }
+    void questions.respond(cardQuestion, answers)
+  })
+  questionCancelBtn?.addEventListener('click', () => {
+    if (!cardQuestion) return
+    questions.removeByRpcId(cardQuestion.rpcId)
+    actor.send({ type: 'TALK' })
+    showBubble('已放弃回答(可在 Web 端停止该回合)', 3000)
   })
 
   // DSH 事件 → 状态机事件 + 气泡 + 审批
@@ -438,6 +583,23 @@ async function boot(): Promise<void> {
         } else if (event.outcome === 'rejected') {
           actor.send({ type: 'TALK' })
           showBubble('⛔ 已拒绝', 2000)
+        }
+        break
+      case 'question:pending':
+        // 0060:DSH ask_user_question → 提问中心 + 浮动提问卡
+        questions.add(event)
+        actor.send({ type: 'TALK' })
+        showBubble(`❓ DSH 向你提问:${event.questions[0]?.question ?? ''}`, 4000)
+        break
+      case 'question:resolved':
+        // 0060:提问已结算(我方提交后 DSH 回执,或他端/取消)——关卡(幂等)
+        questions.removeByRpcId(event.questionRpcId)
+        if (event.outcome === 'answered') {
+          actor.send({ type: 'TALK' })
+          showBubble('✅ 已回答', 2000)
+        } else if (event.outcome === 'cancelled') {
+          actor.send({ type: 'TALK' })
+          showBubble('❌ 提问已取消', 2000)
         }
         break
       case 'agent:error':
