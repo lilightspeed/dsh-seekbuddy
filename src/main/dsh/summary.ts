@@ -11,13 +11,24 @@ import type { PetSummaryEntry } from '../../shared/pet-event.ts'
  * 只按 event.type 窄化,不依赖具体 data 深度(与仓库类型同源,禁止手写接口类型)。
  */
 
-/** content 块里的可见文本(text 块拼接;reasoning/image/tool-call 忽略)。 */
-function textOfBlocks(content: readonly { type: string }[]): string {
-  return content
-    .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
-    .map((block) => block.text)
-    .join('\n')
+/** 剥离注入在文本里的系统标签(标签及其中内容整体移除),避免展示给宠物用户。 */
+function stripSystemTags(text: string): string {
+  return text
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, '')
+    .replace(/<system-reminder\b[^>]*>/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
     .trim()
+}
+
+/** content 块里的可见文本(text 块拼接;reasoning/image/tool-call 忽略;系统标签剥离)。 */
+function textOfBlocks(content: readonly { type: string }[]): string {
+  return stripSystemTags(
+    content
+      .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
+      .map((block) => block.text)
+      .join('\n')
+      .trim(),
+  )
 }
 
 /**
