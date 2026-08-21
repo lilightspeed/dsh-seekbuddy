@@ -74,13 +74,22 @@ async function bootstrap(): Promise<void> {
   let resizeGestureActive = false
   /** will-resize 高频触发,resized 偶发缺失的兜底:手势静默 400ms 视为结束。 */
   let resizeGestureTimer: NodeJS.Timeout | undefined
-
+  /** 当前缩放的边(用于 renderer 调整宠物位置):'n'|'s'|'e'|'w'|'ne'|'nw'|'se'|'sw'|null */
   function sendResizeGesture(active: boolean): void {
     if (resizeGestureActive === active) return
     resizeGestureActive = active
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('pet:resize-gesture', active)
     }
+  }
+
+  /** 缩放结束的共同处理:发 end 信号 + 落盘 + 重设圆角 */
+  function finishResize(): void {
+    resizeGestureTimer = undefined
+    if (!mainWindow || mainWindow.isDestroyed() || !resizeGestureActive) return
+    sendResizeGesture(false)
+    persistWindowSize()
+    applyEdgeChrome(mainWindow)
   }
 
   /** 0057:把当前窗口尺寸落盘(win32 原生缩放的结束路径;夹取到拖拽允许范围)。 */
@@ -161,52 +170,16 @@ async function bootstrap(): Promise<void> {
       // 窗口真正显示后 DWM 才完成 acrylic 绘制,此时再设置一次确保圆角生效
       applyEdgeChrome(win)
     })
-    // 圆角偏好只在缩放**结束**后重设(DWM 属性重拍在拖拽中无意义且可能闪烁),
-    // 用 debounce 兜住连续 resize;手势结束路径(resized)里也会重设一次。
+    // 0057 win32:圆角偏好只在缩放结束后重设(150ms debounce)。
     let cornerDebounce: NodeJS.Timeout | undefined
-    win.on('resize', () => {
-      if (cornerDebounce) clearTimeout(cornerDebounce)
-      cornerDebounce = setTimeout(() => applyEdgeChrome(win), 150)
-    })
-    // 0057:win32 手动缩放的开始/结束信号(will-resize 拖拽中高频触发,resized
-    // 在手势结束时触发;setBounds 等程序化缩放不触发这两个事件,不影响非 win32)。
-    win.on('will-resize', () => {
-      sendResizeGesture(true)
-      // 兜底:resized 偶发缺失时,手势静默 400ms 也视为结束(恢复正常渲染态并落盘)
-      if (resizeGestureTimer) clearTimeout(resizeGestureTimer)
-      resizeGestureTimer = setTimeout(() => {
-        resizeGestureTimer = undefined
-        if (!resizeGestureActive) return
-        sendResizeGesture(false)
-        persistWindowSize()
-        applyEdgeChrome(win)
-      }, 400)
-    })
-    win.on('resized', () => {
-      if (resizeGestureTimer) {
-        clearTimeout(resizeGestureTimer)
-        resizeGestureTimer = undefined
-      }
-      sendResizeGesture(false)
-      persistWindowSize()
-      applyEdgeChrome(win)
-    })
-    // 防御性兜底:will-resize 偶发未触发时,resize 事件仍会收到;若此时手势未激活,
-    // 立即激活以禁用 drag 区域,避免下一次拖动被 #stage 的 drag 区域吞掉。
     if (process.platform === 'win32') {
+      // win32:缩放手势检测。开始=首次 resize;结束=150ms 内无新 resize。
       win.on('resize', () => {
-        if (!resizeGestureActive) {
-          console.warn('[pet] resize:兜底激活缩放手势(will-resize 可能未触发)')
-          sendResizeGesture(true)
-          if (resizeGestureTimer) clearTimeout(resizeGestureTimer)
-          resizeGestureTimer = setTimeout(() => {
-            resizeGestureTimer = undefined
-            if (!resizeGestureActive) return
-            sendResizeGesture(false)
-            persistWindowSize()
-            applyEdgeChrome(win)
-          }, 400)
-        }
+        if (cornerDebounce) clearTimeout(cornerDebounce)
+        cornerDebounce = setTimeout(() => applyEdgeChrome(win), 150)
+        if (!resizeGestureActive) sendResizeGesture(true)
+        if (resizeGestureTimer) clearTimeout(resizeGestureTimer)
+        resizeGestureTimer = setTimeout(finishResize, 150)
       })
     }
 
@@ -667,8 +640,6 @@ async function bootstrap(): Promise<void> {
       const win = mainWindow
       const cursor = screen.getCursorScreenPoint()
       if (process.platform === 'win32') {
-        // 防御性兜底:win32 原生缩放已接管,忽略手柄 IPC(实测手柄在此收不到事件)
-        console.error(`[pet] resize:win32 已走原生缩放,忽略手柄 IPC(${name})`)
         return
       }
       const bounds = win.getBounds()
@@ -677,12 +648,16 @@ async function bootstrap(): Promise<void> {
         startBounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
         startCursor: { x: cursor.x, y: cursor.y },
       }
+      sendResizeGesture(true)
       startResizeTimer()
     })
     ipcMain.handle('pet:resize-end', () => {
       // 停专用循环 + 清状态;实际拖拽过才把当前窗口尺寸落盘(重启后保持)。
       // win32 原生路径下 resizeState 恒为空,此处理解为 no-op(尺寸由 resized 落盘)。
       stopResize(true)
+      if (process.platform !== 'win32') {
+        sendResizeGesture(false)
+      }
     })
 
     // 0062 极简模式窗口收缩/恢复:renderer 读当前 bounds 做锚点计算,写 setBounds
@@ -702,14 +677,17 @@ async function bootstrap(): Promise<void> {
       return { x: b.x, y: b.y, width: b.width, height: b.height }
     })
     // 0062 极简模式:锁定/解锁窗口缩放。锁定时把 MIN/MAX 都设为当前尺寸,使边缘拖拽无效;
-    // 解锁时恢复 WINDOW_SIZE_MIN/MAX。setResizable API 在 transparent+frameless 窗口上
-    // 不可靠,改用 MIN/MAX 夹取更稳定。
+    // 同时调用 setResizable(false) 让 OS 不再显示缩放光标(WS_THICKFRAME 相关)。
+    // setResizable 在 transparent+frameless 窗口上可能不稳定,MIN/MAX 夹取是兜底。
     ipcMain.handle('pet:set-resizable', (_event, resizable: unknown) => {
       if (!mainWindow || mainWindow.isDestroyed()) return
-      if (resizable) {
+      const enable = Boolean(resizable)
+      if (enable) {
+        mainWindow.setResizable(true)
         mainWindow.setMinimumSize(WINDOW_SIZE_MIN.width, WINDOW_SIZE_MIN.height)
         mainWindow.setMaximumSize(WINDOW_SIZE_MAX.width, WINDOW_SIZE_MAX.height)
       } else {
+        mainWindow.setResizable(false)
         const b = mainWindow.getBounds()
         mainWindow.setMinimumSize(b.width, b.height)
         mainWindow.setMaximumSize(b.width, b.height)

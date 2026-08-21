@@ -12,6 +12,7 @@ import { createPanel } from './ui/panel.ts'
 import { conceal, reveal } from './ui/reveal.ts'
 import { createWindowResizeHandles } from './window-resize.ts'
 import { createPetOnlyMode } from './pet-only-mode.ts'
+import { DEFAULT_PET_CONFIG } from '../../shared/pet-config.ts'
 
 declare global {
   interface Window {
@@ -369,8 +370,48 @@ async function boot(): Promise<void> {
   createWindowResizeHandles(api)
   // 0057:主进程推送"手动缩放手势"状态 → body.pet-resizing(win32 原生路径的
   // 开始/结束信号;与手柄信号并存,同平台只走一条,互不冲突)
-  api.onResizeGesture((active) => {
-    document.body.classList.toggle('pet-resizing', active)
+  // 左右边缘拖动时保持宠物屏幕水平位置不变。
+  let petPositionX = 0.5
+  let petSettings = DEFAULT_PET_CONFIG.pet
+  let resizeInitial: { screenX: number; width: number; posX: number } | null = null
+  let resizeEndTimer: ReturnType<typeof setTimeout> | undefined
+  // 自行管理 pet-resizing 类(主进程信号不可靠),150ms 无 resize 视为结束。
+  // 关键:在 pointerdown 时预判是否靠近边缘,提前禁用 drag 区域,避免 #stage 的 drag 区域抢事件。
+  const EDGE_THRESHOLD = 12
+  document.addEventListener('pointerdown', (e) => {
+    if (resizeInitial) return
+    const nearLeft = e.clientX <= EDGE_THRESHOLD
+    const nearRight = e.clientX >= window.innerWidth - EDGE_THRESHOLD
+    const nearTop = e.clientY <= EDGE_THRESHOLD
+    const nearBottom = e.clientY >= window.innerHeight - EDGE_THRESHOLD
+    if (nearLeft || nearRight || nearTop || nearBottom) {
+      document.body.classList.add('pet-resizing')
+    }
+  })
+  window.addEventListener('resize', () => {
+    if (!resizeInitial) {
+      resizeInitial = { screenX: window.screenX, width: window.innerWidth, posX: petPositionX }
+      document.body.classList.add('pet-resizing')
+    }
+    if (resizeInitial.width === window.innerWidth) return
+    const petScreenX = resizeInitial.screenX + resizeInitial.width * resizeInitial.posX
+    const newPosX = Math.min(1, Math.max(0, (petScreenX - window.screenX) / window.innerWidth))
+    if (Math.abs(newPosX - petPositionX) > 0.001) {
+      petPositionX = newPosX
+      petSettings = { ...petSettings, positionX: newPosX }
+      animator.applyPetSettings?.(petSettings)
+    }
+    clearTimeout(resizeEndTimer)
+    resizeEndTimer = setTimeout(() => {
+      resizeInitial = null
+      document.body.classList.remove('pet-resizing')
+    }, 150)
+  })
+  // pointerup 时确保移除 pet-resizing(兜底:防止 resize 事件缺失导致类名残留)
+  document.addEventListener('pointerup', () => {
+    if (!resizeInitial) {
+      document.body.classList.remove('pet-resizing')
+    }
   })
 
   // 0062 极简模式(仅显示宠物):仅隐藏全部非宠物组件,**不改动窗口大小**
@@ -398,6 +439,8 @@ async function boot(): Promise<void> {
   // 启动即应用持久化的宠物外观/手感(位置/大小/跟随)与背景透明度
   // (背景透明度用 CSS opacity 作用于 #bg-base 基色画布;win.setOpacity 会破坏 acrylic 毛玻璃)
   void api.getConfig().then((cfg) => {
+    petPositionX = cfg.pet.positionX
+    petSettings = cfg.pet
     animator.applyPetSettings?.(cfg.pet)
     const opacity = Math.min(1, Math.max(0, cfg.appearance.opacity))
     document.querySelector<HTMLElement>('#bg-base')?.style.setProperty('opacity', String(opacity))
@@ -514,6 +557,8 @@ async function boot(): Promise<void> {
       void api.setConfig(patch).then((cfg) => {
         // 0059:cfg 为 null(主进程配置未就绪)时跳过,避免 cfg.pet 抛错
         if (cfg) {
+          petPositionX = cfg.pet.positionX
+          petSettings = cfg.pet
           animator.applyPetSettings?.(cfg.pet)
         }
       })
