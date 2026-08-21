@@ -1,4 +1,21 @@
-import { Notification } from 'electron'
+import { join } from 'node:path'
+import { nativeImage, Notification, type NativeImage, type NotificationConstructorOptions } from 'electron'
+
+/** 应用图标缓存(通知图标;与托盘同一素材,win32 用 ico 含多尺寸帧)。 */
+let cachedIcon: NativeImage | undefined
+function appIcon(): NativeImage | undefined {
+  if (cachedIcon) return cachedIcon
+  try {
+    const iconPath = join(
+      import.meta.dirname,
+      process.platform === 'win32' ? '../../assets/pet/icons/ymcog-jpmci-001.ico' : '../../assets/pet/icons/icon.png',
+    )
+    cachedIcon = nativeImage.createFromPath(iconPath)
+    return cachedIcon.isEmpty() ? undefined : cachedIcon
+  } catch {
+    return undefined
+  }
+}
 
 /**
  * 系统通知(阶段 3):DSH 事件 → 桌面通知。
@@ -16,7 +33,10 @@ export function createNotifier(options: {
   function notify(title: string, body: string): void {
     if (!Notification.isSupported()) return
     try {
-      new Notification({ title, body }).show()
+      const opts: NotificationConstructorOptions = { title, body }
+      const icon = appIcon()
+      if (icon) opts.icon = icon
+      new Notification(opts).show()
     } catch (error) {
       console.error('[pet] notification failed:', error)
     }
