@@ -33,7 +33,7 @@ import type { Live2dAppearance, Live2dRuntime, AnimationChannel } from './runtim
  */
 
 /** 着色器静态根(publicDir=assets,文件在 assets/pet/live2d/shaders/)。 */
-const SHADER_PATH = '/pet/live2d/shaders/'
+const SHADER_PATH = './pet/live2d/shaders/'
 
 /**
  * motion 素材配置由构造注入(animation-registry 单点配置,0037s)——本类只按
@@ -44,7 +44,7 @@ const SHADER_PATH = '/pet/live2d/shaders/'
  * 0037 实测)—— 强制非循环,播一遍自然结束 + 运行时自动平滑复位,最干净。
  */
 /** motion 基础 URL(publicDir=assets)。 */
-const MOTION_BASE_URL = '/pet/live2d/'
+const MOTION_BASE_URL = './pet/live2d/'
 /**
  * 表情动作涉及的表情参数(停止后需平滑复位回待机基准)。
  * 摸头动画曲线:EyeForm / EyeLOpen/ROpen / EyeLSmile/RSmile / BrowLAngle/RAngle / BrowLY/RY;
@@ -226,18 +226,54 @@ interface SdkPhysicsState {
 }
 
 let s_frameworkStarted = false
+let s_coreLoadPromise: Promise<void> | null = null
+
+/**
+ * 动态加载 live2dcubismcore.js(定义全局 Live2DCubismCore)。
+ * Vite 构建会吃掉 HTML 里非 module 的 <script src> 标签,故改为运行时动态注入。
+ * 幂等:并发调用复用同一 Promise。
+ */
+function ensureCoreScriptLoaded(): Promise<void> {
+  if (s_coreLoadPromise) return s_coreLoadPromise
+  if ((window as unknown as { Live2DCubismCore?: unknown }).Live2DCubismCore) {
+    console.info('[live2d] Live2DCubismCore 已存在(预加载)')
+    return Promise.resolve()
+  }
+  console.info('[live2d] 动态加载 live2dcubismcore.js: ./pet/live2d/core/live2dcubismcore.js')
+  s_coreLoadPromise = new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = './pet/live2d/core/live2dcubismcore.js'
+    script.onload = () => {
+      console.info(`[live2d] live2dcubismcore.js 加载完成, Live2DCubismCore=${typeof (window as unknown as { Live2DCubismCore?: unknown }).Live2DCubismCore}`)
+      resolve()
+    }
+    script.onerror = (e) => {
+      console.error('[live2d] live2dcubismcore.js 加载失败', e)
+      reject(new Error('live2dcubismcore.js 加载失败'))
+    }
+    document.head.appendChild(script)
+  })
+  return s_coreLoadPromise
+}
 
 /** CubismFramework 全局初始化(整个应用只需一次,幂等)。 */
-function ensureFrameworkStarted(): void {
+async function ensureFrameworkStarted(): Promise<void> {
   if (s_frameworkStarted) return
-  const option = new Option()
-  option.logFunction = (message: string): void => {
-    console.log(`[live2d/core] ${message}`)
+  try {
+    await ensureCoreScriptLoaded()
+    const option = new Option()
+    option.logFunction = (message: string): void => {
+      console.log(`[live2d/core] ${message}`)
+    }
+    option.loggingLevel = LogLevel.LogLevel_Warning
+    CubismFramework.startUp(option)
+    CubismFramework.initialize()
+    s_frameworkStarted = true
+    console.info('[live2d] CubismFramework 初始化完成')
+  } catch (err) {
+    console.error('[live2d] ensureFrameworkStarted 失败:', err)
+    throw err
   }
-  option.loggingLevel = LogLevel.LogLevel_Warning
-  CubismFramework.startUp(option)
-  CubismFramework.initialize()
-  s_frameworkStarted = true
 }
 
 /**
@@ -296,8 +332,13 @@ export interface CubismRuntimeOptions {
 }
 
 /** 创建 Cubism 运行时;WebGL2 不可用时返回 null(调用方回落占位动画)。 */
-export function createCubismRuntime(options: CubismRuntimeOptions): Live2dRuntime | null {
-  ensureFrameworkStarted()
+export async function createCubismRuntime(options: CubismRuntimeOptions): Promise<Live2dRuntime | null> {
+  try {
+    await ensureFrameworkStarted()
+  } catch (err) {
+    console.error('[live2d] Framework 初始化失败,无法创建运行时:', err)
+    return null
+  }
 
   const canvas = document.createElement('canvas')
   // 不拦截任何指针事件:视角跟随走主进程光标轮询,后续点击热区再单独接。

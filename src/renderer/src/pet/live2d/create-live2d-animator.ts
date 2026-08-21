@@ -26,23 +26,23 @@ export interface Live2dAnimatorOptions {
   runtime?: Live2dRuntime
 }
 
-const DEFAULT_MODEL_URL = '/pet/live2d/ds-pet.model3.json'
+const DEFAULT_MODEL_URL = './pet/live2d/ds-pet.model3.json'
 
 /**
  * 创建动画后端:优先 Live2D(自动创建 Cubism SDK 运行时),创建失败时回落占位球宠 ——
  * 状态机 / 事件 / UI 零改动(doc/08 §4)。SDK 接入细节见 cubism-runtime.ts。
  */
-export function createLive2dAnimator(stage: PetStage, options: Live2dAnimatorOptions = {}): PetAnimator {
+export async function createLive2dAnimator(stage: PetStage, options: Live2dAnimatorOptions = {}): Promise<PetAnimator> {
   const initial = options.initialPetSettings ?? DEFAULT_PET_CONFIG.pet
   const runtime =
     options.runtime ??
     getLive2dRuntime() ??
-    createCubismRuntime({
+    (await createCubismRuntime({
       host: options.host ?? document.querySelector<HTMLElement>('#stage') ?? document.body,
       modelUrl: options.modelUrl ?? DEFAULT_MODEL_URL,
       appearance: { positionX: initial.positionX, positionY: initial.positionY, scale: initial.scale },
       motions: MOTION_FILES,
-    })
+    }))
   if (!runtime) {
     console.warn('[live2d] 无法创建 Cubism 运行时(WebGL2 不可用),回落占位球宠')
     return createSpriteAnimator(stage)

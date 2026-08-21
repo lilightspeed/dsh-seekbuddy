@@ -360,7 +360,7 @@ async function boot(): Promise<void> {
 
   // 舞台 + 动画后端(Live2D 优先,未接入 SDK 时回落占位球宠) + 状态机
   const stage = await createStage()
-  const animator: PetAnimator = createLive2dAnimator(stage)
+  const animator: PetAnimator = await createLive2dAnimator(stage)
 
   // 0056 窗口边缘拖拽调整大小:8 条透明 no-drag 手柄;按下/松开经 IPC 通知
   // 主进程,尺寸计算在主进程光标轮询里做(renderer 不逐帧发 IPC)。
