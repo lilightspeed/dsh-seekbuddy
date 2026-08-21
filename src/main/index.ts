@@ -133,10 +133,14 @@ async function bootstrap(): Promise<void> {
 
     // 高斯模糊背景(Win11 22H2+):让窗口背后的桌面/其他应用被系统 DWM 模糊,
     // 配合半透明窗口形成毛玻璃效果。低版本系统抛错时静默忽略(保持纯透明)。
+    // 0062:极简模式**关闭** acrylic —— 该材质作用于整个窗口矩形,即使 renderer
+    // 隐藏了 #bg,窗口背后的桌面仍会被 DWM 模糊成"高斯模糊背景",与"仅显示宠物"矛盾。
     try {
-      if (process.platform === 'win32') win.setBackgroundMaterial('acrylic')
+      if (process.platform === 'win32') {
+        win.setBackgroundMaterial(config?.get().appearance.petOnly ? 'none' : 'acrylic')
+      }
     } catch (error) {
-      console.warn('[pet] backgroundMaterial(acrylic) 不可用,保持纯透明窗口:', error)
+      console.warn('[pet] backgroundMaterial 不可用,保持纯透明窗口:', error)
     }
     // 系统圆角(Win11 22H2+):DWM 把窗口本身裁成圆角,连 acrylic 高斯模糊一起裁圆
     // —— 圆角外无模糊(SetWindowRgn 在 Electron 43 的 DComp 透明窗口上静默失效,
@@ -507,6 +511,18 @@ async function bootstrap(): Promise<void> {
     }
   }
 
+  /** 0062:极简模式视觉 —— win32 关闭 acrylic 高斯模糊背景(仅显示宠物),退出恢复。
+   *  acrylic 是 DWM 对**整个窗口矩形**的模糊材质,renderer 隐藏 #bg 并不能去掉它;
+   *  极简模式窗口≈宠物大小,若不关闭,宠物背后一圈仍是模糊的桌面。 */
+  function applyPetOnlyVisual(enabled: boolean): void {
+    if (!mainWindow || mainWindow.isDestroyed() || process.platform !== 'win32') return
+    try {
+      mainWindow.setBackgroundMaterial(enabled ? 'none' : 'acrylic')
+    } catch (error) {
+      console.warn(`[pet] backgroundMaterial(${enabled ? 'none' : 'acrylic'}) 不可用:`, error)
+    }
+  }
+
   /** IPC 侧配置补丁:只放行白名单字段(renderer 改不了 targetSessionId)。 */
   function sanitizeConfigUpdate(patch: PetConfigUpdate | undefined): PetConfigPatch {
     const out: PetConfigPatch = {}
@@ -672,9 +688,12 @@ async function bootstrap(): Promise<void> {
       const next = config.update(sanitizeConfigUpdate(patch))
       if (next.dsh.baseUrl !== prev.dsh.baseUrl) restartConnection()
       if (next.launchAtLogin !== prev.launchAtLogin) applyLaunchAtLogin(next.launchAtLogin)
-      // 0062:renderer 经按钮切换极简模式 → 托盘勾选态同步(主进程发起的切换在
-      // createTray 的 onPetOnlyToggle 里自行 setPetOnly,这里只处理 renderer 发起的)
-      if (next.appearance.petOnly !== prev.appearance.petOnly) tray?.setPetOnly(next.appearance.petOnly)
+      // 0062:renderer 经按钮切换极简模式 → 托盘勾选态 + acrylic 背景同步
+      // (主进程发起的切换在 createTray 的 onPetOnlyToggle 里自行处理)
+      if (next.appearance.petOnly !== prev.appearance.petOnly) {
+        tray?.setPetOnly(next.appearance.petOnly)
+        applyPetOnlyVisual(next.appearance.petOnly)
+      }
       return next
     })
 
@@ -713,6 +732,7 @@ async function bootstrap(): Promise<void> {
           if (!config) return
           const next = config.update({ petOnly: checked })
           tray?.setPetOnly(next.appearance.petOnly)
+          applyPetOnlyVisual(next.appearance.petOnly)
           // 主进程发起的切换(托盘)→ 推给 renderer 执行进入/退出(进入含窗口收缩)
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('pet:config-changed', next)

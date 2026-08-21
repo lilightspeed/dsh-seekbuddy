@@ -6,7 +6,8 @@ import type { PetAnimator } from './pet/animator.ts'
  * 0062 极简模式(仅显示宠物):
  * - 隐藏全部非宠物组件(CSS body.pet-only 统一处理,组件逻辑零改动);
  * - 窗口收缩到宠物包围盒大小,宠物屏幕位置/大小**始终不变**;
- * - 拖动范围收紧为宠物包围盒(独立 drag 层 #pet-drag-zone);
+ * - 拖动:窗口已收缩到宠物大小,整窗即宠物显示范围 → 沿用 #stage 原生 drag
+ *   (与普通模式同一套机制,稳定可靠);摸头/身体命中区(no-drag)依旧优先;
  * - 所有动作逻辑(状态机/动画/摸头/身体 sad/睡眠/拖动物理)保留。
  *
  * 窗口收缩的数学(按现有投影矩阵推导,见 cubism-runtime rebuildView):
@@ -16,9 +17,10 @@ import type { PetAnimator } from './pet/animator.ts'
  *   px'    = (中心屏幕x - 新窗x) / 新窗宽   (py 同理)
  * 这些派生值只经 onPetSettingsApply 直接喂给动画器,不写 config.json(不持久化)。
  *
- * 窗口跟随:每 150ms 检查包围盒 —— 动画外延(思考气泡/Zzz/抬手)超出窗口立即放大;
- * 稳定回缩 1.5s 后才收缩(防抖动);用户拖动窗口期间(位置在两轮检查间变化)暂停,
- * 避免 setBounds 与原生拖动互相打架。
+ * 窗口跟随(**只放大、不回缩**,防抖动):每 150ms 检查包围盒,仅当动画外延(思考
+ * 气泡/Zzz/抬手)超出窗口超过阈值时才放大;会话期间不回缩,退出时恢复进入尺寸。
+ * 交互期间(按下/拖动中)暂停调整,避免 setBounds 与原生拖动互相打架导致
+ * "窗口抽动、拖不动"(实测根因:每 150ms setBounds 覆盖原生拖动 + 放大/回缩振荡)。
  */
 
 interface Rect {
@@ -28,18 +30,21 @@ interface Rect {
   height: number
 }
 
-/** 窗口相对宠物包围盒的边距(px):呼吸空间 + 圆角余量。 */
-const WINDOW_MARGIN = 16
-/** 拖动区相对宠物包围盒的额外范围(px):略大于包围盒便于抓取。 */
-const DRAG_PAD = 6
+/** 窗口相对宠物包围盒的边距(px):呼吸空间 + 圆角余量(兼吸收视线跟随的头部位移)。 */
+const WINDOW_MARGIN = 20
 /** 包围盒检查间隔(ms)。 */
 const CHECK_INTERVAL_MS = 150
-/** 包围盒稳定回缩的判定时长(ms):动画外延消退后这么久才收缩窗口。 */
-const SHRINK_DEBOUNCE_MS = 1500
 /** 模型未就绪时进入模式的挂起重试间隔(ms)(启动恢复路径)。 */
 const RETRY_INTERVAL_MS = 300
-/** 窗口位置变化 ≥ 该值(px)视为用户正在拖动窗口(暂停包络调整)。 */
-const DRAG_MOVE_EPS = 1
+/**
+ * 放大阈值(px):动画外延超出窗口超过该值才放大窗口。
+ * 小于阈值的抖动(呼吸 ±2%、视线跟随转头 10~30px、摸头)被边距吸收,不触发缩放。
+ */
+const GROW_THRESHOLD = 10
+/** 按下(pointerdown)后暂停窗口调整的时长(ms):覆盖摸头/sad 按住期间。 */
+const PRESS_HOLD_MS = 400
+/** 检测到窗口位移(原生拖动)后暂停窗口调整的时长(ms):拖动中持续位移不断续期。 */
+const DRAG_HOLD_MS = 400
 
 export interface PetOnlyModeOptions {
   /** 应用派生外观(不持久化):进入/跟随/退出时,基于基准设置覆盖 px/py/scale。 */
@@ -73,11 +78,10 @@ export function createPetOnlyMode(
   let entry: { appearance: PetPetSettings; windowSize: { width: number; height: number } } | null = null
   let checkTimer: ReturnType<typeof setInterval> | undefined
   let retryTimer: ReturnType<typeof setInterval> | undefined
-  /** 上一轮检查的窗口位置(拖动检测用)。 */
+  /** 上一轮检查的窗口位置(原生拖动检测用)。 */
   let lastWin: Rect | null = null
-  /** 包围盒稳定回缩计时起点(ms;null = 未开始计时)。 */
-  let shrinkSince: number | null = null
-  const dragZoneEl = document.querySelector<HTMLDivElement>('#pet-drag-zone')
+  /** 按下/拖动后暂停窗口调整的截止时刻(performance.now,ms)。 */
+  let pauseUntil = 0
 
   /** 应用派生外观:合并进 current 并喂给动画器(不写配置,不持久化)。 */
   function applyDerived(partial: { positionX?: number; positionY?: number; scale?: number }): void {
@@ -140,47 +144,32 @@ export function createPetOnlyMode(
     return true
   }
 
-  /** 拖动区定位(宠物包围盒 + 小边距,窗口 CSS 坐标)。 */
-  function updateDragZone(bounds: Rect): void {
-    if (!dragZoneEl) return
-    dragZoneEl.style.left = `${bounds.x - DRAG_PAD}px`
-    dragZoneEl.style.top = `${bounds.y - DRAG_PAD}px`
-    dragZoneEl.style.width = `${bounds.width + DRAG_PAD * 2}px`
-    dragZoneEl.style.height = `${bounds.height + DRAG_PAD * 2}px`
-  }
-
   async function check(): Promise<void> {
     if (!active || !animator.getDisplayBounds) return
     const raw = animator.getDisplayBounds()
     if (!raw) return
     const win = await api?.getWindowBounds()
     if (!win) return
-    // 拖动检测:窗口位置在两轮检查间变化 → 用户正在拖,跳过本轮(0062:避免
-    // setBounds 与原生拖动互相覆盖,窗口来回跳)
-    if (lastWin && (Math.abs(win.x - lastWin.x) >= DRAG_MOVE_EPS || Math.abs(win.y - lastWin.y) >= DRAG_MOVE_EPS)) {
+    const now = performance.now()
+    // 交互暂停:按下(摸头/sad/点胶囊)或原生拖动期间不调整窗口 —— 否则每 150ms
+    // 一次 setBounds 会覆盖原生拖动、与 OS 移动循环互相打架(窗口抽动/拖不动)
+    if (now < pauseUntil) return
+    // 原生拖动检测:窗口位置在两轮检查间变化 → 拖动中,暂停并续期
+    if (lastWin && (Math.abs(win.x - lastWin.x) >= 1 || Math.abs(win.y - lastWin.y) >= 1)) {
+      pauseUntil = now + DRAG_HOLD_MS
       lastWin = win
       return
     }
     lastWin = win
-    updateDragZone(raw)
+    // 只放大、不回缩:动画外延(思考气泡/Zzz/抬手)超出窗口超过阈值才放大一次;
+    // 回缩会让"视线跟随转头"造成窗口持续放大/回缩振荡(鼠标移入即抽动的根因)
     const target = computeTargetWindow(win, raw)
-    const needGrow = target.width > win.width + 1 || target.height > win.height + 1
-    const needShrink = target.width < win.width - 1 || target.height < win.height - 1
-    if (needGrow) {
-      // 动画外延超出窗口 → 立即放大(锚点不变,宠物不动)
-      shrinkSince = null
-      await applyWindow(target)
-    } else if (needShrink) {
-      // 包围盒稳定小于窗口 → 计时后收缩(防动画外延抖动导致窗口忽大忽小)
-      const now = performance.now()
-      if (shrinkSince === null) shrinkSince = now
-      else if (now - shrinkSince >= SHRINK_DEBOUNCE_MS) {
-        shrinkSince = null
-        await applyWindow(target)
-      }
-    } else {
-      shrinkSince = null
-    }
+    const needGrow =
+      target.x < win.x - GROW_THRESHOLD ||
+      target.y < win.y - GROW_THRESHOLD ||
+      target.x + target.width > win.x + win.width + GROW_THRESHOLD ||
+      target.y + target.height > win.y + win.height + GROW_THRESHOLD
+    if (needGrow) await applyWindow(target)
   }
 
   function startCheckLoop(): void {
@@ -194,7 +183,7 @@ export function createPetOnlyMode(
       checkTimer = undefined
     }
     lastWin = null
-    shrinkSince = null
+    pauseUntil = 0
   }
 
   /** 模型未就绪时挂起:就绪后自动进入(启动恢复路径用)。 */
@@ -234,7 +223,6 @@ export function createPetOnlyMode(
     current = { positionX: base.positionX, positionY: base.positionY, scale: base.scale }
     entry = { appearance: { ...base }, windowSize: { width: win.width, height: win.height } }
     setActive(true)
-    updateDragZone(raw)
     // 初始收缩:窗口 = 包围盒 + 边距(夹取由主进程),宠物屏幕位置/大小不变
     await applyWindow(computeTargetWindow(win, raw))
     startCheckLoop()
@@ -270,6 +258,19 @@ export function createPetOnlyMode(
     setActive(false)
   }
 
+  // 交互暂停:窗口内任何按下(摸头/sad/退出胶囊)后暂停窗口调整,覆盖"按住期间
+  // 动画外延变化"与"原生拖动收尾"两段;drag 区域按下收不到 pointerdown(0016),
+  // 由 check 的窗口位移检测续期兜底。
+  const onPointerDown = (): void => {
+    pauseUntil = performance.now() + PRESS_HOLD_MS
+  }
+  const onPointerUp = (): void => {
+    pauseUntil = Math.max(pauseUntil, performance.now() + PRESS_HOLD_MS)
+  }
+  window.addEventListener('pointerdown', onPointerDown)
+  window.addEventListener('pointerup', onPointerUp)
+  window.addEventListener('pointercancel', onPointerUp)
+
   return {
     isActive: () => active,
     enter: () => void enter(),
@@ -294,6 +295,9 @@ export function createPetOnlyMode(
         clearInterval(retryTimer)
         retryTimer = undefined
       }
+      window.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('pointerup', onPointerUp)
+      window.removeEventListener('pointercancel', onPointerUp)
       setActive(false)
     },
   }

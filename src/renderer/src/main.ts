@@ -382,21 +382,30 @@ async function boot(): Promise<void> {
     onActiveChange: (active) => btnPetonlyEl?.classList.toggle('active', active),
   })
   btnPetonlyEl?.addEventListener('click', () => {
-    if (petOnlyMode.isActive()) {
-      petOnlyMode.exit()
-      return
+    const target = !petOnlyMode.isActive()
+    if (target) {
+      if (!animator.getDisplayBounds) {
+        showBubble('当前动画后端不支持极简模式', 3000)
+        return
+      }
+      if (!animator.getDisplayBounds()) {
+        showBubble('模型未就绪,请稍候', 3000)
+        return
+      }
     }
-    if (!animator.getDisplayBounds) {
-      showBubble('当前动画后端不支持极简模式', 3000)
-      return
-    }
-    if (!animator.getDisplayBounds()) {
-      showBubble('模型未就绪,请稍候', 3000)
-      return
-    }
-    petOnlyMode.enter()
+    // 0062:按钮/胶囊切换统一走 setConfig 持久化 —— 主进程据此联动托盘勾选态与
+    // acrylic 背景,并返回新配置;renderer 收到后执行进入/退出(进入含窗口收缩)
+    void api.setConfig({ petOnly: target }).then((cfg) => {
+      if (!cfg) return
+      if (cfg.appearance.petOnly) petOnlyMode.enter()
+      else petOnlyMode.exit()
+    })
   })
-  exitPillEl?.addEventListener('click', () => petOnlyMode.exit())
+  exitPillEl?.addEventListener('click', () => {
+    void api.setConfig({ petOnly: false }).then((cfg) => {
+      if (cfg && !cfg.appearance.petOnly) petOnlyMode.exit()
+    })
+  })
 
   // 启动即应用持久化的宠物外观/手感(位置/大小/跟随)与背景透明度
   // (背景透明度用 CSS opacity 作用于 #bg-base 基色画布;win.setOpacity 会破坏 acrylic 毛玻璃)

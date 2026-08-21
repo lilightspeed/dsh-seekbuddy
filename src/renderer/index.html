@@ -130,8 +130,8 @@
       #stage canvas {
         position: absolute;
         inset: 0;
-        /* 0062:canvas 一律不拦截指针 —— 极简模式下 #stage 改 no-drag,点击由
-           #pet-drag-zone 与命中区接管,透明画布不得吃掉事件 */
+        /* 0062:canvas 一律不拦截指针 —— 点击/拖动由 #stage 的 drag 区域与命中区
+           (no-drag)接管,透明画布不得吃掉事件 */
         pointer-events: none;
       }
 
@@ -549,14 +549,8 @@
       /* ---- 0062 极简模式:仅显示宠物 ----
          隐藏全部非宠物组件(背景/气泡/输入条/按钮/面板/通知/审批卡/提问卡/缩放手柄);
          窗口由主进程收缩到宠物包围盒大小(宠物屏幕位置与大小不变);
-         拖动范围收紧为 #pet-drag-zone(宠物包围盒 + 小边距,独立 drag 层),
-         极简模式下 #stage 改 no-drag;命中区(摸头/身体)压在拖动区之上。 */
-      #pet-drag-zone {
-        position: fixed;
-        z-index: 1;
-        display: none;
-        -webkit-app-region: drag;
-      }
+         拖动沿用 #stage 原生 drag —— 窗口已收缩到宠物大小,整窗即宠物显示范围,
+         与普通模式同一套拖拽机制(命中区 no-drag 依旧优先,摸头/sad 不受影响)。 */
       #pet-exit-pill {
         position: fixed;
         top: 8px;
@@ -598,18 +592,11 @@
       body.pet-only .pet-resize-handle {
         display: none !important;
       }
-      body.pet-only #stage {
-        -webkit-app-region: no-drag;
-      }
-      body.pet-only #pet-drag-zone {
-        display: block;
-      }
-      /* 命中区压到拖动区之上:头部(3)> 身体(2)> 拖动区(1),摸头/sad 优先于拖动 */
-      body.pet-only #pet-head-hit {
-        z-index: 3;
-      }
+      /* 0062:极简模式下身体点击(sad)让位给拖拽 —— 窗口≈宠物大小,身体是最自然的
+         抓取点;sad 动画本身保留(DSH 报错等事件仍会触发),仅禁用"点击身体"这一
+         触发。头部摸头保留(小区域、刻意交互)。如需恢复可删掉本行。 */
       body.pet-only #pet-body-hit {
-        z-index: 2;
+        display: none !important;
       }
       /* ---- 右上角操作通知队列(0042):液态玻璃小气泡,贴近设置按钮与窗口右缘 ----
          新通知从上方滑入队首(队列顶部),最旧的通知从队尾向下滑出消失 ——
@@ -1384,8 +1371,7 @@
       <div class="bg-blob b3"></div>
     </div>
     <div id="stage"></div>
-    <!-- 0062 极简模式:拖动区(宠物包围盒,独立 drag 层)与退出胶囊 -->
-    <div id="pet-drag-zone"></div>
+    <!-- 0062 极简模式:退出胶囊(拖动沿用 #stage 原生 drag,窗口已收缩到宠物大小) -->
     <div id="pet-exit-pill">退出极简</div>
     <div id="bubble" class="glass"></div>
     <!-- 0062 极简模式开关:紧贴「菜单」按钮(#btn-panel)左侧 -->
