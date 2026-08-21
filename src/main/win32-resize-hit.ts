@@ -57,9 +57,11 @@ interface Win32ResizeFfi {
   /** BOOL SetWindowSubclass(HWND, SUBCALLPROC, UINT_PTR, DWORD_PTR)。 */
   setWindowSubclass(hwnd: bigint, proc: bigint, id: number, refData: number): number
   /** LRESULT DefSubclassProc(HWND, UINT, WPARAM, LPARAM):子类链续传。 */
-  defSubclassProc(hwnd: bigint, msg: number, wParam: bigint, lParam: bigint): number
+  defSubclassProc(hwnd: bigint, msg: number, wParam: number, lParam: number): number
   /** BOOL RemoveWindowSubclass(HWND, SUBCALLPROC, UINT_PTR)。 */
   removeWindowSubclass(hwnd: bigint, proc: bigint, id: number): number
+  /** LRESULT SendMessageW(HWND, UINT, WPARAM, LPARAM):安装自检用(合成 WM_NCHITTEST)。 */
+  sendMessageW(hwnd: bigint, msg: number, wParam: number, lParam: number): bigint
   /** koffi.register 注册的子类回调指针(模块级持有防 GC)。 */
   proc: bigint
 }
@@ -75,24 +77,29 @@ function readHwnd(handle: Buffer): bigint {
   return handle.length >= 8 ? handle.readBigUInt64LE(0) : BigInt(handle.readUInt32LE(0))
 }
 
-/** WM_NCHITTEST 子类回调:光标在手柄几何内 → 返回对应缩放命中码,否则交还 Chromium。 */
+/** WM_NCHITTEST 子类回调:光标在手柄几何内 → 返回对应缩放命中码,否则交还 Chromium。
+ *  koffi 回调实参:void* → bigint(uintptr 按 Number 传入,屏幕坐标 < 2^31 精确)。 */
 function onSubclassMessage(
   hwnd: bigint,
   uMsg: number,
-  wParam: bigint,
-  lParam: bigint,
-  _uIdSubclass: bigint,
-  _dwRefData: bigint,
+  wParam: number,
+  lParam: number,
+  _uIdSubclass: number,
+  _dwRefData: number,
 ): number {
   const f = ffi
   if (!f) return 0
   // 非命中测试 / 扩展已关 / 合成消息(lParam=0,如键盘触发)→ 原样续传
-  if (!hitEnabled || uMsg !== WM_NCHITTEST || lParam === 0n) {
+  if (!hitEnabled || uMsg !== WM_NCHITTEST || lParam === 0) {
     return f.defSubclassProc(hwnd, uMsg, wParam, lParam)
   }
-  // lParam:LOWORD=光标 x,HIWORD=光标 y(有符号 16 位,屏幕物理坐标)
-  const x = Number(BigInt.asIntN(16, lParam & 0xffffn))
-  const y = Number(BigInt.asIntN(16, (lParam >> 16n) & 0xffffn))
+  // lParam:LOWORD=光标 x,HIWORD=光标 y(有符号 16 位,屏幕物理坐标;多显示器时
+  // 坐标可能超过 32767 回绕成负数,须按有符号解读)
+  const l = Number(lParam)
+  let x = l & 0xffff
+  let y = (l >>> 16) & 0xffff
+  if (x >= 0x8000) x -= 0x10000
+  if (y >= 0x8000) y -= 0x10000
   const rect = Buffer.alloc(16)
   if (!f.getWindowRect(hwnd, rect)) {
     return f.defSubclassProc(hwnd, uMsg, wParam, lParam)
@@ -132,10 +139,12 @@ function loadFfi(): Promise<Win32ResizeFfi | null> {
         const koffi = (await import('koffi')).default
         const user32 = koffi.load('user32.dll')
         const comctl32 = koffi.load('comctl32.dll')
+        // 注意:koffi v3 的 register 需要**回调指针类型**(pointer(proto)),裸 proto 会抛
+        // "expected <callback> * type"(0063 实测)。回调实参里 uintptr 以 Number 传入。
         const proto = koffi.proto(
           'long PetSubclassProc(void* hWnd, unsigned int uMsg, uintptr wParam, uintptr lParam, uintptr uIdSubclass, uintptr dwRefData)',
         )
-        const proc = koffi.register(onSubclassMessage, proto)
+        const proc = koffi.register(onSubclassMessage, koffi.pointer(proto))
         const instance: Win32ResizeFfi = {
           getWindowRect: user32.func('int GetWindowRect(void* hWnd, void* lpRect)'),
           getDpiForWindow: user32.func('uint GetDpiForWindow(void* hWnd)'),
@@ -145,6 +154,7 @@ function loadFfi(): Promise<Win32ResizeFfi | null> {
           ),
           defSubclassProc: comctl32.func('long DefSubclassProc(void* hWnd, unsigned int uMsg, uintptr wParam, uintptr lParam)'),
           removeWindowSubclass: comctl32.func('int RemoveWindowSubclass(void* hWnd, void* pfnSubclass, uintptr uIdSubclass)'),
+          sendMessageW: user32.func('void* SendMessageW(void* hWnd, uint uMsg, uintptr wParam, uintptr lParam)'),
           proc,
         }
         ffi = instance
@@ -172,6 +182,24 @@ export async function installWin32ResizeHit(win: BrowserWindow): Promise<() => v
     if (!f.setWindowSubclass(hwnd, f.proc, SUBCLASS_ID, 0)) {
       console.warn('[pet] SetWindowSubclass 失败,四角缩放命中区保持 Electron 原生(约 5px)')
       return () => {}
+    }
+    // 自检:向窗口发一个合成 WM_NCHITTEST(左上角内侧 12px 物理坐标),确认子类
+    // 真的接管了命中测试 —— 返回 HTTOPLEFT 即生效;否则大概率是回调/坐标问题,
+    // 输出具体返回值便于定位(0063 曾因 register 用法错误静默退化,加日志防复发)。
+    try {
+      const rect = Buffer.alloc(16)
+      if (f.getWindowRect(hwnd, rect)) {
+        const px = rect.readInt32LE(0) + 12
+        const py = rect.readInt32LE(4) + 12
+        const probe = f.sendMessageW(hwnd, WM_NCHITTEST, 0, ((py & 0xffff) << 16) | (px & 0xffff))
+        if (Number(probe) !== HTTOPLEFT) {
+          console.warn(`[pet] win32 缩放命中自检异常:WM_NCHITTEST(12,12) 返回 ${probe},预期 HTTOPLEFT=${HTTOPLEFT}`)
+        } else {
+          console.info('[pet] win32 缩放命中扩展已生效:四角/四边手柄几何命中 HT 码')
+        }
+      }
+    } catch (error) {
+      console.warn('[pet] win32 缩放命中自检失败:', error)
     }
     let disposed = false
     return () => {
