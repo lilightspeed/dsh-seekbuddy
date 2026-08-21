@@ -14,7 +14,7 @@ import { createBridge, bridgeActionToEvent, type BridgeHandle } from './mcp/brid
 import { createNotifier } from './notify.ts'
 import { createTray } from './tray.ts'
 import { applyWindowEdgeStyle } from './rounded-window.ts'
-import { installWin32ResizeHit, isLeftButtonDown, setWin32ResizeHitEnabled, warmUpWin32Resize } from './win32-resize-hit.ts'
+import { isLeftButtonDown, warmUpWin32KeyState } from './win32-key-state.ts'
 
 /**
  * 0056 窗口边缘拖拽调整大小:允许的拖拽方向。
@@ -76,8 +76,6 @@ async function bootstrap(): Promise<void> {
   let resizeGestureActive = false
   /** resize 事件静默后的结束兜底计时器(静默 ≠ 结束:拖拽中途停顿也静默,0063)。 */
   let resizeGestureTimer: NodeJS.Timeout | undefined
-  /** 0063 win32:WM_NCHITTEST 子类的销毁函数(窗口 closed 时移除)。 */
-  let win32ResizeHitDispose: (() => void) | undefined
   /** 当前缩放的边(用于 renderer 调整宠物位置):'n'|'s'|'e'|'w'|'ne'|'nw'|'se'|'sw'|null */
   function sendResizeGesture(active: boolean): void {
     if (resizeGestureActive === active) return
@@ -209,20 +207,6 @@ async function bootstrap(): Promise<void> {
           resizeGestureTimer = undefined
         }
         finishResize()
-      })
-      // 0063:把原生缩放命中区扩展到 renderer 手柄几何(角 24px/边 8px,见
-      // win32-resize-hit.ts)。默认 frameless 命中区只有约 5px,手柄圈内其余
-      // 区域按下既不是缩放也不是拖动(no-drag 死区)——"有概率拖不动"的来源。
-      void installWin32ResizeHit(win).then((dispose) => {
-        if (win.isDestroyed()) {
-          dispose()
-          return
-        }
-        win32ResizeHitDispose = dispose
-        win.on('closed', () => {
-          dispose()
-          if (win32ResizeHitDispose === dispose) win32ResizeHitDispose = undefined
-        })
       })
     }
 
@@ -624,9 +608,8 @@ async function bootstrap(): Promise<void> {
     }
 
     config = new PetConfigStore()
-    // 0063:win32 预热缩放命中 FFI(koffi 加载 + 回调注册),避免首次缩放时
-    // 结束兜底判定(isLeftButtonDown)尚未就绪。
-    warmUpWin32Resize()
+    // 0063:win32 预热 GetAsyncKeyState FFI,避免首次缩放结束兜底判定尚未就绪。
+    warmUpWin32KeyState()
     // 启动即应用持久化配置:目标会话记忆、外观、开机自启
     targetSessionId = config.get().targetSessionId
     applyLaunchAtLogin(config.get().launchAtLogin)
@@ -673,21 +656,19 @@ async function bootstrap(): Promise<void> {
       petOps?.respondQuestion(request) ?? { label: 'question.respond', ok: false, summary: 'ops not ready' },
     )
 
-    // 0056/0057 窗口边缘拖拽调整大小。win32:Electron 原生边缘缩放(创建即
-    // resizable:true,0057),renderer 手柄的 IPC 在原生路径下收不到 pointerdown
-    // (边缘按下被系统非客户区命中测试吞掉),这里仅作防御性兜底;手势状态由
-    // resized/左键兜底驱动(见 createWindow),不在此处理。
-    // 非 win32:沿用 0056 手柄 + 专用循环(16ms/60Hz,与显示对齐)锚定对侧边
-    // setBounds —— 不占 33ms 视角跟随轮询(0056b/c)。
+    // 0056/0063 窗口边缘拖拽调整大小。win32:边缘最外约 5px 被系统非客户区命中
+    // 测试吞掉,走 Electron 原生边缘缩放(0057);**手柄圈内、5px 之外的环形区
+    // 域**(角 24×24/边 8px 手柄的其余部分)按下是普通客户区事件 → renderer
+    // 手柄 pointerdown → 本 IPC → 走 0056 专用 60Hz 锚定对侧边 setBounds 循环
+    // (renderer 不再有死区;程序化 setBounds 不触发 resized,手势结束由
+    // pet:resize-end 收尾,win32 的 resize 事件仍会驱动 body.pet-resizing)。
+    // 非 win32:全部边缘都走 0056 手柄 + 专用循环 —— 不占 33ms 视角跟随轮询。
     ipcMain.handle('pet:resize-start', async (_event, edge: unknown) => {
       if (!mainWindow || mainWindow.isDestroyed()) return
       const name = String(edge ?? '')
       if (!(RESIZE_EDGES as readonly string[]).includes(name)) return
       const win = mainWindow
       const cursor = screen.getCursorScreenPoint()
-      if (process.platform === 'win32') {
-        return
-      }
       const bounds = win.getBounds()
       resizeState = {
         edge: name as ResizeEdge,
@@ -699,11 +680,8 @@ async function bootstrap(): Promise<void> {
     })
     ipcMain.handle('pet:resize-end', () => {
       // 停专用循环 + 清状态;实际拖拽过才把当前窗口尺寸落盘(重启后保持)。
-      // win32 原生路径下 resizeState 恒为空,此处理解为 no-op(尺寸由 resized 落盘)。
       stopResize(true)
-      if (process.platform !== 'win32') {
-        sendResizeGesture(false)
-      }
+      sendResizeGesture(false)
     })
 
     // 0062 极简模式窗口收缩/恢复:renderer 读当前 bounds 做锚点计算,写 setBounds
@@ -725,11 +703,9 @@ async function bootstrap(): Promise<void> {
     // 0062 极简模式:锁定/解锁窗口缩放。锁定时把 MIN/MAX 都设为当前尺寸,使边缘拖拽无效;
     // 同时调用 setResizable(false) 让 OS 不再显示缩放光标(WS_THICKFRAME 相关)。
     // setResizable 在 transparent+frameless 窗口上可能不稳定,MIN/MAX 夹取是兜底。
-    // 0063:同步开关 WM_NCHITTEST 命中扩展(锁定后不再把手柄几何命中为缩放)。
     ipcMain.handle('pet:set-resizable', (_event, resizable: unknown) => {
       if (!mainWindow || mainWindow.isDestroyed()) return
       const enable = Boolean(resizable)
-      setWin32ResizeHitEnabled(enable)
       if (enable) {
         mainWindow.setResizable(true)
         mainWindow.setMinimumSize(WINDOW_SIZE_MIN.width, WINDOW_SIZE_MIN.height)
@@ -841,7 +817,6 @@ async function bootstrap(): Promise<void> {
     if (cursorTimer) clearInterval(cursorTimer)
     if (resizeTimer) clearInterval(resizeTimer)
     if (resizeGestureTimer) clearTimeout(resizeGestureTimer)
-    win32ResizeHitDispose?.()
     connection?.stop()
     bridge?.close()
   })
