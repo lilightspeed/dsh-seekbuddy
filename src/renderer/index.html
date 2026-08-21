@@ -238,7 +238,8 @@
         left: 50%;
         bottom: 106px;
         transform: translateX(-50%);
-        z-index: 5;
+        /* 0060:层级高于浮动卡(审批 6 / 提问 7),提示不被卡片遮挡 */
+        z-index: 9;
         max-width: 300px;
         padding: 10px 14px;
         border-radius: 18px;
@@ -1250,6 +1251,13 @@
       }
       #question-submit:hover {
         filter: brightness(1.06);
+      }
+      /* 0060:提交无作答时按钮的卡片内即时反馈(变红 + 文字提示,不依赖可能被遮挡的气泡) */
+      #question-submit.hint {
+        background: linear-gradient(180deg, rgba(229, 72, 77, 0.96), rgba(229, 72, 77, 0.86));
+        box-shadow:
+          0 4px 12px rgba(229, 72, 77, 0.4),
+          inset 0 1px 1px rgba(255, 255, 255, 0.3);
       }
       #question-cancel {
         background: linear-gradient(180deg, rgba(148, 163, 184, 0.9), rgba(148, 163, 184, 0.8));

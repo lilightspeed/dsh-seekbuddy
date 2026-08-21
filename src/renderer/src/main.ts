@@ -226,6 +226,19 @@ function collectAnswers(item: PendingQuestion): { id: string; selected: string[]
   return answers
 }
 
+/** 0060:提交无作答时的卡片内即时反馈(按钮变红 + 文字提示;不依赖气泡,气泡可能被卡片遮挡)。 */
+let submitHintTimer: ReturnType<typeof setTimeout> | undefined
+function flashSubmitHint(): void {
+  if (!questionSubmitBtn) return
+  questionSubmitBtn.textContent = '请先作答'
+  questionSubmitBtn.classList.add('hint')
+  if (submitHintTimer) clearTimeout(submitHintTimer)
+  submitHintTimer = setTimeout(() => {
+    questionSubmitBtn?.classList.remove('hint')
+    if (questionSubmitBtn) questionSubmitBtn.textContent = '提交'
+  }, 1600)
+}
+
 /**
  * B2 多会话雷达:内存活动表,由 dsh:session-update 增量累积;订阅者拿快照。
  */
@@ -498,8 +511,7 @@ async function boot(): Promise<void> {
     const answers = collectAnswers(cardQuestion)
     const anyFilled = answers.some((a) => a.selected.length > 0 || a.custom !== undefined)
     if (!anyFilled) {
-      actor.send({ type: 'DSH_ERROR' })
-      showBubble('请先作答再提交', 2500)
+      flashSubmitHint()
       return
     }
     void questions.respond(cardQuestion, answers)
