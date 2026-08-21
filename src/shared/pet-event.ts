@@ -164,14 +164,14 @@ export interface PetHistoryResult {
   entries: PetHistoryEntry[]
 }
 
-/** 最近对话浮层:一条"重要消息"的扁平摘要(主进程已过滤噪音并折叠/截断)。 */
+/** 最近对话浮层:一条对话消息的扁平摘要(主进程已过滤,仅保留用户/助手消息)。 */
 export interface PetSummaryEntry {
   /** 会话内事件序号(去重锚点;同一 seq 只进一次缓冲)。 */
   seq: number
   /** Unix epoch 毫秒。 */
   time: number
-  kind: 'user' | 'assistant' | 'meta'
-  /** 已折叠空白并截断的展示文本。 */
+  kind: 'user' | 'assistant'
+  /** 已折叠完整的展示文本。 */
   text: string
 }
 
