@@ -368,8 +368,13 @@ async function boot(): Promise<void> {
   // win32 下手柄收不到 pointerdown(边缘按下被原生命中测试吞掉,0057),仅
   // 非 win32 轮询兜底路径生效;手势状态另有 onResizeGesture 主进程推送。
   createWindowResizeHandles(api)
-  // 0057:主进程推送"手动缩放手势"状态 → body.pet-resizing(win32 原生路径的
-  // 开始/结束信号;与手柄信号并存,同平台只走一条,互不冲突)
+  // 0057/0063:主进程推送"手动缩放手势"状态是 win32 原生路径的权威信号 ——
+  // 开始=首次 resize,结束=resized/左键松开兜底(主进程已把"拖拽中途停顿"从
+  // 结束判定里排除,见 main/index.ts armResizeEndFallback);renderer 据此切换
+  // body.pet-resizing。本地 resize/pointer 逻辑保留为兜底(信号不可用时自行收敛)。
+  api.onResizeGesture((active) => {
+    document.body.classList.toggle('pet-resizing', active)
+  })
   // 左右边缘拖动时保持宠物屏幕水平位置不变。
   let petPositionX = 0.5
   let petSettings = DEFAULT_PET_CONFIG.pet

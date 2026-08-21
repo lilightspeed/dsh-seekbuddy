@@ -287,11 +287,12 @@ export interface PetApi {
   /** 0056:松开/取消边缘拖拽,主进程停止调整大小。 */
   resizeEnd(): Promise<void>
   /**
-   * 0057(win32 原生缩放):主进程经 will-resize/resized 推送"手动缩放手势
-   * 开始/结束"—— 原生路径下边缘按下被系统非客户区命中测试吞掉(HTRIGHT),
-   * renderer 的 pointerdown 不触发,原手柄信号在 win32 上不可用;renderer 用
-   * 该信号临时切换 body.pet-resizing(禁用 drag 区域 + 玻璃组件降级防闪烁,
-   * 见 index.html CSS)。非 win32 的轮询兜底路径仍由手柄 pointerdown/up 驱动。
+   * 0057/0063(win32 原生缩放):主进程推送"手动缩放手势开始/结束" —— 原生路径下
+   * 边缘按下被系统非客户区命中测试吞掉(HTRIGHT 等),renderer 的 pointerdown 不
+   * 触发,原手柄信号在 win32 上不可用;renderer 用该信号切换 body.pet-resizing
+   * (禁用 drag 区域 + 玻璃组件降级防闪烁,见 index.html CSS)。开始=首次 resize,
+   * 结束=resized 事件或"静默且左键已松开"兜底(拖拽中途停顿不再被误判为结束,
+   * 0063)。非 win32 的轮询兜底路径仍由手柄 pointerdown/up 驱动。
    */
   onResizeGesture(handler: (active: boolean) => void): () => void
   /**
