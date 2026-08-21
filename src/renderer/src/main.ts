@@ -598,10 +598,10 @@ async function boot(): Promise<void> {
         }
         break
       case 'question:pending':
-        // 0060:DSH ask_user_question → 提问中心 + 浮动提问卡
+        // 0060:DSH ask_user_question → 提问中心 + 浮动提问卡。
+        // 不弹"向你提问"气泡:气泡(z-index 最高)会遮挡提问卡本体。
         questions.add(event)
         actor.send({ type: 'TALK' })
-        showBubble(`❓ DSH 向你提问:${event.questions[0]?.question ?? ''}`, 4000)
         break
       case 'question:resolved':
         // 0060:提问已结算(我方提交后 DSH 回执,或他端/取消)——关卡(幂等)
