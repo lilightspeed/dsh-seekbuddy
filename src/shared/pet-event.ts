@@ -294,6 +294,27 @@ export interface PetApi {
    * 见 index.html CSS)。非 win32 的轮询兜底路径仍由手柄 pointerdown/up 驱动。
    */
   onResizeGesture(handler: (active: boolean) => void): () => void
+  /**
+   * 0062 极简模式:读当前窗口 bounds(屏幕坐标)。renderer 用它计算宠物包围盒的
+   * 屏幕锚点,配合 setWindowBounds 做"窗口收缩到宠物大小、宠物屏幕位置/大小不变"。
+   */
+  getWindowBounds(): Promise<{ x: number; y: number; width: number; height: number } | null>
+  /**
+   * 0062 极简模式:程序化设置窗口 bounds(屏幕坐标)。主进程夹取尺寸到
+   * WINDOW_SIZE_MIN/MAX、位置到显示器工作区;返回实际生效的 bounds。
+   * 程序化 setBounds 不触发 will-resize/resized,不会误触发缩放手势或落盘尺寸。
+   */
+  setWindowBounds(bounds: { x: number; y: number; width: number; height: number }): Promise<{
+    x: number
+    y: number
+    width: number
+    height: number
+  } | null>
+  /**
+   * 0062 极简模式:主进程发起的配置变更推送(当前为托盘切换极简模式)。renderer
+   * 据新配置执行进入/退出(renderer 自身发起的 setConfig 直接拿到返回的新配置)。
+   */
+  onConfigChanged(handler: (config: PetConfig) => void): () => void
 }
 
 export type PetConnectionState = {

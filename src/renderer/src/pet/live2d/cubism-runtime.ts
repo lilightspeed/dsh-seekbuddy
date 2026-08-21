@@ -725,6 +725,47 @@ class CubismRuntime implements Live2dRuntime {
     return pointInPolygon(x, y, mesh.points)
   }
 
+  /**
+   * 0062 极简模式:模型可见部分的屏幕包围盒(窗口 CSS 坐标)。
+   * 遍历当前帧所有**可见** drawable 的顶点,单次构建投影矩阵批量换算到 NDC,
+   * 取 min/max 后映射回窗口坐标(投影矩阵无旋转,NDC 极值即屏幕极值)。
+   * 含动画外延(思考气泡/Zzz/抬手等 sticker 都挂在可见 drawable 上);
+   * 模型未就绪 / 无可视顶点返回 null。调用方(极简模式)降频调用即可。
+   */
+  getModelBounds(): { x: number; y: number; width: number; height: number } | null {
+    const model = this.userModel?.getModel()
+    if (!model) return null
+    const projection = this.buildProjectionMatrix()
+    let minX = Infinity
+    let minY = Infinity
+    let maxX = -Infinity
+    let maxY = -Infinity
+    const drawableCount = model.getDrawableCount()
+    for (let i = 0; i < drawableCount; i++) {
+      if (!model.getDrawableDynamicFlagIsVisible(i)) continue
+      const positions = model.getDrawableVertexPositions(i)
+      for (let j = 0; j < positions.length; j += 2) {
+        const px = positions[j] ?? 0
+        const py = positions[j + 1] ?? 0
+        const nx = projection.transformX(px)
+        const ny = projection.transformY(py)
+        if (nx < minX) minX = nx
+        if (nx > maxX) maxX = nx
+        if (ny < minY) minY = ny
+        if (ny > maxY) maxY = ny
+      }
+    }
+    if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null
+    const w = this.host.clientWidth
+    const h = this.host.clientHeight
+    return {
+      x: ((minX + 1) / 2) * w,
+      y: ((1 - maxY) / 2) * h,
+      width: ((maxX - minX) / 2) * w,
+      height: ((maxY - minY) / 2) * h,
+    }
+  }
+
   loadModel(url: string): Promise<void> {
     if (this.disposed) return Promise.resolve()
     return this.loadModelInternal(url)

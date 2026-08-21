@@ -93,5 +93,15 @@ export function createSpriteAnimator(stage: PetStage): PetAnimator {
       eyeR.destroy()
       mouth.destroy()
     },
+    /**
+     * 0062 极简模式:球宠的屏幕包围盒(窗口 CSS 坐标)。占位球宠画在 stage.layer
+     * 原点(舞台锚点 = 窗口宽居中、高 0.44,见 stage.ts),半径取球体半径 +
+     * 跳动/眼睛/嘴的动画外延余量。
+     */
+    getDisplayBounds(): { x: number; y: number; width: number; height: number } | null {
+      const p = stage.layer.position
+      const r = BODY_RADIUS + 26
+      return { x: p.x - r, y: p.y - r, width: r * 2, height: r * 2 }
+    },
   }
 }

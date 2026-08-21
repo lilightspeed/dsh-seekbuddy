@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { PetApi, PetApprovalRequest, PetCursorPosition, PetEvent, PetQuestionRequest } from '../shared/pet-event.ts'
-import type { PetConfigUpdate } from '../shared/pet-config.ts'
+import type { PetConfig, PetConfigUpdate } from '../shared/pet-config.ts'
 
 /**
  * IPC 参数收敛(0004 纪律):undefined/NaN 过 IPC 会触发主进程
@@ -10,6 +10,21 @@ import type { PetConfigUpdate } from '../shared/pet-config.ts'
 function toFinite(value: unknown): number {
   const n = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(n) ? n : 0
+}
+
+/** 0062:窗口 bounds 收敛(缺失字段回退 0,主进程侧再按当前窗口值兜底)。 */
+function sanitizeBounds(bounds: { x?: number; y?: number; width?: number; height?: number } | undefined): {
+  x: number
+  y: number
+  width: number
+  height: number
+} {
+  return {
+    x: toFinite(bounds?.x),
+    y: toFinite(bounds?.y),
+    width: toFinite(bounds?.width),
+    height: toFinite(bounds?.height),
+  }
 }
 
 function sanitizeApproval(request: PetApprovalRequest | undefined): PetApprovalRequest {
@@ -40,6 +55,8 @@ function sanitizeConfigUpdate(patch: PetConfigUpdate | undefined): PetConfigUpda
   const out: PetConfigUpdate = {}
   if (patch?.dshBaseUrl !== undefined) out.dshBaseUrl = String(patch.dshBaseUrl ?? '')
   if (patch?.opacity !== undefined) out.opacity = toFinite(patch.opacity)
+  // 0062:极简模式开关(布尔)
+  if (patch?.petOnly !== undefined) out.petOnly = Boolean(patch.petOnly)
   // 0056:窗口尺寸(仅主进程 resize-end 写入;renderer 无设置入口,白名单保留)
   if (patch?.windowWidth !== undefined) out.windowWidth = toFinite(patch.windowWidth)
   if (patch?.windowHeight !== undefined) out.windowHeight = toFinite(patch.windowHeight)
@@ -127,6 +144,18 @@ const petApi: PetApi = {
     ipcRenderer.on('pet:resize-gesture', listener)
     return () => {
       ipcRenderer.removeListener('pet:resize-gesture', listener)
+    }
+  },
+  // 0062 极简模式:窗口 bounds 读写(屏幕坐标,数值收敛)+ 主进程配置变更推送
+  getWindowBounds: () => ipcRenderer.invoke('pet:get-bounds'),
+  setWindowBounds: (bounds) => ipcRenderer.invoke('pet:set-bounds', sanitizeBounds(bounds)),
+  onConfigChanged(handler) {
+    const listener = (_event: IpcRendererEvent, config: PetConfig): void => {
+      handler(config)
+    }
+    ipcRenderer.on('pet:config-changed', listener)
+    return () => {
+      ipcRenderer.removeListener('pet:config-changed', listener)
     }
   },
 }

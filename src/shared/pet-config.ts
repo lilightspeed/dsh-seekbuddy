@@ -16,6 +16,12 @@ export interface PetAppearanceConfig {
    */
   windowWidth: number
   windowHeight: number
+  /**
+   * 极简模式(0062):仅显示宠物 —— 隐藏全部非宠物组件(背景/气泡/输入条/按钮/
+   * 面板/通知/审批/提问卡/缩放手柄),窗口收缩到宠物包围盒大小(宠物屏幕位置与
+   * 大小不变),拖动范围收紧为宠物包围盒(独立 drag 层)。所有动作逻辑保留。
+   */
+  petOnly: boolean
 }
 
 /** 窗口基准尺寸(px,0056):默认窗口大小;拖拽调整后持久化到 appearance.windowWidth/Height。 */
@@ -100,7 +106,7 @@ export interface PetConfig {
 
 export const DEFAULT_PET_CONFIG: PetConfig = {
   dsh: { baseUrl: 'http://127.0.0.1:3080' },
-  appearance: { opacity: 1, windowWidth: WINDOW_SIZE.width, windowHeight: WINDOW_SIZE.height },
+  appearance: { opacity: 1, windowWidth: WINDOW_SIZE.width, windowHeight: WINDOW_SIZE.height, petOnly: false },
   pet: {
     positionX: 0.5,
     positionY: 0.44,
@@ -133,6 +139,8 @@ export const DEFAULT_PET_CONFIG: PetConfig = {
  * 宠物设置以 pet* 前缀平铺(见 PetPetSettings 各字段)。
  */
 export interface PetConfigUpdate {
+  /** 0062 极简模式开关(仅显示宠物;托盘/主页面按钮可切换,持久化,重启保持)。 */
+  petOnly?: boolean
   dshBaseUrl?: string
   opacity?: number
   /** 0056:窗口尺寸 px(仅主进程 resize-end 写入;renderer 无设置入口)。 */

@@ -130,6 +130,9 @@
       #stage canvas {
         position: absolute;
         inset: 0;
+        /* 0062:canvas 一律不拦截指针 —— 极简模式下 #stage 改 no-drag,点击由
+           #pet-drag-zone 与命中区接管,透明画布不得吃掉事件 */
+        pointer-events: none;
       }
 
       /* ---- 窗口边缘拖拽调整大小(0056):8 条透明 no-drag 手柄 ----
@@ -509,6 +512,104 @@
       }
       #btn-panel:hover {
         background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.5));
+      }
+      /* 0062 极简模式开关按钮:紧贴「菜单」按钮(#btn-panel)左侧,间距 8px。
+         激活态 = 蓝色填充(已开启极简模式);极简模式下本按钮随其余组件隐藏。 */
+      #btn-petonly {
+        position: fixed;
+        right: 56px;
+        top: 10px;
+        z-index: 4;
+        width: 30px;
+        height: 30px;
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        border-radius: 12px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.3));
+        backdrop-filter: blur(16px) saturate(170%);
+        -webkit-backdrop-filter: blur(16px) saturate(170%);
+        color: var(--ds-blue);
+        font-size: 13px;
+        cursor: pointer;
+        box-shadow:
+          0 3px 10px rgba(77, 107, 254, 0.15),
+          inset 0 1px 1px rgba(255, 255, 255, 0.7);
+        -webkit-app-region: no-drag;
+      }
+      #btn-petonly:hover {
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.5));
+      }
+      #btn-petonly.active {
+        background: linear-gradient(180deg, rgba(77, 107, 254, 0.92), rgba(77, 107, 254, 0.78));
+        color: #fff;
+        box-shadow:
+          0 3px 10px rgba(77, 107, 254, 0.35),
+          inset 0 1px 1px rgba(255, 255, 255, 0.35);
+      }
+
+      /* ---- 0062 极简模式:仅显示宠物 ----
+         隐藏全部非宠物组件(背景/气泡/输入条/按钮/面板/通知/审批卡/提问卡/缩放手柄);
+         窗口由主进程收缩到宠物包围盒大小(宠物屏幕位置与大小不变);
+         拖动范围收紧为 #pet-drag-zone(宠物包围盒 + 小边距,独立 drag 层),
+         极简模式下 #stage 改 no-drag;命中区(摸头/身体)压在拖动区之上。 */
+      #pet-drag-zone {
+        position: fixed;
+        z-index: 1;
+        display: none;
+        -webkit-app-region: drag;
+      }
+      #pet-exit-pill {
+        position: fixed;
+        top: 8px;
+        right: 8px;
+        z-index: 5;
+        padding: 4px 10px;
+        border-radius: 10px;
+        font-size: 11px;
+        color: var(--ds-blue);
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity 0.18s ease;
+        pointer-events: none;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.6));
+        backdrop-filter: blur(16px) saturate(170%);
+        -webkit-backdrop-filter: blur(16px) saturate(170%);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        box-shadow:
+          0 3px 10px rgba(77, 107, 254, 0.2),
+          inset 0 1px 1px rgba(255, 255, 255, 0.8);
+        -webkit-app-region: no-drag;
+      }
+      /* 悬停窗口(极简模式下窗口 ≈ 宠物)时淡入退出胶囊 */
+      body.pet-only:hover #pet-exit-pill {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      body.pet-only #bg,
+      body.pet-only #bubble,
+      body.pet-only #inputbar,
+      body.pet-only #btn-panel,
+      body.pet-only #btn-history,
+      body.pet-only #btn-petonly,
+      body.pet-only #panel,
+      body.pet-only #summary-pop,
+      body.pet-only #approval-card,
+      body.pet-only #question-card,
+      body.pet-only #notify-queue,
+      body.pet-only .pet-resize-handle {
+        display: none !important;
+      }
+      body.pet-only #stage {
+        -webkit-app-region: no-drag;
+      }
+      body.pet-only #pet-drag-zone {
+        display: block;
+      }
+      /* 命中区压到拖动区之上:头部(3)> 身体(2)> 拖动区(1),摸头/sad 优先于拖动 */
+      body.pet-only #pet-head-hit {
+        z-index: 3;
+      }
+      body.pet-only #pet-body-hit {
+        z-index: 2;
       }
       /* ---- 右上角操作通知队列(0042):液态玻璃小气泡,贴近设置按钮与窗口右缘 ----
          新通知从上方滑入队首(队列顶部),最旧的通知从队尾向下滑出消失 ——
@@ -1283,7 +1384,12 @@
       <div class="bg-blob b3"></div>
     </div>
     <div id="stage"></div>
+    <!-- 0062 极简模式:拖动区(宠物包围盒,独立 drag 层)与退出胶囊 -->
+    <div id="pet-drag-zone"></div>
+    <div id="pet-exit-pill">退出极简</div>
     <div id="bubble" class="glass"></div>
+    <!-- 0062 极简模式开关:紧贴「菜单」按钮(#btn-panel)左侧 -->
+    <button id="btn-petonly" class="glass" title="极简模式(仅显示宠物)">◐</button>
     <button id="btn-panel" class="glass" title="会话 / 审批 / 插件 / 设置">☰</button>
     <div id="panel" class="glass hidden">
       <div class="panel-tabs">

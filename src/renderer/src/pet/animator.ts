@@ -29,4 +29,10 @@ export interface PetAnimator {
    * 播放"愤怒"表情一次。可选:占位后端不实现(main.ts 用 ?. 调用)。
    */
   playInterrupted?(): void
+  /**
+   * 0062 极简模式:宠物当前**屏幕包围盒**(窗口 CSS 坐标)。Live2D 后端由运行时
+   * 可见 drawable 顶点包围盒给出(含动画外延),占位球宠按球几何估算;
+   * 模型未就绪返回 null。极简模式用它做窗口收缩与拖动区定位。
+   */
+  getDisplayBounds?(): { x: number; y: number; width: number; height: number } | null
 }

@@ -749,6 +749,13 @@ function createLive2dAnimatorWithRuntime(
     playInterrupted(): void {
       director.request(ANIMATIONS['angry'])
     },
+    /**
+     * 0062 极简模式:宠物屏幕包围盒(窗口 CSS 坐标)。直接透传运行时
+     * getModelBounds(可见 drawable 顶点包围盒,含动画外延);模型未就绪返回 null。
+     */
+    getDisplayBounds(): { x: number; y: number; width: number; height: number } | null {
+      return runtime.getModelBounds?.() ?? null
+    },
     dispose(): void {
       unsubscribeCursor?.()
       window.removeEventListener('pointermove', onPointerMove)

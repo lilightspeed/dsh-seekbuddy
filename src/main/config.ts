@@ -52,6 +52,8 @@ export class PetConfigStore {
       if (normalized !== null) next.dsh.baseUrl = normalized
     }
     if (patch.opacity !== undefined) next.appearance.opacity = clamp(patch.opacity, 0, 1)
+    // 0062:极简模式开关(布尔)
+    if (patch.petOnly !== undefined) next.appearance.petOnly = Boolean(patch.petOnly)
     // 0056:窗口尺寸只由主进程边缘拖拽(resize-end)写入,夹取到拖拽允许范围
     if (patch.windowWidth !== undefined) {
       next.appearance.windowWidth = clamp(patch.windowWidth, WINDOW_SIZE_MIN.width, WINDOW_SIZE_MAX.width)
@@ -115,6 +117,7 @@ export class PetConfigStore {
           if (normalized !== null) next.dsh.baseUrl = normalized
         }
         if (typeof raw.appearance?.opacity === 'number') next.appearance.opacity = clamp(raw.appearance.opacity, 0, 1)
+        if (typeof raw.appearance?.petOnly === 'boolean') next.appearance.petOnly = raw.appearance.petOnly
         if (typeof raw.appearance?.windowWidth === 'number') {
           next.appearance.windowWidth = clamp(raw.appearance.windowWidth, WINDOW_SIZE_MIN.width, WINDOW_SIZE_MAX.width)
         }

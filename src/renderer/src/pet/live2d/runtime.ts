@@ -101,6 +101,12 @@ export interface Live2dRuntime {
   hitTestBodyPoint?(x: number, y: number): boolean | undefined
   /** 切表情(exp3;后续里程碑,未实现可忽略)。 */
   playExpression(name: string): void
+  /**
+   * 0062 极简模式:模型可见部分的屏幕包围盒(窗口 CSS 坐标;模型未就绪返回 null)。
+   * 由当前帧所有可见 drawable 顶点经投影换算得到(与命中网格同一套换算),含动画
+   * 外延(思考气泡/Zzz/抬手)。极简模式用其做窗口收缩与拖动区定位。
+   */
+  getModelBounds?(): { x: number; y: number; width: number; height: number } | null
   /** 释放 canvas / WebGL 上下文 / 事件监听。 */
   dispose(): void
 }

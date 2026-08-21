@@ -59,6 +59,8 @@ async function bootstrap(): Promise<void> {
   let pluginOps: PluginOps | undefined
   let notifier: ReturnType<typeof createNotifier> | undefined
   let config: PetConfigStore | undefined
+  /** 0062:托盘句柄(极简模式勾选态随配置变更重建菜单;renderer 发起的切换也在此同步)。 */
+  let tray: ReturnType<typeof createTray> | undefined
 
   /** 目标会话:用户显式选择的会话(发消息的落点);null = 回退最近会话。 */
   let targetSessionId: string | null = null
@@ -463,11 +465,55 @@ async function bootstrap(): Promise<void> {
     return Math.min(max, Math.max(min, Math.round(Number.isFinite(n) ? n : min)))
   }
 
+  /** 0062:收敛 IPC 传入的窗口 bounds(0004 纪律;非法/缺失值回退当前窗口对应值)。 */
+  function sanitizeBoundsArg(
+    value: unknown,
+  ): { x: number; y: number; width: number; height: number } | null {
+    if (!mainWindow || mainWindow.isDestroyed()) return null
+    const v = (value ?? {}) as Record<string, unknown>
+    const cur = mainWindow.getBounds()
+    const num = (key: string, fallback: number): number => {
+      const n = typeof v[key] === 'number' ? (v[key] as number) : Number(v[key])
+      return Number.isFinite(n) ? n : fallback
+    }
+    return {
+      x: num('x', cur.x),
+      y: num('y', cur.y),
+      width: num('width', cur.width),
+      height: num('height', cur.height),
+    }
+  }
+
+  /** 0062:极简模式窗口收缩/恢复 —— 尺寸夹取 MIN/MAX,位置夹到所在显示器工作区
+   *  (窗口可能被设到屏幕边缘外,至少保证一部分留在工作区内可拖回)。 */
+  function clampBoundsToDisplay(b: {
+    x: number
+    y: number
+    width: number
+    height: number
+  }): { x: number; y: number; width: number; height: number } {
+    const width = clampWindow(b.width, WINDOW_SIZE_MIN.width, WINDOW_SIZE_MAX.width)
+    const height = clampWindow(b.height, WINDOW_SIZE_MIN.height, WINDOW_SIZE_MAX.height)
+    const area = screen.getDisplayNearestPoint({ x: b.x + width / 2, y: b.y + height / 2 }).workArea
+    const minX = area.x
+    const maxX = area.x + area.width - width
+    const minY = area.y
+    const maxY = area.y + area.height - height
+    return {
+      x: Math.round(Math.min(Math.max(b.x, Math.min(minX, maxX)), Math.max(minX, maxX))),
+      y: Math.round(Math.min(Math.max(b.y, Math.min(minY, maxY)), Math.max(minY, maxY))),
+      width,
+      height,
+    }
+  }
+
   /** IPC 侧配置补丁:只放行白名单字段(renderer 改不了 targetSessionId)。 */
   function sanitizeConfigUpdate(patch: PetConfigUpdate | undefined): PetConfigPatch {
     const out: PetConfigPatch = {}
     if (patch?.dshBaseUrl !== undefined) out.dshBaseUrl = String(patch.dshBaseUrl ?? '')
     if (typeof patch?.opacity === 'number' && Number.isFinite(patch.opacity)) out.opacity = patch.opacity
+    // 0062:极简模式开关(布尔)
+    if (typeof patch?.petOnly === 'boolean') out.petOnly = patch.petOnly
     // 0056:窗口尺寸只由主进程 resize-end 落盘;renderer 无设置入口,白名单保留以便程序化控制
     if (typeof patch?.windowWidth === 'number' && Number.isFinite(patch.windowWidth)) {
       out.windowWidth = clampWindow(patch.windowWidth, WINDOW_SIZE_MIN.width, WINDOW_SIZE_MAX.width)
@@ -590,6 +636,23 @@ async function bootstrap(): Promise<void> {
       stopResize(true)
     })
 
+    // 0062 极简模式窗口收缩/恢复:renderer 读当前 bounds 做锚点计算,写 setBounds
+    // 由主进程夹取(MIN/MAX + 显示器工作区)。程序化 setBounds 不触发 will-resize/
+    // resized(0057),不会误触发缩放手势,也不会经 resize-end 落盘窗口尺寸。
+    ipcMain.handle('pet:get-bounds', () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return null
+      const b = mainWindow.getBounds()
+      return { x: b.x, y: b.y, width: b.width, height: b.height }
+    })
+    ipcMain.handle('pet:set-bounds', (_event, bounds: unknown) => {
+      if (!mainWindow || mainWindow.isDestroyed()) return null
+      const raw = sanitizeBoundsArg(bounds)
+      if (!raw) return null
+      mainWindow.setBounds(clampBoundsToDisplay(raw))
+      const b = mainWindow.getBounds()
+      return { x: b.x, y: b.y, width: b.width, height: b.height }
+    })
+
     // B3(只读)插件监控:agent 中介读取目标会话插件清单
     pluginOps = createPluginOps({
       getConnection: () => connection,
@@ -609,6 +672,9 @@ async function bootstrap(): Promise<void> {
       const next = config.update(sanitizeConfigUpdate(patch))
       if (next.dsh.baseUrl !== prev.dsh.baseUrl) restartConnection()
       if (next.launchAtLogin !== prev.launchAtLogin) applyLaunchAtLogin(next.launchAtLogin)
+      // 0062:renderer 经按钮切换极简模式 → 托盘勾选态同步(主进程发起的切换在
+      // createTray 的 onPetOnlyToggle 里自行 setPetOnly,这里只处理 renderer 发起的)
+      if (next.appearance.petOnly !== prev.appearance.petOnly) tray?.setPetOnly(next.appearance.petOnly)
       return next
     })
 
@@ -630,15 +696,30 @@ async function bootstrap(): Promise<void> {
         console.error('[pet] mcp bridge failed to start:', error)
       })
 
-    const tray = createTray(() => {
-      if (!mainWindow || mainWindow.isDestroyed()) return
-      if (mainWindow.isVisible()) {
-        mainWindow.hide()
-      } else {
-        mainWindow.show()
-      }
-    })
-    void tray
+    // 0062 托盘:显示/隐藏 + 极简模式开关(勾选态随配置同步)。极简模式下窗口内
+    // UI 全隐,托盘是常驻入口之一(另一处是窗口内悬停退出胶囊)。
+    tray = createTray(
+      () => {
+        if (!mainWindow || mainWindow.isDestroyed()) return
+        if (mainWindow.isVisible()) {
+          mainWindow.hide()
+        } else {
+          mainWindow.show()
+        }
+      },
+      {
+        isPetOnly: () => config?.get().appearance.petOnly ?? false,
+        onPetOnlyToggle: (checked) => {
+          if (!config) return
+          const next = config.update({ petOnly: checked })
+          tray?.setPetOnly(next.appearance.petOnly)
+          // 主进程发起的切换(托盘)→ 推给 renderer 执行进入/退出(进入含窗口收缩)
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('pet:config-changed', next)
+          }
+        },
+      },
+    )
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
