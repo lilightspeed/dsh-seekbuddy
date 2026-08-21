@@ -1,3 +1,5 @@
+import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { app, BrowserWindow, ipcMain, screen } from 'electron'
 import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
@@ -427,6 +429,35 @@ async function bootstrap(): Promise<void> {
     }
   }
 
+  /**
+   * Windows 通知中心"折叠分组行"的图标来自 AppUserModelID 注册的应用图标,
+   * 而不是每条通知的 icon 参数(那只管展开的单条)。安装版有快捷方式自动关联;
+   * dev / portable 没有,分组行会回落成 Electron 占位图标 —— 这里把 AUMID
+   * 注册到 HKCU\Software\Classes\AppUserModelId\ 并指向应用图标(HKCU 免管理员,
+   * 幂等:值相同 reg.exe 不报错;失败静默,不影响启动)。
+   */
+  function registerNotificationAumidIcon(): void {
+    if (process.platform !== 'win32') return
+    let iconPath: string
+    try {
+      iconPath = app.isPackaged
+        ? join(process.resourcesPath, 'icon.ico')
+        : join(import.meta.dirname, '../../assets/pet/icons/ymcog-jpmci-001.ico')
+    } catch {
+      return
+    }
+    if (!existsSync(iconPath)) return
+    const key = 'HKCU\\Software\\Classes\\AppUserModelId\\com.deepseek-ai.dsh-pet'
+    const run = (args: string[]): void => {
+      execFile('reg.exe', args, { windowsHide: true }, (error) => {
+        if (error) console.error(`[pet] reg add ${args.slice(0, 2).join(' ')} failed:`, error)
+      })
+    }
+    // 默认值 = 应用显示名;DefaultIcon = 分组行图标(带引号路径,reg.exe 需要转义)
+    run(['add', key, '/ve', '/d', 'DSH Pet', '/f'])
+    run(['add', key, '/v', 'DefaultIcon', '/d', `"${iconPath}"`, '/f'])
+  }
+
   /** 0056:窗口尺寸夹取(建窗/配置写入统一收敛;拖拽期间的夹取在 applyResize)。 */
   function clampWindow(n: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, Math.round(Number.isFinite(n) ? n : min)))
@@ -475,7 +506,11 @@ async function bootstrap(): Promise<void> {
 
   app.whenReady().then(() => {
     // Windows 通知需要 appUserModelId(否则部分系统不显示)。
-    if (process.platform === 'win32') app.setAppUserModelId('com.deepseek-ai.dsh-pet')
+    if (process.platform === 'win32') {
+      app.setAppUserModelId('com.deepseek-ai.dsh-pet')
+      // 通知中心折叠分组行的图标来自 AUMID 注册(dev/portable 无快捷方式时的兜底)
+      registerNotificationAumidIcon()
+    }
 
     config = new PetConfigStore()
     // 启动即应用持久化配置:目标会话记忆、外观、开机自启

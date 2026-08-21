@@ -15,6 +15,11 @@ directories:
 files:
   - out/**
   - assets/**
+# 通知分组图标(registerNotificationAumidIcon 注册表指向):把应用图标放到
+# resources/icon.ico —— dev 用项目 assets,打包/portable 用这里(Shell 不读 asar 内文件)。
+extraResources:
+  - from: build/icon.ico
+    to: icon.ico
 # MCP server 必须解出 asar:DSH 用裸 node spawn 它(node 读不了 asar 内文件)。
 # 解包后真实路径:<install>/resources/app.asar.unpacked/out/main/mcp-server.js
 # (该文件已自包含打包,spawn 时无需 node_modules)。
