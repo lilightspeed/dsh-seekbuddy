@@ -2,9 +2,9 @@
  * 阶段 4:宠物侧 MCP server(stdio 传输,独立进程)。
  *
  * 由 DSH 的 mcp-client 插件 spawn(`command: node, args: [out/main/mcp-server.js]`),
- * 通过 stdin/stdout JSON-RPC 与 DSH 通信。DSH Agent 调用 `mcp__pet__speak` 等工具时,
- * 本进程把动作 POST 到宠物主进程的 loopback bridge(见 ./bridge.ts),
- * 主进程翻译成 PetEvent 推给 renderer —— 宠物真开口/变表情/弹通知。
+ * 通过 stdin/stdout JSON-RPC 与 DSH 通信。DSH Agent 调用 `mcp__pet__setExpression` /
+ * `mcp__pet__notify` 等工具时,本进程把动作 POST 到宠物主进程的 loopback bridge(见 ./bridge.ts),
+ * 主进程翻译成 PetEvent 推给 renderer —— 宠物变表情/弹通知。
  *
  * 端口发现:bridge 监听 loopback 固定端口(环境变量 PET_BRIDGE_PORT 可覆盖),
  * 默认 39761。主进程与 MCP server 约定一致;同机 loopback 受信。
@@ -41,19 +41,6 @@ export async function main(): Promise<void> {
   const server = new McpServer(
     { name: 'dsh-pet', version: '0.1.0' },
     { capabilities: { tools: { listChanged: true } } },
-  )
-
-  server.registerTool(
-    'speak',
-    {
-      title: 'Pet Speak',
-      description: '让桌面宠物开口说一句话:宠物弹气泡并进入说话状态。参数 text 为要说的话。',
-      inputSchema: { text: z.string().describe('宠物要说的话') },
-    },
-    async ({ text }) => {
-      const reply = await callBridge({ kind: 'speak', text })
-      return { content: [{ type: 'text', text: reply }] }
-    },
   )
 
   server.registerTool(

@@ -10,8 +10,6 @@
 
 /** 宠物侧 MCP server 支持的语义动作(与 PetEvent 一一对应)。 */
 export type PetBridgeAction =
-  /** 开口说话:renderer 弹气泡 + talking 状态。 */
-  | { kind: 'speak'; text: string }
   /** 切换表情状态:idle / thinking / happy / sad / talking。 */
   | { kind: 'expression'; state: 'idle' | 'thinking' | 'happy' | 'sad' | 'talking' }
   /** 系统通知(主进程 Electron Notification)。 */

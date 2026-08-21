@@ -28,7 +28,6 @@ const tools = await client.listTools()
 console.log('tools:', tools.tools.map((t) => t.name).join(', '))
 
 for (const call of [
-  ['speak', { text: 'boot test' }],
   ['setExpression', { state: 'happy' }],
   ['notify', { title: 't', body: 'b' }],
 ]) {

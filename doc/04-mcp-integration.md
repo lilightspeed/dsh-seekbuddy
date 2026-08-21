@@ -1,6 +1,6 @@
 # 04 · MCP 集成指南(让 Agent 反驱动宠物)
 
-> 前两篇解决了"宠物控制 DSH + 观察 DSH"。这一篇解决反向链路:**DSH 的 Agent 调用宠物的工具**,让宠物开口说话、做动作、弹提醒。协议用 MCP(Model Context Protocol),DSH 侧已有现成的 `mcp-client` 插件。
+> 前两篇解决了"宠物控制 DSH + 观察 DSH"。这一篇解决反向链路:**DSH 的 Agent 调用宠物的工具**,让宠物做动作、弹提醒。协议用 MCP(Model Context Protocol),DSH 侧已有现成的 `mcp-client` 插件。
 
 ## 1. 方向与角色
 
@@ -19,7 +19,7 @@ DSH 是 MCP **客户端**,宠物是 MCP **服务器**。与 03 篇方向相反,�
 mcp__<serverName>__<rawToolName>
 ```
 
-示例:serverName=`pet`,工具 `speak` → 注册为 `mcp__pet__speak`。
+示例:serverName=`pet`,工具 `setExpression` → 注册为 `mcp__pet__setExpression`。
 
 工具名归一化规则以 `packages/mcp/mcp-client/src/tools.ts` 为准(`publicToolName`)。
 
@@ -67,22 +67,22 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 const server = new McpServer({ name: 'dsh-pet', version: '0.1.0' })
 
 server.registerTool(
-  'speak',
+  'notify',
   {
-    title: '让宠物说话',
-    description: '让桌面宠物用气泡或语音说出给定文本',
+    title: '让宠物弹系统通知',
+    description: '让桌面宠物弹出系统通知',
     inputSchema: {
       type: 'object',
       properties: {
-        text: { type: 'string', description: '要说的话' },
-        useVoice: { type: 'boolean', description: '是否用语音朗读', default: false },
+        title: { type: 'string', description: '通知标题' },
+        body: { type: 'string', description: '通知正文' },
       },
-      required: ['text'],
+      required: ['title', 'body'],
     },
   },
-  async ({ text, useVoice }) => {
-    // 转发给表现层:气泡展示 / TTS 朗读
-    return { content: [{ type: 'text', text: `已说:${text}` }] }
+  async ({ title, body }) => {
+    // 转发给表现层:弹系统通知
+    return { content: [{ type: 'text', text: `已通知:${title}` }] }
   },
 )
 ```
@@ -93,11 +93,9 @@ server.registerTool(
 
 | 工具名 | 作用 | 参数(建议) |
 |---|---|---|
-| `pet.speak` | 气泡/TTS 说话 | text, useVoice |
 | `pet.setExpression` | 切表情 | expression (枚举) |
 | `pet.playAnimation` | 播动作 | animation (枚举) |
 | `pet.notify` | 系统通知 | title, body |
-| `pet.showBubble` | 气泡(不带语音) | text, durationMs |
 | `pet.askConfirm` | 弹一个带按钮的确认框,返回用户选择 | question, options |
 
 第二期可加桌面自动化类:`pet.openApp`、`pet.switchWindow`、`pet.openFile` 等——但要评估权限与安全,默认不放危险操作。
@@ -121,5 +119,5 @@ server.registerTool(
 1. 你在宠物气泡里输入"帮我查下今天的天气"。
 2. 宠物经 `/api` 把消息发进某个 DSH session。
 3. Agent 运行,宠物经 `events.mux` 显示"思考中"动作。
-4. Agent 决定播报结果时,调用 `mcp__pet__speak`(text=结果摘要, useVoice=true)。
-5. 宠物 TTS 朗读 + 气泡展示,完成"你 → 宠物 → DSH → Agent → 宠物"的闭环。
+4. Agent 决定播报结果时,调用 `mcp__pet__notify`(title=「DSH 播报」, body=结果摘要)。
+5. 宠物弹系统通知,完成"你 → 宠物 → DSH → Agent → 宠物"的闭环。

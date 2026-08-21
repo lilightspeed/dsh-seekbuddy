@@ -92,8 +92,6 @@ export interface PetConfig {
   appearance: PetAppearanceConfig
   /** 宠物(Live2D)外观与跟随手感。 */
   pet: PetPetSettings
-  /** 语音(TTS)总开关 —— 阶段 6 语音接入后生效,现在只持久化。 */
-  voice: { enabled: boolean }
   /** 开机自启(Windows LoginItem)。 */
   launchAtLogin: boolean
   /** 目标会话记忆(发消息的落点;重启后恢复,可被 selectSession 清空)。 */
@@ -125,7 +123,6 @@ export const DEFAULT_PET_CONFIG: PetConfig = {
     // 唤醒加速度阈值(0059):速度变化率 ≥2500 px/s² 视为"惊动",唤醒睡眠
     wakeAccel: 2500,
   },
-  voice: { enabled: true },
   launchAtLogin: false,
   targetSessionId: null,
 }
@@ -141,7 +138,6 @@ export interface PetConfigUpdate {
   /** 0056:窗口尺寸 px(仅主进程 resize-end 写入;renderer 无设置入口)。 */
   windowWidth?: number
   windowHeight?: number
-  voiceEnabled?: boolean
   launchAtLogin?: boolean
   petPositionX?: number
   petPositionY?: number

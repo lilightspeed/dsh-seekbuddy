@@ -251,13 +251,12 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     }
   }
 
-  // ---- 设置 tab(阶段 5:DSH 地址 / 外观 / 自启 / 语音开关)----
+  // ---- 设置 tab(阶段 5:DSH 地址 / 外观 / 自启)----
   const urlInput = document.querySelector<HTMLInputElement>('#set-dsh-url')
   const urlApplyBtn = document.querySelector<HTMLButtonElement>('#set-dsh-apply')
   const opacitySlider = document.querySelector<HTMLInputElement>('#set-opacity')
   const opacityVal = document.querySelector<HTMLSpanElement>('#set-opacity-val')
   const autostartCheck = document.querySelector<HTMLInputElement>('#set-autostart')
-  const voiceCheck = document.querySelector<HTMLInputElement>('#set-voice')
 
   /** 从主进程拉最新配置并回填控件(输入框正在编辑时跳过,避免打断输入)。 */
   async function refreshSettings(): Promise<void> {
@@ -275,7 +274,6 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     // 应用持久化的背景透明度(CSS opacity 作用于 #bg;win.setOpacity 会破坏 acrylic 毛玻璃)
     applyBackgroundOpacity(cfg.appearance.opacity)
     if (autostartCheck) autostartCheck.checked = cfg.launchAtLogin
-    if (voiceCheck) voiceCheck.checked = cfg.voice.enabled
     // 宠物(Live2D)外观/手感
     const p = cfg.pet
     if (petX && document.activeElement !== petX) petX.value = String(Math.round(p.positionX * 100))
@@ -332,12 +330,6 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     if (!autostartCheck) return
     void api.setConfig({ launchAtLogin: autostartCheck.checked }).then((cfg) => {
       hooks.onFlash(cfg.launchAtLogin ? '🚀 已开启开机自启' : '已关闭开机自启', true)
-    })
-  })
-  voiceCheck?.addEventListener('change', () => {
-    if (!voiceCheck) return
-    void api.setConfig({ voiceEnabled: voiceCheck.checked }).then((cfg) => {
-      hooks.onFlash(cfg.voice.enabled ? '🔊 语音已开启(阶段 6 生效)' : '🔇 语音已关闭', true)
     })
   })
 

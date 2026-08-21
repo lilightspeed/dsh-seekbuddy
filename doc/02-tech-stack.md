@@ -67,13 +67,13 @@
 |---|---|
 | SDK | `@modelcontextprotocol/sdk`(`McpServer`) |
 | 传输 | **loopback TCP bridge(实际落地)**:宠物主进程开 `127.0.0.1:39761` 桥,DSH 用裸 node spawn `out/main/mcp-server.js`(stdio)对接;见 `mcp/bridge.ts` + `mcp/server.ts` |
-| 工具(现役) | `pet.speak`、`pet.setExpression`、`pet.notify`(已实机验证,见 0008/0011) |
+| 工具(现役) | `pet.setExpression`、`pet.notify`(已实机验证,见 0008/0011) |
 
-## 8. 语音(未实现,阶段 6)
+## 8. 语音(未计划)
 
 | 项 | 选型 |
 |---|---|
-| TTS | 未接入;设置面板已有"语音提示"开关(仅持久化),阶段 6 再实现 |
+| TTS | 未接入;设置面板"语音提示"开关已移除(不再计划实现) |
 | ASR | 未接入 |
 
 ## 9. 本地存储 / 配置

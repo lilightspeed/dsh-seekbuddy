@@ -74,8 +74,6 @@ export function createBridge(onAction: (action: PetBridgeAction) => void): Promi
 /** 把 bridge 动作翻译成 PetEvent(供 sendPetEvent 转发;notify 额外走系统通知)。 */
 export function bridgeActionToEvent(action: PetBridgeAction): PetEvent {
   switch (action.kind) {
-    case 'speak':
-      return { type: 'pet:speak', text: action.text }
     case 'expression':
       return { type: 'pet:expression', state: action.state }
     case 'notify':

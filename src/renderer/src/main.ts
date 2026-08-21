@@ -460,10 +460,6 @@ async function boot(): Promise<void> {
         if (summarySessionId === null) summarySessionId = event.sessionId
         if (event.sessionId === summarySessionId) pushSummaryEntry(event.entry)
         break
-      case 'pet:speak':
-        actor.send({ type: 'TALK' })
-        showBubble(event.text, 4000)
-        break
       case 'pet:expression': {
         const state = event.state
         if (state === 'happy' || state === 'sad' || state === 'talking') {

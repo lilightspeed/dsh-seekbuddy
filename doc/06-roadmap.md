@@ -20,7 +20,7 @@
 
 ## 阶段 4 · 反向链路 MCP ✅ 已完成
 
-MCP server(`pet.speak / setExpression / notify`)+ 主进程 loopback bridge + DSH `mcp-client` 接入,实机验证双向闭环。→ [changes/0008](./changes/0008-mcp-reverse-link.md)、[0011](./changes/0011-packaged-mcp-verify.md)
+MCP server(`setExpression / notify`)+ 主进程 loopback bridge + DSH `mcp-client` 接入,实机验证双向闭环。→ [changes/0008](./changes/0008-mcp-reverse-link.md)、[0011](./changes/0011-packaged-mcp-verify.md)
 
 ## 阶段 5 · 打包与常驻 ✅ 已完成
 
@@ -35,7 +35,6 @@ electron-builder NSIS/portable、单实例、开机自启、配置持久化(手�
 - [x] Live2D 角色替换精灵图(0015,已现役)
 - [x] 多会话雷达(0012,已并入会话页)
 - [x] 动态 Cordis 插件**只读**监控(0013;B3)
-- [ ] 语音:TTS(edge-tts)+ ASR —— 设置面板开关已持久化,未实现
 - [ ] 动态 Cordis 插件管理界面(define/run/update/stop/undefine/inspect)
 - [ ] Live2D 表情/姿势/动画/HitAreas(素材与 `model3.json` 注册,清单见 `assets/pet/live2d/README.md` §4)
 - [ ] 桌面自动化 MCP 工具(openApp / switchWindow,谨慎开放)

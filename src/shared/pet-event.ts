@@ -77,8 +77,6 @@ export type PetEvent =
    * 并折叠/截断;renderer 只按 seq 去重累积渲染。
    */
   | { type: 'dsh:summary-update'; sessionId: string; entry: PetSummaryEntry }
-  /** 阶段 4 反向链路:MCP 工具驱动宠物开口。 */
-  | { type: 'pet:speak'; text: string }
   /** 阶段 4 反向链路:MCP 工具切换表情状态。 */
   | { type: 'pet:expression'; state: 'idle' | 'thinking' | 'happy' | 'sad' | 'talking' }
   /** 阶段 4 反向链路:MCP 工具触发系统通知。 */
@@ -230,7 +228,7 @@ export interface PetApi {
   createSession(): Promise<PetCreateResult>
   /** 回包审批(echo rpcId,允许/拒绝)。 */
   respondApproval(request: PetApprovalRequest): Promise<PetOpResult>
-  /** 阶段 5:读完整配置(DSH 地址/外观/语音/自启/目标会话)。 */
+  /** 阶段 5:读完整配置(DSH 地址/外观/自启/目标会话)。 */
   getConfig(): Promise<PetConfig>
   /** 阶段 5:应用扁平配置补丁;主进程执行副作用(重连/窗口/自启)后返回新配置。 */
   setConfig(patch: PetConfigUpdate): Promise<PetConfig>

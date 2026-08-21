@@ -1,9 +1,9 @@
 /**
  * 阶段 4 临时验证脚本(不入库):模拟 DSH mcp-client 的 stdio 连接,
- * 调用宠物 MCP server 的 speak / setExpression / notify 三个工具,
+ * 调用宠物 MCP server 的 setExpression / notify 两个工具,
  * 确认链路:DSH 侧调用 → MCP server → bridge → 宠物窗口表现。
  *
- * 用法:node scripts/mcp-bridge-smoke.mjs [speak|expression|notify|all]
+ * 用法:node scripts/mcp-bridge-smoke.mjs [expression|notify|all]
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -33,7 +33,6 @@ async function call(name, args) {
   console.log(`${name}(${JSON.stringify(args)}) ->`, text)
 }
 
-if (which === 'speak' || which === 'all') await call('speak', { text: '你好!我是宠物,收到 Agent 的消息了 🐾' })
 if (which === 'expression' || which === 'all') await call('setExpression', { state: 'happy' })
 if (which === 'notify' || which === 'all') await call('notify', { title: '阶段 4 验证', body: 'MCP 反向链路打通!' })
 

@@ -46,7 +46,6 @@ export class PetConfigStore {
       dsh: { ...this.value.dsh },
       appearance: { ...this.value.appearance },
       pet: { ...this.value.pet },
-      voice: { ...this.value.voice },
     }
     if (patch.dshBaseUrl !== undefined) {
       const normalized = normalizeBaseUrl(patch.dshBaseUrl)
@@ -80,7 +79,6 @@ export class PetConfigStore {
     if (patch.petSleepAfterSec !== undefined) next.pet.sleepAfterSec = clamp(patch.petSleepAfterSec, 10, 86400)
     // 唤醒加速度阈值(0059):500..20000 px/s²
     if (patch.petWakeAccel !== undefined) next.pet.wakeAccel = clamp(patch.petWakeAccel, 500, 20000)
-    if (patch.voiceEnabled !== undefined) next.voice.enabled = Boolean(patch.voiceEnabled)
     if (patch.launchAtLogin !== undefined) next.launchAtLogin = Boolean(patch.launchAtLogin)
     if (patch.targetSessionId !== undefined) {
       next.targetSessionId = patch.targetSessionId === null ? null : String(patch.targetSessionId)
@@ -111,7 +109,6 @@ export class PetConfigStore {
           dsh: { ...this.value.dsh },
           appearance: { ...this.value.appearance },
           pet: { ...this.value.pet },
-          voice: { ...this.value.voice },
         }
         if (typeof raw.dsh?.baseUrl === 'string') {
           const normalized = normalizeBaseUrl(raw.dsh.baseUrl)
@@ -154,7 +151,6 @@ export class PetConfigStore {
           if (typeof raw.pet.sleepAfterSec === 'number') next.pet.sleepAfterSec = clamp(raw.pet.sleepAfterSec, 10, 86400)
           if (typeof raw.pet.wakeAccel === 'number') next.pet.wakeAccel = clamp(raw.pet.wakeAccel, 500, 20000)
         }
-        if (typeof raw.voice?.enabled === 'boolean') next.voice.enabled = raw.voice.enabled
         if (typeof raw.launchAtLogin === 'boolean') next.launchAtLogin = raw.launchAtLogin
         if (raw.targetSessionId === null || typeof raw.targetSessionId === 'string') {
           next.targetSessionId = raw.targetSessionId
@@ -173,7 +169,6 @@ function cloneDefault(): PetConfig {
     dsh: { ...DEFAULT_PET_CONFIG.dsh },
     appearance: { ...DEFAULT_PET_CONFIG.appearance },
     pet: { ...DEFAULT_PET_CONFIG.pet },
-    voice: { ...DEFAULT_PET_CONFIG.voice },
   }
 }
 

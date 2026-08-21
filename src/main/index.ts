@@ -444,7 +444,6 @@ async function bootstrap(): Promise<void> {
     if (typeof patch?.windowHeight === 'number' && Number.isFinite(patch.windowHeight)) {
       out.windowHeight = clampWindow(patch.windowHeight, WINDOW_SIZE_MIN.height, WINDOW_SIZE_MAX.height)
     }
-    if (typeof patch?.voiceEnabled === 'boolean') out.voiceEnabled = patch.voiceEnabled
     if (typeof patch?.launchAtLogin === 'boolean') out.launchAtLogin = patch.launchAtLogin
     // 宠物(Live2D)外观/跟随手感(0017):标量 + 范围收敛
     if (typeof patch?.petPositionX === 'number' && Number.isFinite(patch.petPositionX)) out.petPositionX = Math.min(1, Math.max(0, patch.petPositionX))
