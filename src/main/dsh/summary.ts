@@ -10,42 +10,6 @@ import type { PetSummaryEntry } from '../../shared/pet-event.ts'
  * 只按 event.type 窄化,不依赖具体 data 深度(与仓库类型同源,禁止手写接口类型)。
  */
 
-/** 表格行(管道分隔):`| a | b |`;代码块 fence 行除外。 */
-function isTableRow(line: string): boolean {
-  return /^\s*\|.*\|\s*$/.test(line) && line.includes('|', 1) && !line.startsWith('```')
-}
-
-/**
- * 截断到上限(带省略号)。保留换行与**完整表格块**:
- * - 截断点落在表格块内部时,把断点提前到该表格块结束(表格完整保留,之后内容丢弃);
- * - 表格要么完整显示,要么完全不显示,不会出现半个表格。
- * 截断可能切断代码块 fence,渲染器对未闭合标记按文本容忍。
- */
-export function clampText(text: string, max = 300): string {
-  const flat = text.trim()
-  if (flat.length <= max) return flat
-  // 收集表格块字符区间 [start, end)
-  const lines = flat.split('\n')
-  const tableRanges: Array<[number, number]> = []
-  let start = -1
-  let pos = 0
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? ''
-    const row = isTableRow(line)
-    if (row && start < 0) start = pos
-    if (!row && start >= 0) {
-      tableRanges.push([start, pos])
-      start = -1
-    }
-    pos += line.length + 1
-  }
-  if (start >= 0) tableRanges.push([start, flat.length])
-  const cut = max - 1
-  const hit = tableRanges.find(([s, e]) => s <= cut && cut < e)
-  if (hit) return `${flat.slice(0, hit[1]).trimEnd()}…`
-  return `${flat.slice(0, cut)}…`
-}
-
 /** 回合结束 reason.kind → 摘要文本;正常完成(completed)不生成摘要(气泡已提示)。 */
 function turnEndText(kind: string): string | null {
   switch (kind) {
@@ -85,7 +49,7 @@ export function summaryEntryOf(event: SessionEvent, toolNames: Map<string, strin
     case 'user/message': {
       const text = textOfBlocks(event.data.content)
       if (!text) return null
-      return { seq: event.seq, time: event.time, kind: 'user', text: clampText(text) }
+      return { seq: event.seq, time: event.time, kind: 'user', text }
     }
     case 'assistant/message': {
       const content = event.data.message.content
@@ -93,7 +57,7 @@ export function summaryEntryOf(event: SessionEvent, toolNames: Map<string, strin
       if (content.some((block) => block.type === 'tool-call')) return null
       const text = textOfBlocks(content)
       if (!text) return null
-      return { seq: event.seq, time: event.time, kind: 'assistant', text: clampText(text) }
+      return { seq: event.seq, time: event.time, kind: 'assistant', text }
     }
     case 'tool/call':
       toolNames.set(String(event.data.callId), event.data.name)
