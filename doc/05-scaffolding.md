@@ -16,8 +16,7 @@ apps/pet/
 ├── AGENTS.md                 # 仓库约定(改动档案、命令、已知架构事实)
 ├── scripts/
 │   ├── package.mjs           # electron-builder 打包脚本(dist / dist:dir)
-│   ├── mcp-server-boot-test.mjs / mcp-bridge-smoke.mjs   # MCP 冒烟测试
-│   └── make-icon.ps1         # 图标生成
+│   └── mcp-server-boot-test.mjs / mcp-bridge-smoke.mjs   # MCP 冒烟测试
 ├── vendor/live2d/            # Cubism SDK for Web 5-r.5(许可 + Framework src/dist + 再构建说明)
 ├── assets/pet/               # publicDir 静态根(dev 下 /pet/** 可访问)
 │   ├── live2d/               # ds-pet 模型 + core(live2dcubismcore.js)+ shaders/ + 兼容性说明卡

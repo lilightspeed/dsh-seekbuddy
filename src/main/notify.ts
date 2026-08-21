@@ -1,16 +1,12 @@
 import { join } from 'node:path'
 import { nativeImage, Notification, type NativeImage, type NotificationConstructorOptions } from 'electron'
 
-/** 应用图标缓存(通知图标;与托盘同一素材,win32 用 ico 含多尺寸帧)。 */
+/** 应用图标缓存(通知图标;与托盘同一素材,win32 用 ico 含多尺寸帧;非 win32 解析失败则通知不带图标)。 */
 let cachedIcon: NativeImage | undefined
 function appIcon(): NativeImage | undefined {
   if (cachedIcon) return cachedIcon
   try {
-    const iconPath = join(
-      import.meta.dirname,
-      process.platform === 'win32' ? '../../assets/pet/icons/ymcog-jpmci-001.ico' : '../../assets/pet/icons/icon.png',
-    )
-    cachedIcon = nativeImage.createFromPath(iconPath)
+    cachedIcon = nativeImage.createFromPath(join(import.meta.dirname, '../../assets/pet/icons/ymcog-jpmci-001.ico'))
     return cachedIcon.isEmpty() ? undefined : cachedIcon
   } catch {
     return undefined
