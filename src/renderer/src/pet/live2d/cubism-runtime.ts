@@ -576,8 +576,12 @@ class CubismRuntime implements Live2dRuntime {
     const actualDim = fitByWidth ? canvasW : canvasH
     const sizeScale = this.appearance.scale * (refDim / Math.max(1, actualDim))
     view.scale(sizeScale, sizeScale)
-    const tx = (2 * this.appearance.positionX - 1) * ratio
-    const ty = 1 - 2 * this.appearance.positionY
+    // 0062d:位置平移**不**随 sizeScale 缩放 —— sizeScale 含 1/canvasH,若不除,
+    // 水平/垂直平移量会随窗口高度漂移,表现为"调窗口高度时宠物位置乱跑"。
+    // 除掉后宠物中心锚定到窗口归一化位置(positionX*width / positionY*height),
+    // 大小恒定、位置恒定,只受 appearance 控制。
+    const tx = ((2 * this.appearance.positionX - 1) * ratio) / sizeScale
+    const ty = (1 - 2 * this.appearance.positionY) / sizeScale
     view.translateRelative(tx, ty)
     this.viewMatrix = view
   }
