@@ -191,6 +191,24 @@ async function bootstrap(): Promise<void> {
       persistWindowSize()
       applyEdgeChrome(win)
     })
+    // 防御性兜底:will-resize 偶发未触发时,resize 事件仍会收到;若此时手势未激活,
+    // 立即激活以禁用 drag 区域,避免下一次拖动被 #stage 的 drag 区域吞掉。
+    if (process.platform === 'win32') {
+      win.on('resize', () => {
+        if (!resizeGestureActive) {
+          console.warn('[pet] resize:兜底激活缩放手势(will-resize 可能未触发)')
+          sendResizeGesture(true)
+          if (resizeGestureTimer) clearTimeout(resizeGestureTimer)
+          resizeGestureTimer = setTimeout(() => {
+            resizeGestureTimer = undefined
+            if (!resizeGestureActive) return
+            sendResizeGesture(false)
+            persistWindowSize()
+            applyEdgeChrome(win)
+          }, 400)
+        }
+      })
+    }
 
     // 窗口重建(如 mac activate)后拖动采样从零开始,避免旧窗口位置算出虚假位移(0032)
     prevWindowPos = null
@@ -682,6 +700,20 @@ async function bootstrap(): Promise<void> {
       mainWindow.setBounds(clampBoundsToDisplay(raw))
       const b = mainWindow.getBounds()
       return { x: b.x, y: b.y, width: b.width, height: b.height }
+    })
+    // 0062 极简模式:锁定/解锁窗口缩放。锁定时把 MIN/MAX 都设为当前尺寸,使边缘拖拽无效;
+    // 解锁时恢复 WINDOW_SIZE_MIN/MAX。setResizable API 在 transparent+frameless 窗口上
+    // 不可靠,改用 MIN/MAX 夹取更稳定。
+    ipcMain.handle('pet:set-resizable', (_event, resizable: unknown) => {
+      if (!mainWindow || mainWindow.isDestroyed()) return
+      if (resizable) {
+        mainWindow.setMinimumSize(WINDOW_SIZE_MIN.width, WINDOW_SIZE_MIN.height)
+        mainWindow.setMaximumSize(WINDOW_SIZE_MAX.width, WINDOW_SIZE_MAX.height)
+      } else {
+        const b = mainWindow.getBounds()
+        mainWindow.setMinimumSize(b.width, b.height)
+        mainWindow.setMaximumSize(b.width, b.height)
+      }
     })
 
     // B3(只读)插件监控:agent 中介读取目标会话插件清单

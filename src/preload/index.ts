@@ -149,6 +149,7 @@ const petApi: PetApi = {
   // 0062 极简模式:窗口 bounds 读写(屏幕坐标,数值收敛)+ 主进程配置变更推送
   getWindowBounds: () => ipcRenderer.invoke('pet:get-bounds'),
   setWindowBounds: (bounds) => ipcRenderer.invoke('pet:set-bounds', sanitizeBounds(bounds)),
+  setResizable: (resizable: boolean) => ipcRenderer.invoke('pet:set-resizable', Boolean(resizable)),
   onConfigChanged(handler) {
     const listener = (_event: IpcRendererEvent, config: PetConfig): void => {
       handler(config)

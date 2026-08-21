@@ -295,6 +295,11 @@ export interface PetApi {
    */
   onResizeGesture(handler: (active: boolean) => void): () => void
   /**
+   * 0062 极简模式:设置窗口是否可缩放。极简模式下锁定窗口大小(不可拖动边缘缩放),
+   * 退出极简模式时恢复可缩放。
+   */
+  setResizable(resizable: boolean): Promise<void>
+  /**
    * 0062 极简模式:读当前窗口 bounds(屏幕坐标)。renderer 用它计算宠物包围盒的
    * 屏幕锚点,配合 setWindowBounds 做"窗口收缩到宠物大小、宠物屏幕位置/大小不变"。
    */

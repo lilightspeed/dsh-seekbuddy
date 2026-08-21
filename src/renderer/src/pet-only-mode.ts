@@ -28,7 +28,7 @@ export interface PetOnlyMode {
 }
 
 export function createPetOnlyMode(
-  _api: PetApi | undefined,
+  api: PetApi | undefined,
   _animator: PetAnimator,
   options: PetOnlyModeOptions,
 ): PetOnlyMode {
@@ -39,6 +39,8 @@ export function createPetOnlyMode(
     if (active === next) return
     active = next
     document.body.classList.toggle('pet-only', next)
+    // 极简模式锁定窗口大小(不可拖动边缘缩放),退出时恢复
+    void api?.setResizable(!next)
     options.onActiveChange?.(next)
   }
 
