@@ -17,17 +17,19 @@ export interface PetAppearanceConfig {
   windowWidth: number
   windowHeight: number
   /**
-   * 极简模式(0062):仅显示宠物 —— 隐藏全部非宠物组件(背景/气泡/输入条/按钮/
-   * 面板/通知/审批/提问卡/缩放手柄),窗口收缩到宠物包围盒大小(宠物屏幕位置与
-   * 大小不变),拖动范围收紧为宠物包围盒(独立 drag 层)。所有动作逻辑保留。
+   * 极简模式(0062):仅显示宠物 —— 仅隐藏全部非宠物组件(背景/气泡/输入条/按钮/
+   * 面板/通知/审批/提问卡/缩放手柄),**不改动窗口大小**(宠物超出窗口部分被截断);
+   * 所有动作逻辑保留。
    */
   petOnly: boolean
 }
 
 /** 窗口基准尺寸(px,0056):默认窗口大小;拖拽调整后持久化到 appearance.windowWidth/Height。 */
 export const WINDOW_SIZE = { width: 420, height: 560 } as const
-/** 窗口尺寸夹取范围(px,0056):主进程拖拽 setBounds 与配置读写共用。 */
-export const WINDOW_SIZE_MIN = { width: 200, height: 280 } as const
+/** 窗口尺寸夹取范围(px,0056):主进程拖拽 setBounds 与配置读写共用。
+ *  0062c:最低高度从 280 降到 120 —— 极简模式不改窗口大小,用户可能把窗口压到很矮
+ *  (宠物截断即可),故放宽下限;宽度保持 200 防止卡片被压到不可用。 */
+export const WINDOW_SIZE_MIN = { width: 200, height: 120 } as const
 export const WINDOW_SIZE_MAX = { width: 1600, height: 1600 } as const
 
 /** 宠物(Live2D)外观与视角跟随手感 —— 设置面板可调,实时生效并持久化(0017)。 */

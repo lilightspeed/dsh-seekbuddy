@@ -373,28 +373,16 @@ async function boot(): Promise<void> {
     document.body.classList.toggle('pet-resizing', active)
   })
 
-  // 0062 极简模式(仅显示宠物):窗口收缩到宠物大小、拖动范围=宠物包围盒、
-  // 隐藏全部非宠物组件;动作逻辑全部保留。开关 = 主页面 #btn-petonly(菜单按钮
-  // 左侧)+ 托盘(经 pet:config-changed 推送)+ 悬停退出胶囊;模式开关持久化。
+  // 0062 极简模式(仅显示宠物):仅隐藏全部非宠物组件,**不改动窗口大小**
+  // (宠物超出窗口部分被截断)。开关 = 主页面 #btn-petonly(菜单按钮左侧)+
+  // 托盘(经 pet:config-changed 推送)+ 悬停退出胶囊;模式开关持久化。
   const petOnlyMode = createPetOnlyMode(api, animator, {
-    // 派生外观(px/py/scale)只直接喂动画器,不写 config.json(不持久化)
-    onPetSettingsApply: (settings) => animator.applyPetSettings?.(settings),
     onActiveChange: (active) => btnPetonlyEl?.classList.toggle('active', active),
   })
   btnPetonlyEl?.addEventListener('click', () => {
     const target = !petOnlyMode.isActive()
-    if (target) {
-      if (!animator.getDisplayBounds) {
-        showBubble('当前动画后端不支持极简模式', 3000)
-        return
-      }
-      if (!animator.getDisplayBounds()) {
-        showBubble('模型未就绪,请稍候', 3000)
-        return
-      }
-    }
-    // 0062:按钮/胶囊切换统一走 setConfig 持久化 —— 主进程据此联动托盘勾选态与
-    // acrylic 背景,并返回新配置;renderer 收到后执行进入/退出(进入含窗口收缩)
+    // 0062:切换统一走 setConfig 持久化 —— 主进程据此联动托盘勾选态与 acrylic 背景,
+    // 并返回新配置;renderer 收到后执行进入/退出(纯显隐,不改窗口大小)
     void api.setConfig({ petOnly: target }).then((cfg) => {
       if (!cfg) return
       if (cfg.appearance.petOnly) petOnlyMode.enter()
@@ -411,15 +399,13 @@ async function boot(): Promise<void> {
   // (背景透明度用 CSS opacity 作用于 #bg-base 基色画布;win.setOpacity 会破坏 acrylic 毛玻璃)
   void api.getConfig().then((cfg) => {
     animator.applyPetSettings?.(cfg.pet)
-    petOnlyMode.updateBaseSettings(cfg.pet)
     const opacity = Math.min(1, Math.max(0, cfg.appearance.opacity))
     document.querySelector<HTMLElement>('#bg-base')?.style.setProperty('opacity', String(opacity))
-    // 0062:重启恢复极简模式(动画器未就绪时模块内部挂起重试)
+    // 0062:重启恢复极简模式(纯显隐,模型未就绪也能进入)
     if (cfg.appearance.petOnly) petOnlyMode.enter()
   })
   // 0062:主进程发起的配置变更(托盘切换极简模式)→ 执行进入/退出
   api.onConfigChanged?.((cfg) => {
-    petOnlyMode.updateBaseSettings(cfg.pet)
     if (cfg.appearance.petOnly !== petOnlyMode.isActive()) {
       if (cfg.appearance.petOnly) petOnlyMode.enter()
       else petOnlyMode.exit()
@@ -529,8 +515,6 @@ async function boot(): Promise<void> {
         // 0059:cfg 为 null(主进程配置未就绪)时跳过,避免 cfg.pet 抛错
         if (cfg) {
           animator.applyPetSettings?.(cfg.pet)
-          // 0062:同步极简模式基准外观(派生 px/py/scale 基于它)
-          petOnlyMode.updateBaseSettings(cfg.pet)
         }
       })
     },

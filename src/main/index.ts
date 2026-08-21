@@ -13,7 +13,7 @@ import { createPluginOps, type PluginOps } from './dsh/plugin-ops.ts'
 import { createBridge, bridgeActionToEvent, type BridgeHandle } from './mcp/bridge.ts'
 import { createNotifier } from './notify.ts'
 import { createTray } from './tray.ts'
-import { applySystemRoundedCorners } from './rounded-window.ts'
+import { applyWindowEdgeStyle } from './rounded-window.ts'
 
 /**
  * 0056 窗口边缘拖拽调整大小:允许的拖拽方向。
@@ -93,6 +93,12 @@ async function bootstrap(): Promise<void> {
     })
   }
 
+  /** 0062c:窗口边缘外观按极简模式收敛(见 rounded-window.ts applyWindowEdgeStyle):
+   *  极简 = 直角 + 无描边(去 DWM 圆角窗口的 1px 灰边和外阴影),普通 = 圆角 + 默认描边。 */
+  function applyEdgeChrome(win: BrowserWindow): void {
+    void applyWindowEdgeStyle(win, config?.get().appearance.petOnly ?? false)
+  }
+
   function createWindow(): BrowserWindow {
     // 0056:窗口尺寸 = 持久化的显式尺寸(默认 420×560);不再有"窗口缩放"倍率
     const cfg = config?.get()
@@ -145,7 +151,7 @@ async function bootstrap(): Promise<void> {
     // 系统圆角(Win11 22H2+):DWM 把窗口本身裁成圆角,连 acrylic 高斯模糊一起裁圆
     // —— 圆角外无模糊(SetWindowRgn 在 Electron 43 的 DComp 透明窗口上静默失效,
     // 见 rounded-window.ts)。Electron 建窗时会设回 DONOTROUND,故此处必须重设。
-    void applySystemRoundedCorners(win)
+    applyEdgeChrome(win)
     // 注意:窗口透明度**不用** win.setOpacity —— 透明度 <100% 时 Electron 会把窗口
     // 切成分层窗口(WS_EX_LAYERED),DWM 的 acrylic 材质被绕过,背后内容会清晰透出,
     // 毛玻璃失效(实测)。透明度改由 renderer 用 CSS opacity 实现(见 main.ts),
@@ -153,14 +159,14 @@ async function bootstrap(): Promise<void> {
     win.on('ready-to-show', () => {
       win.show()
       // 窗口真正显示后 DWM 才完成 acrylic 绘制,此时再设置一次确保圆角生效
-      void applySystemRoundedCorners(win)
+      applyEdgeChrome(win)
     })
     // 圆角偏好只在缩放**结束**后重设(DWM 属性重拍在拖拽中无意义且可能闪烁),
     // 用 debounce 兜住连续 resize;手势结束路径(resized)里也会重设一次。
     let cornerDebounce: NodeJS.Timeout | undefined
     win.on('resize', () => {
       if (cornerDebounce) clearTimeout(cornerDebounce)
-      cornerDebounce = setTimeout(() => void applySystemRoundedCorners(win), 150)
+      cornerDebounce = setTimeout(() => applyEdgeChrome(win), 150)
     })
     // 0057:win32 手动缩放的开始/结束信号(will-resize 拖拽中高频触发,resized
     // 在手势结束时触发;setBounds 等程序化缩放不触发这两个事件,不影响非 win32)。
@@ -173,7 +179,7 @@ async function bootstrap(): Promise<void> {
         if (!resizeGestureActive) return
         sendResizeGesture(false)
         persistWindowSize()
-        void applySystemRoundedCorners(win)
+        applyEdgeChrome(win)
       }, 400)
     })
     win.on('resized', () => {
@@ -183,7 +189,7 @@ async function bootstrap(): Promise<void> {
       }
       sendResizeGesture(false)
       persistWindowSize()
-      void applySystemRoundedCorners(win)
+      applyEdgeChrome(win)
     })
 
     // 窗口重建(如 mac activate)后拖动采样从零开始,避免旧窗口位置算出虚假位移(0032)
@@ -512,19 +518,16 @@ async function bootstrap(): Promise<void> {
   }
 
   /** 0062:极简模式窗口交互/视觉 ——
-   *  1) **禁用边缘缩放**:窗口已收缩到宠物大小,边缘留白很窄,误触原生边缘缩放
-   *     会改掉窗口尺寸(程序化 setBounds 收缩/放大不受 resizable 影响);
-   *  2) **背景全透明**:win32 关闭 acrylic 高斯模糊材质(仅显示宠物),退出恢复。
+   *  1) **背景全透明**:win32 关闭 acrylic 高斯模糊材质(仅显示宠物),退出恢复。
    *     acrylic 是 DWM 对**整个窗口矩形**的模糊材质,renderer 隐藏 #bg 并不能去掉它;
-   *     极简模式窗口≈宠物大小,若不关闭,宠物背后一圈仍是模糊的桌面。 */
+   *     极简模式窗口不收缩(用户可自由缩放/压矮,宠物截断),若不关闭,宠物背后一圈仍是模糊的桌面。
+   *  2) **去掉窗口边缘 chrome**(0062c):DWM 圆角窗口自带 1px 灰描边 + 外阴影,
+   *     极简模式下表现为宠物周围一圈细灰边 —— 改设直角偏好 + 无描边,退出恢复。
+   *  注:窗口尺寸不再随极简模式改变,也不再禁用边缘缩放(否则无法把窗口拖矮)。 */
   function applyPetOnlyVisual(enabled: boolean): void {
     if (!mainWindow || mainWindow.isDestroyed()) return
-    // 0062b:极简模式 setResizable(false) —— 禁用鼠标拖动窗口边缘的原生缩放
-    try {
-      mainWindow.setResizable(!enabled)
-    } catch (error) {
-      console.warn(`[pet] setResizable(${!enabled}) 失败:`, error)
-    }
+    // 0062c:边缘外观(圆角/描边)同步切换(非 win32 在 applyWindowEdgeStyle 内 no-op)
+    applyEdgeChrome(mainWindow)
     if (process.platform !== 'win32') return
     try {
       mainWindow.setBackgroundMaterial(enabled ? 'none' : 'acrylic')

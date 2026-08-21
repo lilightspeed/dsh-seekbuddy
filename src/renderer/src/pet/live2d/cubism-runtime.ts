@@ -551,13 +551,31 @@ class CubismRuntime implements Live2dRuntime {
     if (this.canvas.width !== w || this.canvas.height !== h) this.resize()
   }
 
-  /** 按外观(位置/大小)重建视图矩阵:模型画布中心在原点(Y 向上),缩放到 scale 倍后平移到目标点。 */
+  /** 宠物屏幕尺寸的参考基准(CSS px,0062d):宠物大小锚定到该值,**不随窗口尺寸变化**。
+   *  取默认窗口 420×560,故默认外观下宠物大小与改造前一致;窗口更高宠物不放大、更矮则
+   *  宠物放大并裁切(极简模式允许画面截断)。模型按宽度适配时锚定宽度,否则锚定高度。 */
+  private static readonly PET_REF_WIDTH_CSS = 420
+  private static readonly PET_REF_HEIGHT_CSS = 560
+
+  /** 按外观(位置/大小)重建视图矩阵:模型画布中心在原点(Y 向上),缩放到 scale 倍后平移到目标点。
+   *  0062d:尺寸缩放额外乘(参考维度 / 当前窗口同维度)—— 抵消 Cubism 把模型适配到窗口
+   *  导致的"宠物大小 ∝ 窗口高度",使宠物屏幕大小恒定(只受 appearance.scale 控制)。 */
   private rebuildView(): void {
     const ratio = this.canvas.width / Math.max(1, this.canvas.height)
     const view = new CubismViewMatrix()
     view.setScreenRect(-ratio, ratio, -1, 1)
     view.loadIdentity()
-    view.scale(this.appearance.scale, this.appearance.scale)
+    // 0062d:尺寸锚定到固定参考 —— 抵消窗口尺寸对宠物大小的影响
+    const dpr = window.devicePixelRatio || 1
+    const canvasW = this.canvas.width
+    const canvasH = this.canvas.height
+    // 与 buildProjectionMatrix 同款判定:模型按宽度适配(横向更宽模型且竖窗)→ 锚定宽度
+    const fitByWidth =
+      (this.userModel?.getModel()?.getCanvasWidth() ?? 0) > 1.0 && canvasW < canvasH
+    const refDim = (fitByWidth ? CubismRuntime.PET_REF_WIDTH_CSS : CubismRuntime.PET_REF_HEIGHT_CSS) * dpr
+    const actualDim = fitByWidth ? canvasW : canvasH
+    const sizeScale = this.appearance.scale * (refDim / Math.max(1, actualDim))
+    view.scale(sizeScale, sizeScale)
     const tx = (2 * this.appearance.positionX - 1) * ratio
     const ty = 1 - 2 * this.appearance.positionY
     view.translateRelative(tx, ty)
