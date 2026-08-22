@@ -41,7 +41,7 @@
 | Hit Area 点击热区 | ⏳ 未制作 | 数据会导出,点击检测运行时自写 |
 | 混合模式 | ✅ 基本兼容 | SDK 支持常见 blend |
 | 编辑器内后期特效 | ❌ 不导出 | 只是 Editor 预览 |
-| 编辑器工程文件(.cmo3 / 源 PSD) | ❌ 运行时用不到 | 已移出仓库(0021),存于 `C:\Users\wanyu\Desktop\projects\live2d\`;勿放回 assets/ |
+| 编辑器工程文件(.cmo3 / 源 PSD) | ❌ 运行时用不到 | 存于 `design/live2d/`(源工程,非运行时);勿放回 assets/ |
 
 ## 4. 本项目接入点(实际落地)
 
@@ -79,7 +79,8 @@
   (SDK for Web **5-r.5**)支持 —— 已实测加载通过,无 `moc3 unsupported`。换旧 Core 会报错。
 - **许可**:Core 为 Live2D Proprietary Software License,Framework 为 Live2D Open Software License,
   许可文件已随 `vendor/live2d/` 入库;角色素材版权另算(`assets/pet/README.md` License 表)。
-- **体积/性能**:moc3 + 纹理 + Core js 为主要增量;`.cmo3` 编辑器工程已移出 assets(0021),不会再被打包。
+- **体积/性能**:moc3 + 纹理 + Core js 为主要增量;`.cmo3` 编辑器工程在 `design/live2d/`
+  (不在 `assets/`,不会再被打包)。
 
 ## 6. 落地记录与剩余项
 

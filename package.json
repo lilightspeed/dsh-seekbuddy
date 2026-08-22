@@ -1,5 +1,5 @@
 {
-  "name": "@deepseek-ai/dsh-pet",
+  "name": "@deepseek-ai/dsh-seekbuddy",
   "description": "Desktop pet peer client for DSH: /api + WebSocket client, MCP server, desktop shell (main / preload / renderer)",
   "version": "0.1.0-rc.5",
   "publishConfig": {
@@ -7,8 +7,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
-    "directory": "apps/pet"
+    "url": "git+https://github.com/lilightspeed/dsh-seekbuddy.git"
   },
   "type": "module",
   "main": "./out/main/index.js",
@@ -29,8 +28,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json --composite false && tsc --noEmit -p tsconfig.web.json --composite false"
   },
   "author": {
-    "name": "DeepSeek AI",
-    "email": "dev@deepseek.com"
+    "name": "lilightspeed",
+    "email": "wanyuan314159@gmail.com"
   },
   "license": "MIT",
   "dependencies": {

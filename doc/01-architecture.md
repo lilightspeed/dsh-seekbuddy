@@ -54,8 +54,10 @@ DSH 的运行时由两部分组成:
 
 宠物订阅后把事件翻译成表现:`agent 忙碌 → 思考动作`、`需要审批 → 敲门冒泡`、`报错 → 变脸`、`完成 → 提示音`。
 
-### ④ 反向:Agent 驱动宠物(已落地)
-宠物内跑一个 MCP server,暴露 `pet.setExpression / pet.notify` 等工具(经主进程 loopback bridge,见 04 篇)。DSH 的 `mcp-client` 插件连接它,把工具注册成 `mcp__<serverName>__<toolName>`。于是 Agent 在回答过程中能反过来让宠物"做动作/弹提醒",形成三方互动闭环。
+### ④ 反向:Agent 驱动宠物(接口已预留,端到端未完成)
+宠物内预留一个 MCP server,暴露 `pet.setExpression / pet.notify` 等**工具桩**(经主进程 loopback bridge,见 04 篇)。
+理论上 DSH 的 `mcp-client` 接入后可把工具注册成 `mcp__<serverName>__<toolName>`,让 Agent 在回答中反过来让宠物
+"做动作/弹提醒"——**但该端到端功能目前仅接口存在,尚未打通/验证,本仓库不将其作为已完成特色**。
 
 ## 4. 信任边界(为什么宠物能拿到 Web GUI 同级权限)
 

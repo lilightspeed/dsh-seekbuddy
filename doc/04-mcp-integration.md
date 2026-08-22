@@ -64,7 +64,7 @@ pnpm add @modelcontextprotocol/sdk@^1.12.0
 ```ts
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 
-const server = new McpServer({ name: 'dsh-pet', version: '0.1.0' })
+const server = new McpServer({ name: 'dsh-seekbuddy', version: '0.1.0' })
 
 server.registerTool(
   'notify',

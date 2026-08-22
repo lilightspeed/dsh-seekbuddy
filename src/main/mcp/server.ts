@@ -39,7 +39,7 @@ async function callBridge(action: unknown): Promise<string> {
 
 export async function main(): Promise<void> {
   const server = new McpServer(
-    { name: 'dsh-pet', version: '0.1.0' },
+    { name: 'dsh-seekbuddy', version: '0.1.0' },
     { capabilities: { tools: { listChanged: true } } },
   )
 

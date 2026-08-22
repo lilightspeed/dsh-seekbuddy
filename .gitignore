@@ -1,6 +1,50 @@
-out/
-dist/
+# 构建产物
 node_modules/
+
+# electron-vite 构建输出
+out/
+
+# electron-builder 打包输出
+dist/
+
+# 派生构建产物(types 等)
 lib/
+
 *.tsbuildinfo
+
+# 依赖/原生模块缓存
+.electron-vite/
+.vite/
+
+# 日志
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 环境变量(本地专用,保留 .env.example)
+.env
+.env.*
+!.env.example
+
+# 测试覆盖率
+coverage/
+
+# 编辑器/IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 操作系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 个人/工作区
 .workbuddy/
+
+# 打包中间产物
+builder-debug.yml
+builder-effective-config.yaml

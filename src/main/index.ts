@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { app, BrowserWindow, ipcMain, screen } from 'electron'
 import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
 import type { PetConnectionState, PetEvent, PetOpResult, PetApprovalRequest, PetQuestionRequest } from '../shared/pet-event.ts'
@@ -33,6 +33,25 @@ type ResizeEdge = (typeof RESIZE_EDGES)[number]
  */
 const RESIZE_POLL_MS = 16
 
+/**
+ * 应用更名(DSH Pet → SeekBuddy)的一次性配置迁移:新 userData(%APPDATA%/SeekBuddy)
+ * 尚无 config.json,而旧路径(%APPDATA%/DSH Pet)有 → 复制过来,避免用户的设置/
+ * 目标会话等丢失。幂等:新路径已存在则不迁移;旧文件不存在/损坏时静默跳过。
+ */
+function migrateLegacyConfig(): void {
+  try {
+    const newConfig = join(app.getPath('userData'), 'config.json')
+    if (existsSync(newConfig)) return
+    const legacyConfig = join(app.getPath('appData'), 'DSH Pet', 'config.json')
+    if (!existsSync(legacyConfig)) return
+    mkdirSync(dirname(newConfig), { recursive: true })
+    copyFileSync(legacyConfig, newConfig)
+    console.error('[pet] migrated legacy config: %APPDATA%/DSH Pet → %APPDATA%/SeekBuddy')
+  } catch (error) {
+    console.error('[pet] legacy config migration failed:', error)
+  }
+}
+
 // 全局兜底:注册后 Electron 不再弹默认错误对话框,完整错误打到终端
 // (默认对话框只显示截断堆栈,无法定位是哪条 IPC 消息、哪个参数)。
 process.on('uncaughtException', (error) => {
@@ -49,8 +68,8 @@ if (!app.requestSingleInstanceLock()) {
 
 async function bootstrap(): Promise<void> {
   // 统一应用名:dev(electron-vite)与打包版(Nsis productName)的 userData
-  // 都落在 %APPDATA%/DSH Pet,配置文件天然共用一份。
-  app.setName('DSH Pet')
+  // 都落在 %APPDATA%/SeekBuddy,配置文件天然共用一份。
+  app.setName('SeekBuddy')
 
   let connection: ConnectionHandle | undefined
   let mainWindow: BrowserWindow | undefined
@@ -136,7 +155,7 @@ async function bootstrap(): Promise<void> {
     const win = new BrowserWindow({
       width,
       height,
-      title: 'DSH Pet',
+      title: 'SeekBuddy',
       // 桌面宠物壳:无边框 + 透明 + 置顶 + 不入任务栏(靠托盘管理)
       frame: false,
       transparent: true,
@@ -492,14 +511,14 @@ async function bootstrap(): Promise<void> {
       return
     }
     if (!existsSync(iconPath)) return
-    const key = 'HKCU\\Software\\Classes\\AppUserModelId\\com.deepseek-ai.dsh-pet'
+    const key = 'HKCU\\Software\\Classes\\AppUserModelId\\com.deepseek-ai.dsh-seekbuddy'
     const run = (args: string[]): void => {
       execFile('reg.exe', args, { windowsHide: true }, (error) => {
         if (error) console.error(`[pet] reg add ${args.slice(0, 2).join(' ')} failed:`, error)
       })
     }
     // 默认值 = 应用显示名;DefaultIcon = 分组行图标(带引号路径,reg.exe 需要转义)
-    run(['add', key, '/ve', '/d', 'DSH Pet', '/f'])
+    run(['add', key, '/ve', '/d', 'SeekBuddy', '/f'])
     run(['add', key, '/v', 'DefaultIcon', '/d', `"${iconPath}"`, '/f'])
   }
 
@@ -620,11 +639,14 @@ async function bootstrap(): Promise<void> {
   app.whenReady().then(() => {
     // Windows 通知需要 appUserModelId(否则部分系统不显示)。
     if (process.platform === 'win32') {
-      app.setAppUserModelId('com.deepseek-ai.dsh-pet')
+      app.setAppUserModelId('com.deepseek-ai.dsh-seekbuddy')
       // 通知中心折叠分组行的图标来自 AUMID 注册(dev/portable 无快捷方式时的兜底)
       registerNotificationAumidIcon()
     }
 
+    // 改名(DSH Pet → SeekBuddy)后把旧 userData 的配置带过来一次(幂等;必须在
+    // new PetConfigStore 之前,否则存储已按默认值加载,迁移不会生效)
+    migrateLegacyConfig()
     config = new PetConfigStore()
     // 0063:win32 预热 GetAsyncKeyState FFI,避免首次缩放结束兜底判定尚未就绪。
     warmUpWin32KeyState()

@@ -1,8 +1,8 @@
 # 阶段 5:electron-builder 打包配置(NSIS 安装包 + portable 免安装版)。
 # 国内镜像:electron 二进制与 builder 工具链走根 .npmrc(electron_mirror /
 # electron_builder_binaries_mirror),electronDownload.mirror 兜底显式声明。
-appId: com.deepseek-ai.dsh-pet
-productName: DSH Pet
+appId: com.deepseek-ai.dsh-seekbuddy
+productName: SeekBuddy
 # 与 devDependencies 的 electron 版本保持一致;精确版本(打包要下载对应二进制)。
 electronVersion: 43.4.0
 directories:
@@ -31,7 +31,7 @@ asarUnpack:
   # koffi 的 native 二进制(.node)不能留在 asar 内(node 无法从 asar dlopen)
   - node_modules/**/*.node
 win:
-  executableName: dsh-pet
+  executableName: dsh-seekbuddy
   icon: build/icon.ico
   target:
     - target: nsis
@@ -43,7 +43,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: DSH Pet
+  shortcutName: SeekBuddy
   artifactName: ${productName}-Setup-${version}.${ext}
 portable:
   artifactName: ${productName}-Portable-${version}.${ext}

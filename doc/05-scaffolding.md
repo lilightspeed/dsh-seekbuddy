@@ -7,7 +7,7 @@
 
 ```
 apps/pet/
-├── package.json              # @deepseek-ai/dsh-pet;type=module;main=out/main/index.js
+├── package.json              # @deepseek-ai/dsh-seekbuddy;type=module;main=out/main/index.js
 ├── electron.vite.config.ts   # main 全量 bundle + preload + renderer(assets publicDir + @live2d 别名)
 ├── tsconfig.json             # 引用 node/web 两个配置
 ├── tsconfig.node.json        # main + preload + shared(node 侧)
@@ -21,6 +21,7 @@ apps/pet/
 ├── assets/pet/               # publicDir 静态根(dev 下 /pet/** 可访问)
 │   ├── live2d/               # ds-pet 模型 + core(live2dcubismcore.js)+ shaders/ + 兼容性说明卡
 │   ├── sprites/ lottie/ icons/ audio/   # 规则目录(占位/Live2D 回落素材,见 assets/pet/README.md)
+├── design/live2d/            # Cubism Editor 源工程(.cmo3/.can3;非运行时,走 Git LFS,见 design/live2d/README.md)
 └── src/
     ├── main/
     │   ├── index.ts          # 入口:窗口/托盘/单实例/IPC 注册/光标轮询(视角跟随)
@@ -64,10 +65,10 @@ apps/pet/
 ## 2. 构建与命令
 
 ```bash
-pnpm --filter @deepseek-ai/dsh-pet run dev        # electron-vite dev(出窗口)
-pnpm --filter @deepseek-ai/dsh-pet run build      # 构建到 out/(main + preload + renderer)
-pnpm --filter @deepseek-ai/dsh-pet run typecheck  # tsc --noEmit(node + web 两个配置)
-pnpm --filter @deepseek-ai/dsh-pet run dist       # 打包 NSIS + portable
+pnpm --filter @deepseek-ai/dsh-seekbuddy run dev        # electron-vite dev(出窗口)
+pnpm --filter @deepseek-ai/dsh-seekbuddy run build      # 构建到 out/(main + preload + renderer)
+pnpm --filter @deepseek-ai/dsh-seekbuddy run typecheck  # tsc --noEmit(node + web 两个配置)
+pnpm --filter @deepseek-ai/dsh-seekbuddy run dist       # 打包 NSIS + portable
 ```
 
 关键配置事实(踩过坑,见 changes):

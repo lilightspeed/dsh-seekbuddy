@@ -1,6 +1,6 @@
 {
   // Solution file for apps/pet: typecheck via
-  //   pnpm --filter @deepseek-ai/dsh-pet run typecheck
+  //   pnpm --filter @deepseek-ai/dsh-seekbuddy run typecheck
   // (which passes `--composite false` so --noEmit is legal).
   "files": [],
   "references": [

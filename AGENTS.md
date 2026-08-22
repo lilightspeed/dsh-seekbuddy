@@ -1,6 +1,6 @@
 # AGENTS.md
 
-DSH 桌面宠物 —— DeepSeek Harness 的**第二个、常驻、对等客户端**:一个独立 Electron 窗口,既能通过 DSH 的 `/api` + WebSocket 主动操作/观察 DSH,又能作为 MCP server 被 DSH Agent 反驱动(Agent → 宠物)。设计见 [doc/01-architecture.md](./doc/01-architecture.md),按 [doc/06-roadmap.md](./doc/06-roadmap.md) 分阶段推进,每步改动以 git 提交记录(见 Conventions;历史改动档案见 [doc/changes/](./doc/changes/README.md),已停用)。
+SeekBuddy(仓库名 `dsh-seekbuddy`)—— DSH 的桌面宠物对等客户端:一个独立 Electron 窗口,既能通过 DSH 的 `/api` + WebSocket 主动操作/观察 DSH,又能作为 MCP server 被 DSH Agent 反驱动(Agent → 宠物)。设计见 [doc/01-architecture.md](./doc/01-architecture.md),按 [doc/06-roadmap.md](./doc/06-roadmap.md) 分阶段推进,每步改动以 git 提交记录(见 Conventions;历史改动档案见 [doc/changes/](./doc/changes/README.md),已停用)。
 
 ## Repository layout
 
@@ -15,9 +15,9 @@ doc/            技术指导文档(01 架构 … 08 Live2D);changes/ 为历史�
 
 ```bash
 pnpm install                                      # 仓库根:安装/链接依赖(electron 二进制走镜像)
-pnpm --filter @deepseek-ai/dsh-pet run dev        # electron-vite 开发(出窗口)
-pnpm --filter @deepseek-ai/dsh-pet run build      # 构建到 out/
-pnpm --filter @deepseek-ai/dsh-pet run typecheck  # tsc --noEmit(node + web 两个配置)
+pnpm --filter @deepseek-ai/dsh-seekbuddy run dev        # electron-vite 开发(出窗口)
+pnpm --filter @deepseek-ai/dsh-seekbuddy run build      # 构建到 out/
+pnpm --filter @deepseek-ai/dsh-seekbuddy run typecheck  # tsc --noEmit(node + web 两个配置)
 pnpm exec tsx scripts/check-workspace-constraints.ts   # 根仓库:workspace 约束 gate
 ```
 

@@ -18,9 +18,10 @@
 
 会话列表/切换/历史、审批(loopback 特权)、系统通知、preload 白名单 + 连接下沉主进程。→ [changes/0006](./changes/0006-stage3-operations.md)
 
-## 阶段 4 · 反向链路 MCP ✅ 已完成
+## 阶段 4 · 反向链路 MCP(接口已预留,端到端未打通)
 
-MCP server(`setExpression / notify`)+ 主进程 loopback bridge + DSH `mcp-client` 接入,实机验证双向闭环。→ [changes/0008](./changes/0008-mcp-reverse-link.md)、[0011](./changes/0011-packaged-mcp-verify.md)
+MCP server(`setExpression / notify`)**工具桩** + 主进程 loopback bridge 已搭建;DSH `mcp-client` 接入与
+"Agent 实际驱动宠物"的端到端功能**尚未完成/未作已实现特色**。→ 接口设计见 [changes/0008](./changes/0008-mcp-reverse-link.md)
 
 ## 阶段 5 · 打包与常驻 ✅ 已完成
 

@@ -1,8 +1,8 @@
-// 用法:node scripts/resize-sim.mjs [edge] [title]  edge ∈ e|w|s|n|se|... 默认 e;title 默认 "DSH Pet"
+// 用法:node scripts/resize-sim.mjs [edge] [title]  edge ∈ e|w|s|n|se|... 默认 e;title 默认 "SeekBuddy"
 import { load, struct } from 'koffi'
 
 const edge = process.argv[2] ?? 'e'
-const title = process.argv[3] ?? 'DSH Pet'
+const title = process.argv[3] ?? 'SeekBuddy'
 const user32 = load('user32.dll')
 const RECT = struct('RECT', { left: 'long', top: 'long', right: 'long', bottom: 'long' })
 const FindWindowW = user32.func('void *FindWindowW(str16 cls, str16 title)')

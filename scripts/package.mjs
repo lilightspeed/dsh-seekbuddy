@@ -31,7 +31,7 @@ import { spawnSync } from 'node:child_process'
 import os from 'node:os'
 
 const petRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
-const stageDir = join(os.tmpdir(), 'dsh-pet-pack')
+const stageDir = join(os.tmpdir(), 'dsh-seekbuddy-pack')
 const ebCli = join(petRoot, 'node_modules', 'electron-builder', 'cli.js')
 
 // 透传参数:--dir 打免安装目录;其余原样交给 electron-builder

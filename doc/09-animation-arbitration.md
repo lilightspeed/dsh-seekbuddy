@@ -253,7 +253,7 @@ export function createAnimationDirector(runtime: Live2dRuntime) {
 2. **animation-registry.ts**:迁 `MOTION_FILES` + spec。
 3. **animation-director.ts**:仲裁 + gate + 生命周期。
 4. **create-live2d-animator.ts**:接入 director,删手写标志位。
-5. `pnpm --filter @deepseek-ai/dsh-pet run typecheck` + 手动验证(见 §7)。
+5. `pnpm --filter @deepseek-ai/dsh-seekbuddy run typecheck` + 手动验证(见 §7)。
 
 ## 6 未来动作动画兼容性
 

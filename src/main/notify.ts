@@ -64,7 +64,7 @@ export function createNotifier(options: {
         notify('⚠ DSH 报错', event.message ?? 'agent 执行失败')
         break
       case 'pet:notify':
-        notify(event.title ?? '🔔 DSH Pet', event.body ?? '')
+        notify(event.title ?? '🔔 SeekBuddy', event.body ?? '')
         break
       case 'dsh:turn-end': {
         const bad = event.reason === 'error' || event.reason === 'max-tokens' || event.reason === 'blocked'

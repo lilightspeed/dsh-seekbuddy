@@ -28,7 +28,7 @@ export function createTray(
 ): PetTray {
   const icon = nativeImage.createFromPath(join(import.meta.dirname, '../../assets/pet/icons/ymcog-jpmci-001.ico'))
   const tray = new Tray(icon)
-  tray.setToolTip('DSH Pet')
+  tray.setToolTip('SeekBuddy')
 
   // 0062:菜单项纯文本(无 checkbox / 图标),避免原生菜单预留左侧列导致文本右移;
   // 极简模式开启态用「✓ 」前缀体现,状态每次重建时按当前值读取。
