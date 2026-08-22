@@ -9,7 +9,6 @@ import { WINDOW_SIZE, WINDOW_SIZE_MAX, WINDOW_SIZE_MIN } from '../shared/pet-con
 import { PetConfigStore, type PetConfigPatch } from './config.ts'
 import { createConnection, type ConnectionHandle } from './dsh/connection.ts'
 import { createPetOps, type PetOps } from './dsh/ops.ts'
-import { createPluginOps, type PluginOps } from './dsh/plugin-ops.ts'
 import { createBridge, bridgeActionToEvent, type BridgeHandle } from './mcp/bridge.ts'
 import { createNotifier } from './notify.ts'
 import { createTray } from './tray.ts'
@@ -57,7 +56,6 @@ async function bootstrap(): Promise<void> {
   let mainWindow: BrowserWindow | undefined
   let bridge: BridgeHandle | undefined
   let petOps: PetOps | undefined
-  let pluginOps: PluginOps | undefined
   let notifier: ReturnType<typeof createNotifier> | undefined
   let config: PetConfigStore | undefined
   /** 0062:托盘句柄(极简模式勾选态随配置变更重建菜单;renderer 发起的切换也在此同步)。 */
@@ -743,15 +741,6 @@ async function bootstrap(): Promise<void> {
       if (!mainWindow || mainWindow.isDestroyed()) return
       mainWindow.hide()
     })
-
-    // B3(只读)插件监控:agent 中介读取目标会话插件清单
-    pluginOps = createPluginOps({
-      getConnection: () => connection,
-      getTargetSession: () => ensureTargetSession(),
-    })
-    ipcMain.handle('pet:list-plugins', () =>
-      pluginOps?.listPlugins() ?? { ok: false, summary: 'ops not ready', refreshedAt: 0, plugins: [] },
-    )
 
     // 阶段 5 配置读写:get 返回完整配置;set 应用扁平补丁并按变更执行副作用
     // (DSH 地址变更 → 重建连接;自启 → LoginItem;透明度由 renderer CSS 应用;

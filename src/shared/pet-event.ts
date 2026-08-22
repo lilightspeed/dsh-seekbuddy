@@ -128,31 +128,6 @@ export interface PetActivityEntry {
   time: number
 }
 
-/** B3(只读)插件监控:一个动态插件的扁平摘要(经 agent 中介读回)。 */
-export interface PetPluginEntry {
-  pluginId: string
-  name: string
-  /** defined / stopped / running / waiting / failed / client-pending / awaiting-approval。 */
-  state: string
-  packageCount: number
-  currentPackageId: string | null
-  nextPackageId: string | null
-  activeRun: { pluginRunId: string; packageId: string } | null
-  pendingApproval: { pluginRunId: string; packageId: string; mode: string } | null
-  /** 原始摘要 JSON(调试/折叠展示)。 */
-  raw: string
-}
-
-export interface PetPluginListResult {
-  ok: boolean
-  summary: string
-  /** 成功时为拉取时间(ms),失败为 0。 */
-  refreshedAt: number
-  plugins: PetPluginEntry[]
-  /** 解析失败/超时时的 agent 原始回复片段(诊断用)。 */
-  rawReply?: string
-}
-
 /** 历史里的一行:主进程已把 SessionEvent 摊平成展示文本。 */
 export interface PetHistoryEntry {
   seq: number
@@ -280,8 +255,6 @@ export interface PetApi {
   getConfig(): Promise<PetConfig>
   /** 阶段 5:应用扁平配置补丁;主进程执行副作用(重连/窗口/自启)后返回新配置。 */
   setConfig(patch: PetConfigUpdate): Promise<PetConfig>
-  /** B3(只读):经 agent 中介读取目标会话的动态插件清单(会占用一次模型回合)。 */
-  listPlugins(): Promise<PetPluginListResult>
   /**
    * 0056 窗口边缘拖拽调整大小:按下边缘手柄时通知主进程开始(edge ∈
    * n/s/e/w/ne/nw/se/sw)。主进程在已有的 33ms 光标轮询里按屏幕光标增量

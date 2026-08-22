@@ -1,4 +1,4 @@
-import type { PetActivityEntry, PetApi, PetPluginEntry, PetPluginListResult, PetSessionSummary } from '../../../shared/pet-event.ts'
+import type { PetActivityEntry, PetApi, PetSessionSummary } from '../../../shared/pet-event.ts'
 import type { PetConfigUpdate } from '../../../shared/pet-config.ts'
 import type { PendingApproval } from './approvals.ts'
 import { conceal, reveal } from './reveal.ts'
@@ -56,7 +56,7 @@ function shortTitle(session: PetSessionSummary): string {
 }
 
 /**
- * 会话面板:会话列表(切换目标)+ 审批 + 插件 + 设置 tab(历史已并入"点击展开历史"浮层)。
+ * 会话面板:会话列表(切换目标)+ 审批 + 设置 tab(历史已并入"点击展开历史"浮层)。
  * vanilla DOM(React/Zustand 待复杂 UI 再引入)。
  */
 export function createPanel(api: PetApi, hooks: PanelHooks) {
@@ -64,7 +64,6 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
   const btnEl = document.querySelector<HTMLButtonElement>('#btn-panel')
   const sessionsEl = document.querySelector<HTMLDivElement>('#tab-sessions')
   const approvalsEl = document.querySelector<HTMLDivElement>('#tab-approvals')
-  const pluginsEl = document.querySelector<HTMLDivElement>('#tab-plugins')
   const settingsEl = document.querySelector<HTMLDivElement>('#tab-settings')
   const badgeEl = document.querySelector<HTMLSpanElement>('#approval-badge')
   /** 会话页运行中角标(B2 雷达并入会话页)。 */
@@ -75,21 +74,14 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
   let notifiedTarget: string | null | undefined = undefined
   /** 最近一次会话列表(雷达行基线:标题/running/updatedAt)。 */
   let sessionItems: PetSessionSummary[] = []
-  /** B3 插件监控:最近一次查询结果与状态文案。 */
-  let lastPluginResult: PetPluginListResult | null = null
-  let lastPluginSummary = '未刷新'
-  let pluginLoading = false
-
-  function switchTab(name: 'sessions' | 'approvals' | 'plugins' | 'settings'): void {
+  function switchTab(name: 'sessions' | 'approvals' | 'settings'): void {
     document.querySelectorAll<HTMLButtonElement>('#panel .panel-tabs button').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset['tab'] === name)
     })
     sessionsEl?.classList.toggle('active', name === 'sessions')
     approvalsEl?.classList.toggle('active', name === 'approvals')
-    pluginsEl?.classList.toggle('active', name === 'plugins')
     settingsEl?.classList.toggle('active', name === 'settings')
     if (name === 'approvals') renderApprovals()
-    if (name === 'plugins') renderPlugins()
     if (name === 'settings') void refreshSettings()
   }
 
@@ -498,129 +490,6 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
     runningBadgeEl.classList.toggle('hidden', n === 0)
   }
 
-  // ---- B3 只读插件监控 tab:agent 中介读目标会话插件清单 ----
-
-  /** 插件 id / packageId 过长时截断展示。 */
-  function shortId(id: string): string {
-    return id.length > 20 ? `${id.slice(0, 18)}…` : id
-  }
-
-  /** 一张插件卡:id + 状态 + 元信息 + 可折叠原始 JSON。 */
-  function pluginCard(p: PetPluginEntry): HTMLElement {
-    const card = document.createElement('div')
-    card.className = 'plugin-card'
-    const head = document.createElement('div')
-    head.className = 'plugin-head'
-    const id = document.createElement('span')
-    id.className = 'plugin-id'
-    id.textContent = p.pluginId
-    const state = document.createElement('span')
-    state.className = `plugin-state ${p.state}`
-    state.textContent = p.state
-    head.append(id, state)
-    card.appendChild(head)
-    if (p.name) {
-      const name = document.createElement('div')
-      name.className = 'plugin-name'
-      name.textContent = p.name
-      card.appendChild(name)
-    }
-    const meta = document.createElement('div')
-    meta.className = 'plugin-meta'
-    const bits: string[] = [`packages: ${p.packageCount}`]
-    if (p.currentPackageId) bits.push(`current: ${shortId(p.currentPackageId)}`)
-    if (p.nextPackageId) bits.push(`next: ${shortId(p.nextPackageId)}`)
-    if (p.activeRun) bits.push(`run: ${shortId(p.activeRun.packageId)}`)
-    if (p.pendingApproval) bits.push('⏳ 待审批')
-    meta.textContent = bits.join(' · ')
-    card.appendChild(meta)
-    const raw = document.createElement('details')
-    raw.className = 'plugin-raw'
-    const summary = document.createElement('summary')
-    summary.textContent = '原始 JSON'
-    const pre = document.createElement('pre')
-    pre.textContent = p.raw
-    raw.append(summary, pre)
-    card.appendChild(raw)
-    return card
-  }
-
-  function renderPlugins(): void {
-    if (!pluginsEl) return
-    pluginsEl.textContent = ''
-    const toolbar = document.createElement('div')
-    toolbar.className = 'plugin-toolbar'
-    const refreshBtn = document.createElement('button')
-    refreshBtn.className = 'setting-apply'
-    refreshBtn.textContent = '🔄 刷新'
-    refreshBtn.disabled = pluginLoading
-    refreshBtn.addEventListener('click', () => void refreshPlugins())
-    const hint = document.createElement('span')
-    hint.className = 'plugin-hint'
-    hint.textContent = '只读监控 · 完整管理(define/run/stop)待 DSH 原生 API'
-    toolbar.append(refreshBtn, hint)
-    pluginsEl.appendChild(toolbar)
-
-    if (pluginLoading) {
-      const loading = document.createElement('div')
-      loading.className = 'history-row meta'
-      loading.textContent = '查询中…(占用一次模型回合,请稍候)'
-      pluginsEl.appendChild(loading)
-      return
-    }
-    const status = document.createElement('div')
-    status.className = 'plugin-status'
-    status.textContent = lastPluginSummary
-    pluginsEl.appendChild(status)
-
-    if (!lastPluginResult) return
-    if (!lastPluginResult.ok) {
-      const err = document.createElement('div')
-      err.className = 'plugin-error'
-      err.textContent = `✗ ${lastPluginResult.summary}`
-      pluginsEl.appendChild(err)
-      if (lastPluginResult.rawReply) {
-        const raw = document.createElement('details')
-        raw.className = 'plugin-raw'
-        const summary = document.createElement('summary')
-        summary.textContent = 'agent 原始回复'
-        const pre = document.createElement('pre')
-        pre.textContent = lastPluginResult.rawReply
-        raw.append(summary, pre)
-        pluginsEl.appendChild(raw)
-      }
-      return
-    }
-    if (lastPluginResult.plugins.length === 0) {
-      const empty = document.createElement('div')
-      empty.className = 'history-row meta'
-      empty.textContent = '（该会话暂无动态插件）'
-      pluginsEl.appendChild(empty)
-      return
-    }
-    for (const p of lastPluginResult.plugins) pluginsEl.appendChild(pluginCard(p))
-  }
-
-  async function refreshPlugins(): Promise<void> {
-    if (pluginLoading) return
-    pluginLoading = true
-    lastPluginSummary = '查询中…'
-    renderPlugins()
-    try {
-      const result = await api.listPlugins()
-      lastPluginResult = result
-      lastPluginSummary = result.ok
-        ? `刷新于 ${new Date(result.refreshedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · ${result.summary}`
-        : result.summary
-    } catch (error) {
-      lastPluginResult = { ok: false, summary: String(error), refreshedAt: 0, plugins: [] }
-      lastPluginSummary = '查询失败'
-    } finally {
-      pluginLoading = false
-      renderPlugins()
-    }
-  }
-
   // 活动增量(B2 雷达并入会话页):角标实时更新;会话页开着时整页重渲染(实时状态列)
   hooks.activity.subscribe(() => {
     updateRunningBadge()
@@ -637,7 +506,7 @@ export function createPanel(api: PetApi, hooks: PanelHooks) {
 
   btnEl?.addEventListener('click', toggle)
   document.querySelectorAll<HTMLButtonElement>('#panel .panel-tabs button').forEach((btn) => {
-    btn.addEventListener('click', () => switchTab(btn.dataset['tab'] as 'sessions' | 'approvals' | 'plugins' | 'settings'))
+    btn.addEventListener('click', () => switchTab(btn.dataset['tab'] as 'sessions' | 'approvals' | 'settings'))
   })
 
   return { toggle, close, isOpen, refreshSessions }
