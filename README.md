@@ -1,47 +1,40 @@
 # SeekBuddy · dsh-seekbuddy
 
-**SeekBuddy(仓库名 `dsh-seekbuddy`)** 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)(DSH) 的**桌面宠物对等客户端**:一个常驻桌面的 Electron 小窗口,
-通过 DSH 的 `/api` + WebSocket 主动操作/观察 DSH。
+**SeekBuddy(仓库名 `dsh-seekbuddy`)** 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)(DSH) 的**桌面宠物对等客户端**——
+一只常驻桌面的 Live2D 宠物,既能看着你的 Agent 干活,也能随手指挥它。
 
-它不是一个"只会动的挂件",而是与 Web GUI **平级、loopback 受信**的客户端:宠物既能向上控制并实时观察
-DSH;还预留了一个 MCP server 接口(`mcp__pet__*` 工具),用于将来让 DSH Agent 反向驱动宠物——
-**该 "Agent → 宠物" 链路目前只做了接口,尚未完成端到端功能,不算项目特色。**
+它不是"只会动的挂件":SeekBuddy 与 DSH Web GUI **平级、loopback 受信**,可以实时控制并观察 DSH——
+盯着会话状态、发消息、批审批,把它当作 Agent 的**迷你常驻控制台**。
 
 ---
 
-## 核心区别(为什么值得看)
+## 项目亮点
 
-### 1. 自研 Live2D 运行时,角色形象非自制
+### 1. 自研 Live2D 运行时,不止一张皮
 
 - **自研的部分**:Live2D 渲染与动画运行时(`pet/live2d/`)、可插拔动画器接口(`pet/animator.ts`)、
-  XState 语义状态机、动画仲裁/互斥/优先级系统(`AnimationDirector`)。这套管线是**本项目自己写的**——
-  状态机只输出语义状态(`idle/thinking/happy/sad/talking`),换动画后端只需加实现类,状态机/事件/UI 零改动。
-- **非自制的部分**:角色**形象(立绘/模型资产)**本身不是我们这个仓库画的,版权归原素材作者。
-  因此建模、贴图、motion 曲线的版权归各素材方,**本项目不主张这些资产的版权**;只对上面的**集成、运行时、
-  动画系统、窗口与交互逻辑**主张版权。
+  XState 语义状态机、动画仲裁/互斥/优先级系统(`AnimationDirector`)。状态机只输出语义状态
+  (`idle/thinking/happy/sad/talking`)——换动画后端只需加一个实现类,状态机/事件/UI 零改动。
+- **非自制的部分**:角色**形象(立绘/模型资产)**不是本仓库画的,版权归原素材作者(见文末许可)。
 
-也就是说:**你想用这套"给 Agent 当宠物的 Live2D 运行时"可以,但角色的美术资产请自行准备有权使用的素材。**
+也就是说:**你想要这套"给 Agent 当宠物的 Live2D 运行时",拿去用没问题;但角色美术资产请自行准备有权使用的素材。**
 
-### 2. 缩小版的 DSH 客户端
-
-宠物是一个**比 DSH Web GUI 小得多的常驻控制窗口**,但能力对等:
+### 2. 缩小版的 DSH 客户端,能力对等、常驻桌面
 
 - 复用 DSH 官方给浏览器用的 `/api` + WebSocket 协议(`@deepseek-ai/dsh-host-apiproxy` 与
-  `@deepseek-ai/dsh-client-connection`),因此能执行 Web GUI 能执行的绝大多数操作;
-- 用极小的窗口承载:对话气泡、输入条、会话雷达、审批/提问卡、设置面板;
-- 常驻桌面 + 置顶 + 托盘中管理,不像完整 GUI 那样占满屏幕。
-
-你可以把它理解成"DSH 的**迷你/常驻控制端**"——不必切到完整页面就能盯着 Agent 干活、发消息、批审批。
+  `@deepseek-ai/dsh-client-connection`),能执行 Web GUI 能执行的绝大多数操作;
+- 用极小的窗口承载完整控制面:对话气泡、输入条、会话雷达、审批/提问卡、设置面板;
+- 常驻桌面 + 置顶 + 托盘管理——不必切到完整页面,就能盯着 Agent 干活、发消息、批审批。
 
 ---
 
 ## 演示
 
-### 页面展示(完整界面 / 对话 / 面板)
+### 完整界面 / 对话 / 面板
 
 <p align="center"><video src="docs/media/demo-ui.mp4" controls width="100%"></video></p>
 
-### 拖拽物理效果(窗口拖动的物理反馈)
+### 窗口拖拽的物理反馈
 
 <p align="center"><video src="docs/media/demo-drag-physics.mp4" controls width="100%"></video></p>
 
@@ -53,21 +46,22 @@ DSH;还预留了一个 MCP server 接口(`mcp__pet__*` 工具),用于将来让 D
 - **Live2D 角色**:官方 Cubism SDK + 独立 canvas 自绘;WebGL2 不可用时回落到 PixiJS 几何"球宠"。
 - **语义状态机**:`idle / thinking / happy / sad / talking`,动画可插拔、可互斥与优先级打断。
 - **对等操控 DSH**:发消息、停止回合、列会话/历史、切换目标会话、审批/提问回执、新建会话。
-- **预留 Agent → 宠物接口**:内置了 MCP server(stdio),已暴露 `pet.setExpression` / `pet.notify` 等
-  工具桩;⚠️ 但 DSH 端接入与"Agent 驱动宠物"的**端到端功能尚未完成**,当前仅接口存在、不作特色。
 - **设置面板可调**:透明度、窗口尺寸(边缘拖拽)、极简模式、宠物位置/缩放/跟随手感、瞳孔/拖动反馈、
   思考/睡眠表情阈值、开机自启。
 - **配置持久化**:`%APPDATA%/SeekBuddy/config.json`(原子写,损坏兜底默认值;改名自 `DSH Pet` 起会自动迁移旧配置)。
+- **预留 Agent → 宠物接口**:内置 MCP server(stdio),已暴露 `pet.setExpression` / `pet.notify` 等
+  工具桩;⚠️ "Agent 驱动宠物"的端到端功能尚未完成,当前仅接口存在、不作为特色宣传。
 
 ---
 
 ## 运行前提
 
-> ⚠️ 宠物**依赖 DeepSeek Harness**,不是一个可独立运行、脱离 harness 的 app。它需要:
+> ⚠️ SeekBuddy **依赖 DeepSeek Harness**,不是一个可独立运行的 app。它需要:
 
-1. **完整的 DeepSeek Harness monorepo**(或一个含 `@deepseek-ai/dsh-host-apiproxy`、`@deepseek-ai/dsh-client-connection` 等 workspace 包的环境)——宠物用 `workspace:^` 引用这些包,因此必须在那个 workspace 内构建。
+1. **完整的 DeepSeek Harness monorepo**(或含 `@deepseek-ai/dsh-host-apiproxy`、
+   `@deepseek-ai/dsh-client-connection` 等 workspace 包的环境)——宠物用 `workspace:^` 引用这些包,必须在该 workspace 内构建。
 2. 一个**正在运行的 DSH 实例**,默认连 `http://127.0.0.1:3080`(loopback 受信,与 Web GUI 同级权限)。
-3. **不要把它部署到非 loopback**:宠物的权限来自 loopback 受信信任,连远端会失去信任边界。
+3. **不要部署到非 loopback**:宠物的权限来自 loopback 受信,连远端会失去信任边界。
 
 ---
 
@@ -101,8 +95,8 @@ pnpm --filter @deepseek-ai/dsh-seekbuddy run build      # 构建到 out/
 pnpm --filter @deepseek-ai/dsh-seekbuddy run dist       # 打包安装版 / 绿色版
 ```
 
-> 宠物用 `workspace:^` 引用 `@deepseek-ai/dsh-host-apiproxy`、`@deepseek-ai/dsh-client-connection`,
-> 它们来自 harness 的 `packages/`,因此**必须在 harness workspace 内构建**,无法脱离 harness 单独装。
+> 宠物用 `workspace:^` 引用的两个包来自 harness 的 `packages/`,因此**必须在 harness workspace 内构建**,
+> 无法脱离 harness 单独安装。
 
 启动后宠物会尝试连接配置的 DSH 地址;首次使用可在设置面板里改 `baseUrl`。
 
@@ -116,6 +110,23 @@ pnpm --filter @deepseek-ai/dsh-seekbuddy run dist       # 打包安装版 / 绿�
 - **托盘**:显示/隐藏窗口、切换极简模式、退出。
 
 > ℹ️ "DSH 反向驱动宠物"(`mcp__pet__*`)目前**仅预留接口**,未做端到端功能,故不在此列为可用操作。
+
+---
+
+## 开发
+
+在 harness workspace 根执行(宠物是 `apps/pet`,包名 `@deepseek-ai/dsh-seekbuddy`):
+
+```bash
+pnpm --filter @deepseek-ai/dsh-seekbuddy run dev          # electron-vite 开发
+pnpm --filter @deepseek-ai/dsh-seekbuddy run build        # 构建到 out/
+pnpm --filter @deepseek-ai/dsh-seekbuddy run typecheck    # tsc --noEmit(node + web)
+pnpm --filter @deepseek-ai/dsh-seekbuddy run dist         # 打包(NSIS + portable)
+pnpm --filter @deepseek-ai/dsh-seekbuddy run dist:dir     # 仅打包解包目录
+```
+
+国内镜像:根 `.npmrc` 走 npmmirror(`electron_mirror` / `electron_builder_binaries_mirror`),
+electron 二进制缺失时按 [AGENTS.md](./AGENTS.md) 的说明补装。
 
 ---
 
@@ -143,9 +154,7 @@ pnpm --filter @deepseek-ai/dsh-seekbuddy run dist       # 打包安装版 / 绿�
   [doc/09-animation-arbitration.md](./doc/09-animation-arbitration.md)。
 - 素材放置规则见 [assets/pet/README.md](./assets/pet/README.md)。
 
----
-
-## 目录结构
+### 目录结构
 
 ```
 src/main/        主进程:窗口、托盘、DSH 连接、事件总线、MCP server/bridge、光标轮询
@@ -160,26 +169,9 @@ vendor/live2d/   Live2D Framework 与 Core 编译产物(第三方)
 
 ---
 
-## 开发
-
-在 harness workspace 根执行(宠物是 `apps/pet`,包名 `@deepseek-ai/dsh-seekbuddy`):
-
-```bash
-pnpm --filter @deepseek-ai/dsh-seekbuddy run dev          # electron-vite 开发
-pnpm --filter @deepseek-ai/dsh-seekbuddy run build        # 构建到 out/
-pnpm --filter @deepseek-ai/dsh-seekbuddy run typecheck    # tsc --noEmit(node + web)
-pnpm --filter @deepseek-ai/dsh-seekbuddy run dist         # 打包(NSIS + portable)
-pnpm --filter @deepseek-ai/dsh-seekbuddy run dist:dir     # 仅打包解包目录
-```
-
-国内镜像:根 `.npmrc` 走 npmmirror(`electron_mirror` / `electron_builder_binaries_mirror`),
-electron 二进制缺失时按 [AGENTS.md](./AGENTS.md) 的说明补装。
-
----
-
 ## 许可(三方归属:自有源码 MIT · 依赖包 MIT · 素材 CC BY-NC-SA 4.0)
 
-> 本仓库按**三方归属**区分(你的代码 / DeepSeek 的依赖包 / 借用或 AI 重绘的素材),请勿混淆。
+> 本仓库按**三方归属**区分(自有代码 / DeepSeek 的依赖包 / 借用或 AI 重绘的素材),请勿混淆。
 
 ### ① 宠物自有源码 —— MIT(归 lilightspeed)
 
@@ -193,7 +185,7 @@ electron 二进制缺失时按 [AGENTS.md](./AGENTS.md) 的说明补装。
   (`Copyright (c) 2026 DeepSeek`)。本仓库仅将它们作为 `workspace:` 依赖引用,**不主张其版权**。
 - **Live2D SDK(Framework / Core)**:版权归 Live2D Inc.,遵循其 [第三方许可](./vendor/live2d/README.md)。
 
-### 角色形象 / 立绘 / 模型 / 动画素材 —— CC BY-NC-SA 4.0
+### ③ 角色形象 / 立绘 / 模型 / 动画素材 —— CC BY-NC-SA 4.0
 
 - **版权人(署名链)**:
   - **上善无形**(B 站) —— 鲸鱼娘**角色形象原作**
