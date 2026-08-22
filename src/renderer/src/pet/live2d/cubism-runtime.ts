@@ -615,13 +615,34 @@ class CubismRuntime implements Live2dRuntime {
     const actualDim = fitByWidth ? canvasW : canvasH
     const sizeScale = this.appearance.scale * (refDim / Math.max(1, actualDim))
     view.scale(sizeScale, sizeScale)
-    // 0062d:位置平移**不**随 sizeScale 缩放 —— sizeScale 含 1/canvasH,若不除,
-    // 水平/垂直平移量会随窗口高度漂移,表现为"调窗口高度时宠物位置乱跑"。
-    // 除掉后宠物中心锚定到窗口归一化位置(positionX*width / positionY*height),
-    // 大小恒定、位置恒定,只受 appearance 控制。
-    const tx = ((2 * this.appearance.positionX - 1) * ratio) / sizeScale
-    const ty = (1 - 2 * this.appearance.positionY) / sizeScale
-    view.translateRelative(tx, ty)
+    // 0067:投影链路 projection = modelMatrix·viewMatrix·P0 中,modelMatrix 是常数均匀
+    // 缩放(mm),会把 viewMatrix 的平移量放大 mm 倍 —— 模型中心 NDC = (mm·tx, mm·ty),
+    // 屏幕位置 = ((1+mm·tx)/2·width, (1-mm·ty)/2·height)。tx/ty 必须按 mm 反解,
+    // 且按 fitByWidth 与 buildProjectionMatrix 对齐 modelMatrix 状态(setWidth/setHeight
+    // 均为幂等赋值,不影响 buildProjectionMatrix 每帧的 setWidth 调用)。
+    const modelMatrix = this.userModel?.getModelMatrix()
+    if (modelMatrix) {
+      if (fitByWidth) modelMatrix.setWidth(2.0)
+      else modelMatrix.setHeight(2.0)
+    }
+    const mm = modelMatrix?.getScaleX() ?? 1
+    // 水平:锚定窗口归一化位置 —— 模型中心屏幕 x = positionX·width。拖左/右边框时
+    // renderer(main.ts 的 resize 补偿)同步更新 positionX 保持宠物屏幕 x 不变,
+    // 出界由该补偿夹取 0..1(既有逻辑,与本矩阵无耦合)。
+    const tx = (2 * this.appearance.positionX - 1) / mm
+    // 垂直:锚定窗口**底部** —— 模型中心距窗口底边的像素距离恒为 D,与窗口高度无关:
+    //   拖上边框(顶部移动、底部不动)→ 宠物屏幕位置不变;
+    //   拖下边框(底部移动)→ 宠物跟随底部移动;
+    //   拖左/右边框(高度不变)→ 不变。
+    // 屏幕 y(距顶)= h - D → NDC_y = 1 - 2(h-D)/h = 2D/h - 1 → ty = NDC_y / mm。
+    // D 取"参考窗口(560)下旧实现(0062d 终版)的等效位置",默认观感零跳变:
+    //   旧实现屏幕 y@560 = (1 - mm·(1-2py)/scale)/2·560,故 D = 560 - y@560。
+    const refH = CubismRuntime.PET_REF_HEIGHT_CSS * dpr
+    const yAtRef = ((1 - (mm * (1 - 2 * this.appearance.positionY)) / this.appearance.scale) / 2) * refH
+    const distBottom = Math.max(0, refH - yAtRef)
+    // 模型中心目标 NDC_y(屏幕 y(距顶)= h - distBottom → NDC_y = 1 - 2·(h-distBottom)/h)
+    const ndcY = (2 * distBottom) / Math.max(1, canvasH) - 1
+    view.translateRelative(tx, ndcY / mm)
     this.viewMatrix = view
   }
 
@@ -922,6 +943,9 @@ class CubismRuntime implements Live2dRuntime {
     }
 
     this.ready = true
+    // 0067:模型就绪后重建视图 —— 此前 rebuildView 在 userModel 为 null 时用 mm=1 兜底
+    // 计算平移(位置可能偏),modelMatrix 的真实 mm 只有此时才可用。
+    this.rebuildView()
     console.info(
       `[live2d] 模型就绪:${url} | 参数数:${model.getParameterCount()} | 物理:${hasPhysics} | 纹理:${texCount} | 眨眼:on | 呼吸:on`,
     )
