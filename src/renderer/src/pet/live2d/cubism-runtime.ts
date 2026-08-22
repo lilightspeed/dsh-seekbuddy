@@ -630,20 +630,33 @@ class CubismRuntime implements Live2dRuntime {
     // renderer(main.ts 的 resize 补偿)同步更新 positionX 保持宠物屏幕 x 不变,
     // 出界由该补偿夹取 0..1(既有逻辑,与本矩阵无耦合)。
     const tx = (2 * this.appearance.positionX - 1) / mm
-    // 垂直:锚定窗口**底部** —— 模型中心距窗口底边的像素距离恒为 D,与窗口高度无关:
+    // 垂直:锚定窗口**底部** —— 模型中心距窗口底边的像素距离恒为 D,与窗口高度/
+    // scale/mm 完全解耦:
     //   拖上边框(顶部移动、底部不动)→ 宠物屏幕位置不变;
     //   拖下边框(底部移动)→ 宠物跟随底部移动;
     //   拖左/右边框(高度不变)→ 不变。
-    // 屏幕 y(距顶)= h - D → NDC_y = 1 - 2(h-D)/h = 2D/h - 1 → ty = NDC_y / mm。
-    // D 取"参考窗口(560)下旧实现(0062d 终版)的等效位置",默认观感零跳变:
-    //   旧实现屏幕 y@560 = (1 - mm·(1-2py)/scale)/2·560,故 D = 560 - y@560。
-    const refH = CubismRuntime.PET_REF_HEIGHT_CSS * dpr
-    const yAtRef = ((1 - (mm * (1 - 2 * this.appearance.positionY)) / this.appearance.scale) / 2) * refH
-    const distBottom = Math.max(0, refH - yAtRef)
+    // D = (1-positionY)·REF_HEIGHT,positionY 语义 = 参考窗口(560)下的距顶比例:
+    // 0=贴顶(距底 560)、1=贴底(距底 0),滑块含义与"距顶比例"一致。
+    // 0067 修正:旧实现(39d2221)把位置耦合进 sizeScale(∝1/canvasH)导致随窗口高度
+    // 漂移;首版修复用"旧实现等效位置"做距底基准,但该基准依赖 scale/mm(实测
+    // mm=2,逻辑画布 1.0×1.0),非默认 scale 下 yAtRef 超出窗口被 clamp 成距底 0,
+    // 宠物钉在窗口底边被裁 —— 改为显式 D = (1-positionY)·REF_HEIGHT。
+    const distBottom = Math.max(0, (1 - this.appearance.positionY) * CubismRuntime.PET_REF_HEIGHT_CSS * dpr)
     // 模型中心目标 NDC_y(屏幕 y(距顶)= h - distBottom → NDC_y = 1 - 2·(h-distBottom)/h)
     const ndcY = (2 * distBottom) / Math.max(1, canvasH) - 1
     view.translateRelative(tx, ndcY / mm)
     this.viewMatrix = view
+    // [临时调试 0067] 确认运行版本与锚定数值;验证后删除
+    const cw = canvasW / dpr
+    const ch = canvasH / dpr
+    const sx = ((mm * tx + 1) / 2) * cw
+    const sy = ((1 - mm * (ndcY / mm)) / 2) * ch
+    console.warn(
+      `[live2d-debug] window=${cw.toFixed(1)}x${ch.toFixed(1)} screen=(${window.screenX},${window.screenY}) ` +
+        `mm=${mm.toFixed(3)} sizeScale=${sizeScale.toFixed(3)} pos=(${this.appearance.positionX.toFixed(2)},${this.appearance.positionY.toFixed(2)}) ` +
+        `scale=${this.appearance.scale.toFixed(2)} center=(${sx.toFixed(1)},${sy.toFixed(1)}) ` +
+        `absCenter=(${(window.screenX + sx).toFixed(1)},${(window.screenY + sy).toFixed(1)}) distBottom=${distBottom.toFixed(1)}`,
+    )
   }
 
   setAppearance(appearance: Live2dAppearance): void {
