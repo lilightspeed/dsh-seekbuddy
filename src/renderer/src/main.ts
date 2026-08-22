@@ -709,7 +709,7 @@ async function boot(): Promise<void> {
         // 0046:只通知目标会话的工具调用 —— 其余会话的操作不弹右上角通知
         if (!isTargetSession(event.sessionId)) break
         // 0042:AI 工具调用 → 右上角通知队列(除 think 外全部;Read/Edit/Glob 等)
-        notify.show(`🔧 ${event.name}`)
+        notify.show(event.name)
         break
       case 'dsh:turn-end':
         if (!isTargetSession(event.sessionId)) break

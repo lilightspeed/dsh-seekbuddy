@@ -302,7 +302,7 @@ function flattenEvent(event: SessionEvent, toolNames: Map<string, string>): PetH
     }
     case 'tool/call': {
       toolNames.set(String(event.data.callId), event.data.name)
-      return { ...base, kind: 'tool', text: `🔧 ${event.data.name}` }
+      return { ...base, kind: 'tool', text: event.data.name }
     }
     case 'tool/result': {
       const isError = event.data.error !== undefined || event.data.message.content[0]?.isError === true
