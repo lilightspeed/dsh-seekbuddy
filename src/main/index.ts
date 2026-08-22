@@ -239,6 +239,23 @@ async function bootstrap(): Promise<void> {
   function onPetEvent(event: PetEvent): void {
     notifier?.onEvent(event)
     sendPetEvent(event)
+    // 自动切换目标会话(两种触发时机):
+    // 1. 启动时(dsh:connected)targetSessionId 为空 → 回退最近非空会话并持久化
+    // 2. DSH 端发送消息(turn/start)到非目标会话 → 跟随切换到该会话
+    if (event.type === 'dsh:connected' && !targetSessionId) {
+      void ensureTargetSession().then((resolved) => {
+        if (!resolved) return
+        const id = String(resolved)
+        targetSessionId = id
+        config?.update({ targetSessionId: id })
+        sendPetEvent({ type: 'dsh:target-changed', sessionId: id })
+      })
+    }
+    if (event.type === 'dsh:turn-start' && event.sessionId !== targetSessionId) {
+      targetSessionId = event.sessionId
+      config?.update({ targetSessionId: event.sessionId })
+      sendPetEvent({ type: 'dsh:target-changed', sessionId: event.sessionId })
+    }
   }
 
   /**

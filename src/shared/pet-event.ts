@@ -22,6 +22,11 @@ export type PetEvent =
       eventType: string | null
     }
   | { type: 'dsh:turn-start'; sessionId: string }
+  /**
+   * 自动切换目标会话:主进程在"启动回退最近会话"或"DSH 端发消息"时主动切换目标,
+   * 通知 renderer 刷新会话面板(更新目标标记/输入条/最近对话浮层/状态机同步)。
+   */
+  | { type: 'dsh:target-changed'; sessionId: string }
   | {
       type: 'dsh:turn-end'
       /** TurnEndReason.kind:completed / error / aborted / max-tokens / … */

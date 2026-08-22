@@ -632,6 +632,13 @@ async function boot(): Promise<void> {
         connText = event.state
         renderHistoryButton()
         break
+      case 'dsh:target-changed':
+        // 主进程主动切换目标(启动回退/DSH 端发消息):立即同步本地目标并刷新面板
+        if (event.sessionId !== targetSessionId) {
+          targetSessionId = event.sessionId
+          void panel.refreshSessions()
+        }
+        break
       case 'dsh:turn-start':
         // 0046:只跟踪目标会话 —— 其余会话的回合不驱动思考表情
         if (!isTargetSession(event.sessionId)) break
