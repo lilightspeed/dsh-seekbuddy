@@ -30,9 +30,9 @@ export interface PetAnimator {
    */
   playInterrupted?(): void
   /**
-   * 0062 极简模式:宠物当前**屏幕包围盒**(窗口 CSS 坐标)。Live2D 后端由运行时
-   * 可见 drawable 顶点包围盒给出(含动画外延),占位球宠按球几何估算;
-   * 模型未就绪返回 null。极简模式用它做窗口收缩与拖动区定位。
+   * 0062 遗留(初版"窗口收缩"方案已弃用,当前无调用方,保留供程序化使用):
+   * 宠物当前**屏幕包围盒**(窗口 CSS 坐标)。Live2D 后端由运行时可见 drawable
+   * 顶点包围盒给出(含动画外延),占位球宠按球几何估算;模型未就绪返回 null。
    */
   getDisplayBounds?(): { x: number; y: number; width: number; height: number } | null
 }

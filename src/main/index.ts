@@ -529,7 +529,8 @@ async function bootstrap(): Promise<void> {
     }
   }
 
-  /** 0062:极简模式窗口收缩/恢复 —— 尺寸夹取 MIN/MAX,位置夹到所在显示器工作区
+  /** 0062 遗留(pet:set-bounds 的夹取;0062 初版"窗口收缩"方案已弃用,renderer 不再
+   *  调用 set-bounds):尺寸夹取 MIN/MAX,位置夹到所在显示器工作区
    *  (窗口可能被设到屏幕边缘外,至少保证一部分留在工作区内可拖回)。 */
   function clampBoundsToDisplay(b: {
     x: number
@@ -555,10 +556,12 @@ async function bootstrap(): Promise<void> {
   /** 0062:极简模式窗口交互/视觉 ——
    *  1) **背景全透明**:win32 关闭 acrylic 高斯模糊材质(仅显示宠物),退出恢复。
    *     acrylic 是 DWM 对**整个窗口矩形**的模糊材质,renderer 隐藏 #bg 并不能去掉它;
-   *     极简模式窗口不收缩(用户可自由缩放/压矮,宠物截断),若不关闭,宠物背后一圈仍是模糊的桌面。
+   *     极简模式窗口不收缩(宠物超出部分截断),若不关闭,宠物背后一圈仍是模糊的桌面。
    *  2) **去掉窗口边缘 chrome**(0062c):DWM 圆角窗口自带 1px 灰描边 + 外阴影,
    *     极简模式下表现为宠物周围一圈细灰边 —— 改设直角偏好 + 无描边,退出恢复。
-   *  注:窗口尺寸不再随极简模式改变,也不再禁用边缘缩放(否则无法把窗口拖矮)。 */
+   *  注:本函数只负责视觉(材质/圆角/描边);窗口尺寸不随极简模式改变,**缩放锁定**
+   *  (不可边缘拖拽缩放)由 renderer 的 pet:set-resizable 单独执行(pet-only-mode.ts
+   *  setActive),退出极简时恢复。 */
   function applyPetOnlyVisual(enabled: boolean): void {
     if (!mainWindow || mainWindow.isDestroyed()) return
     // 0062c:边缘外观(圆角/描边)同步切换(非 win32 在 applyWindowEdgeStyle 内 no-op)
@@ -701,8 +704,8 @@ async function bootstrap(): Promise<void> {
       sendResizeGesture(false)
     })
 
-    // 0062 极简模式窗口收缩/恢复:renderer 读当前 bounds 做锚点计算,写 setBounds
-    // 由主进程夹取(MIN/MAX + 显示器工作区)。程序化 setBounds 不触发 will-resize/
+    // 0062 遗留:窗口 bounds 读写(0062 初版"窗口收缩"方案的锚点计算通道,当前
+    // renderer 不调用,保留为程序化控制入口)。程序化 setBounds 不触发 will-resize/
     // resized(0057),不会误触发缩放手势,也不会经 resize-end 落盘窗口尺寸。
     ipcMain.handle('pet:get-bounds', () => {
       if (!mainWindow || mainWindow.isDestroyed()) return null
@@ -764,8 +767,9 @@ async function bootstrap(): Promise<void> {
     })
 
     mainWindow = createWindow()
-    // 0062b:启动即按持久化极简模式应用窗口交互/视觉(createWindow 已按配置选材质,
-    // 这里统一兜底:极简模式禁用边缘缩放 + 背景全透明,普通模式恢复)
+    // 0062b:启动即按持久化极简模式应用窗口视觉(材质/圆角,createWindow 已按配置选
+    // 材质,这里统一兜底)。缩放锁定(极简模式不可边缘拖拽缩放)由 renderer 启动后经
+    // pet:set-resizable 执行(pet-only-mode.enter → setActive),普通模式恢复。
     applyPetOnlyVisual(config.get().appearance.petOnly)
     startCursorPolling()
     restartConnection()
@@ -802,7 +806,8 @@ async function bootstrap(): Promise<void> {
           const next = config.update({ petOnly: checked })
           tray?.setPetOnly(next.appearance.petOnly)
           applyPetOnlyVisual(next.appearance.petOnly)
-          // 主进程发起的切换(托盘)→ 推给 renderer 执行进入/退出(进入含窗口收缩)
+          // 主进程发起的切换(托盘)→ 推给 renderer 执行进入/退出(纯显隐,不改窗口
+          // 大小;缩放锁定/恢复由 renderer 的 pet:set-resizable 处理)
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('pet:config-changed', next)
           }

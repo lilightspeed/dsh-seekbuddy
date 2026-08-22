@@ -789,11 +789,12 @@ class CubismRuntime implements Live2dRuntime {
   }
 
   /**
-   * 0062 极简模式:模型可见部分的屏幕包围盒(窗口 CSS 坐标)。
+   * 0062 遗留(初版"窗口收缩"方案已弃用,当前无调用方,保留供程序化使用):
+   * 模型可见部分的屏幕包围盒(窗口 CSS 坐标)。
    * 遍历当前帧所有**可见** drawable 的顶点,单次构建投影矩阵批量换算到 NDC,
    * 取 min/max 后映射回窗口坐标(投影矩阵无旋转,NDC 极值即屏幕极值)。
    * 含动画外延(思考气泡/Zzz/抬手等 sticker 都挂在可见 drawable 上);
-   * 模型未就绪 / 无可视顶点返回 null。调用方(极简模式)降频调用即可。
+   * 模型未就绪 / 无可视顶点返回 null。开销与 drawable 顶点数成正比,按需降频调用。
    */
   getModelBounds(): { x: number; y: number; width: number; height: number } | null {
     const model = this.userModel?.getModel()

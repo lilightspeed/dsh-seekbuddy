@@ -306,12 +306,14 @@ export interface PetApi {
    */
   setResizable(resizable: boolean): Promise<void>
   /**
-   * 0062 极简模式:读当前窗口 bounds(屏幕坐标)。renderer 用它计算宠物包围盒的
-   * 屏幕锚点,配合 setWindowBounds 做"窗口收缩到宠物大小、宠物屏幕位置/大小不变"。
+   * 0062 遗留(初版"窗口收缩"方案已弃用,当前 renderer 不调用,保留为程序化
+   * 控制入口):读当前窗口 bounds(屏幕坐标)。与 setWindowBounds 配套,
+   * 曾用于"窗口收缩到宠物大小、宠物屏幕位置/大小不变"。
    */
   getWindowBounds(): Promise<{ x: number; y: number; width: number; height: number } | null>
   /**
-   * 0062 极简模式:程序化设置窗口 bounds(屏幕坐标)。主进程夹取尺寸到
+   * 0062 遗留(初版"窗口收缩"方案已弃用,当前 renderer 不调用,保留为程序化
+   * 控制入口):程序化设置窗口 bounds(屏幕坐标)。主进程夹取尺寸到
    * WINDOW_SIZE_MIN/MAX、位置到显示器工作区;返回实际生效的 bounds。
    * 程序化 setBounds 不触发 will-resize/resized,不会误触发缩放手势或落盘尺寸。
    */
