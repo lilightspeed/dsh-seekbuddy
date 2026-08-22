@@ -368,20 +368,70 @@ async function boot(): Promise<void> {
   // win32 下手柄收不到 pointerdown(边缘按下被原生命中测试吞掉,0057),仅
   // 非 win32 轮询兜底路径生效;手势状态另有 onResizeGesture 主进程推送。
   createWindowResizeHandles(api)
-  // 0057/0063:主进程推送"手动缩放手势"状态是 win32 原生路径的权威信号 ——
-  // 开始=首次 resize,结束=resized/左键松开兜底(主进程已把"拖拽中途停顿"从
-  // 结束判定里排除,见 main/index.ts armResizeEndFallback);renderer 据此切换
-  // body.pet-resizing。本地 resize/pointer 逻辑保留为兜底(信号不可用时自行收敛)。
+  // 主进程缩放手势信号(0057/0063):开始=首次 resize,结束=resized/左键松开兜底
+  // (主进程已把"拖拽中途停顿"从结束判定里排除,见 main/index.ts armResizeEndFallback)。
+  // renderer 以它为缩放手势会话的**权威生命周期**,本地 resize 事件只负责位置补偿
+  // 与兜底收尾(见 beginResizeSession/endResizeSession/armResizeEndTimer)。
+  let mainResizeGesture = false
   api.onResizeGesture((active) => {
-    document.body.classList.toggle('pet-resizing', active)
+    mainResizeGesture = active
+    if (active) beginResizeSession()
+    else endResizeSession()
   })
   // 左右边缘拖动时保持宠物屏幕水平位置不变。
   let petPositionX = 0.5
   let petSettings = DEFAULT_PET_CONFIG.pet
   let resizeInitial: { screenX: number; width: number; posX: number } | null = null
   let resizeEndTimer: ReturnType<typeof setTimeout> | undefined
-  // 自行管理 pet-resizing 类(主进程信号不可靠),150ms 无 resize 视为结束。
+  /** 兜底 timer 连续到期的次数(防御主进程手势信号永久丢失)。 */
+  let resizeStallCount = 0
+  /** 兜底收尾延时(ms):与主进程 armResizeEndFallback(0063)同长,避免拖拽停顿被误判结束。 */
+  const RESIZE_END_MS = 250
+
+  /**
+   * 开始一次缩放手势会话(幂等):记录位置补偿基线 + 挂 pet-resizing(物理/跟随屏蔽)。
+   * 返回当前基线(调用后必非 null,供 resize 补偿直接消费)。
+   */
+  function beginResizeSession(): { screenX: number; width: number; posX: number } {
+    if (resizeInitial === null) {
+      resizeInitial = { screenX: window.screenX, width: window.innerWidth, posX: petPositionX }
+      document.body.classList.add('pet-resizing')
+      armResizeEndTimer()
+    }
+    return resizeInitial
+  }
+
+  /** 结束缩放手势会话(幂等):清基线 + 摘 pet-resizing + 停兜底 timer。 */
+  function endResizeSession(): void {
+    resizeInitial = null
+    resizeStallCount = 0
+    if (resizeEndTimer) clearTimeout(resizeEndTimer)
+    resizeEndTimer = undefined
+    document.body.classList.remove('pet-resizing')
+  }
+
+  /**
+   * 兜底收尾计时(每次 resize 事件都续期,含宽度未变的情况)。到期时若主进程手势仍
+   * 活跃(拖拽中途停顿,0063)——**不清会话**,避免停顿后继续拖动时基线被重置导致
+   * 宠物位置再跳变;连续多次到期仍活跃视为手势信号丢失,强制收尾(防止 pet-resizing
+   * 残留 → 拖动物理/视角跟随永久失效)。
+   */
+  function armResizeEndTimer(): void {
+    if (resizeEndTimer) clearTimeout(resizeEndTimer)
+    resizeEndTimer = setTimeout(() => {
+      resizeEndTimer = undefined
+      if (mainResizeGesture && resizeStallCount < 5) {
+        resizeStallCount++
+        armResizeEndTimer()
+        return
+      }
+      endResizeSession()
+    }, RESIZE_END_MS)
+  }
+
   // 关键:在 pointerdown 时预判是否靠近边缘,提前禁用 drag 区域,避免 #stage 的 drag 区域抢事件。
+  // 顺带在窗口尺寸变化**前**记录位置补偿基线(手柄环形区按下收得到 pointerdown,
+  // 基线=缩放前值,补偿更精确;最外 5px 原生缩放区被系统吞掉,仍由首个 resize 事件兜底)。
   const EDGE_THRESHOLD = 12
   document.addEventListener('pointerdown', (e) => {
     if (resizeInitial) return
@@ -390,33 +440,34 @@ async function boot(): Promise<void> {
     const nearTop = e.clientY <= EDGE_THRESHOLD
     const nearBottom = e.clientY >= window.innerHeight - EDGE_THRESHOLD
     if (nearLeft || nearRight || nearTop || nearBottom) {
-      document.body.classList.add('pet-resizing')
+      beginResizeSession()
     }
   })
   window.addEventListener('resize', () => {
-    if (!resizeInitial) {
-      resizeInitial = { screenX: window.screenX, width: window.innerWidth, posX: petPositionX }
-      document.body.classList.add('pet-resizing')
+    // 手势信号未先行到达时的本地兜底(主进程信号不可靠场景);幂等
+    const ri = beginResizeSession()
+    if (ri.width === window.innerWidth) {
+      // 宽度未变(拖 n/s 边、极简模式 setResizable 触发的 resize 等):无需水平补偿,
+      // 但必须**续期结束计时** —— 旧实现提前 return 不续期/不设 timer,缩放结束
+      // (或极简切换)后 pet-resizing 永久残留 → 拖动物理/视角跟随永久失效(0066)。
+      armResizeEndTimer()
+      return
     }
-    if (resizeInitial.width === window.innerWidth) return
-    const petScreenX = resizeInitial.screenX + resizeInitial.width * resizeInitial.posX
+    const petScreenX = ri.screenX + ri.width * ri.posX
     const newPosX = Math.min(1, Math.max(0, (petScreenX - window.screenX) / window.innerWidth))
     if (Math.abs(newPosX - petPositionX) > 0.001) {
       petPositionX = newPosX
       petSettings = { ...petSettings, positionX: newPosX }
       animator.applyPetSettings?.(petSettings)
     }
-    clearTimeout(resizeEndTimer)
-    resizeEndTimer = setTimeout(() => {
-      resizeInitial = null
-      document.body.classList.remove('pet-resizing')
-    }, 150)
+    armResizeEndTimer()
   })
-  // pointerup 时确保移除 pet-resizing(兜底:防止 resize 事件缺失导致类名残留)
+  // pointerup 时确保移除 pet-resizing(兜底:防止 resize 事件缺失导致类名残留)。
+  // 无条件收尾(幂等):边缘拖拽松手 = 缩放结束;摸头/按钮等普通点击的 pointerup
+  // 无会话在途,endResizeSession 空跑无副作用。旧实现 `if (!resizeInitial)` 在
+  // 基线残留场景下永远不清,class 卡死(0066)。
   document.addEventListener('pointerup', () => {
-    if (!resizeInitial) {
-      document.body.classList.remove('pet-resizing')
-    }
+    endResizeSession()
   })
 
   // 0062 极简模式(仅显示宠物):仅隐藏全部非宠物组件,**不改动窗口大小**
