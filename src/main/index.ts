@@ -737,6 +737,12 @@ async function bootstrap(): Promise<void> {
         mainWindow.setMaximumSize(b.width, b.height)
       }
     })
+    // 最小化(隐藏)宠物窗口:主页面"最小化"按钮点击 → 收起窗口;托盘"显示 / 隐藏"
+    // 可再次唤出(共用 mainWindow.show/hide 语义)。
+    ipcMain.handle('pet:hide-window', () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return
+      mainWindow.hide()
+    })
 
     // B3(只读)插件监控:agent 中介读取目标会话插件清单
     pluginOps = createPluginOps({

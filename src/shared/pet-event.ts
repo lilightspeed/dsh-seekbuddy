@@ -306,6 +306,11 @@ export interface PetApi {
    */
   setResizable(resizable: boolean): Promise<void>
   /**
+   * 最小化(隐藏)宠物窗口:主页面"最小化"按钮点击 → 经主进程 mainWindow.hide()
+   * 收起窗口;托盘"显示 / 隐藏"可再次唤出。与托盘隐藏共用同一套 show/hide 语义。
+   */
+  hideWindow(): Promise<void>
+  /**
    * 0062 遗留(初版"窗口收缩"方案已弃用,当前 renderer 不调用,保留为程序化
    * 控制入口):读当前窗口 bounds(屏幕坐标)。与 setWindowBounds 配套,
    * 曾用于"窗口收缩到宠物大小、宠物屏幕位置/大小不变"。

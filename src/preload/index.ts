@@ -150,6 +150,8 @@ const petApi: PetApi = {
   getWindowBounds: () => ipcRenderer.invoke('pet:get-bounds'),
   setWindowBounds: (bounds) => ipcRenderer.invoke('pet:set-bounds', sanitizeBounds(bounds)),
   setResizable: (resizable: boolean) => ipcRenderer.invoke('pet:set-resizable', Boolean(resizable)),
+  // 最小化(隐藏)宠物窗口:主进程 mainWindow.hide(),托盘"显示 / 隐藏"可唤回
+  hideWindow: () => ipcRenderer.invoke('pet:hide-window'),
   onConfigChanged(handler) {
     const listener = (_event: IpcRendererEvent, config: PetConfig): void => {
       handler(config)

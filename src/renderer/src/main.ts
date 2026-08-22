@@ -28,6 +28,7 @@ const inputEl = document.querySelector<HTMLTextAreaElement>('#msg-input')
 const sendBtn = document.querySelector<HTMLButtonElement>('#btn-send')
 // 0062 极简模式:开关按钮(紧贴菜单按钮左侧)+ 退出胶囊
 const btnPetonlyEl = document.querySelector<HTMLButtonElement>('#btn-petonly')
+const btnMinimizeEl = document.querySelector<HTMLButtonElement>('#btn-minimize')
 const exitPillEl = document.querySelector<HTMLDivElement>('#pet-exit-pill')
 // 顶部按钮:左 = 历史/重连;右 = 菜单。最近对话浮层由历史按钮开合。
 const btnHistoryEl = document.querySelector<HTMLButtonElement>('#btn-history')
@@ -490,6 +491,10 @@ async function boot(): Promise<void> {
     void api.setConfig({ petOnly: false }).then((cfg) => {
       if (cfg && !cfg.appearance.petOnly) petOnlyMode.exit()
     })
+  })
+  // 最小化(隐藏)宠物窗口:点击经主进程收起窗口,托盘"显示 / 隐藏"可再次唤出
+  btnMinimizeEl?.addEventListener('click', () => {
+    void api.hideWindow()
   })
 
   // 启动即应用持久化的宠物外观/手感(位置/大小/跟随)与背景透明度
