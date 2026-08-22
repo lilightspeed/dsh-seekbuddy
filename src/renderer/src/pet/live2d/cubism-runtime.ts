@@ -94,8 +94,6 @@ const EXPRESSION_PARAM_IDS = [
   'ParamEmotionConfused',
   'ParamBreathSigh',
 ] as const
-/** 表情复位平滑速度(1/s):≈0.3s 内基本回归待机。 */
-const EXPRESSION_RESET_SPEED = 10
 
 /** model3.json 的 HitAreas 条目(运行时自行解析;SDK 的 CubismModelSettingJson 只暴露 Id/Name)。 */
 interface ModelHitArea {
@@ -1189,26 +1187,15 @@ class CubismRuntime implements Live2dRuntime {
         this.beginExpressionReset()
       }
     }
-    // 表情复位:停止 motion 后每帧把表情参数指数拉回模型默认(待机基准)。
+    // 表情复位:停止 motion 后把表情参数直接钉回模型默认(待机基准),不渐变更快。
     // 不能依赖 SDK fadeOut——它拉向"当前值",而当前值快照已含 motion 表情 → 残留。
+    // 0047:淡入淡出一律全局禁用 —— 复位同样直接切换,不做指数渐出(否则思考气泡等
+    // 贴纸参数会在停止后残留约 0.3s 渐隐,表现"调用工具时气泡淡入淡出")。
     if (this.expressionReset) {
-      let done = true
       for (const { index } of this.expressionReset.params) {
-        const def = model.getParameterDefaultValue(index)
-        const cur = model.getParameterValueByIndex(index)
-        const next = cur + (def - cur) * (1 - Math.exp(-EXPRESSION_RESET_SPEED * deltaSeconds))
-        model.setParameterValueByIndex(index, next)
-        if (Math.abs(next - def) > 0.02) done = false
+        model.setParameterValueByIndex(index, model.getParameterDefaultValue(index))
       }
-      if (done) {
-        // 0043:收尾**钉死到精确默认值** —— 指数趋近在 ±0.02 阈值内停住,贴纸类参数
-        // (如思考气泡 ParamBubbleEllipsis2,default=0)会留下 ~2% 残影(气泡不透明化),
-        // 这里收敛完成后一次性钉到默认(气泡完全隐藏),对平滑参数不可感知。
-        for (const { index } of this.expressionReset.params) {
-          model.setParameterValueByIndex(index, model.getParameterDefaultValue(index))
-        }
-        this.expressionReset = null
-      }
+      this.expressionReset = null
     }
     if (this.pendingLook) this.applyViewLook(model, this.pendingLook)
     // 拖动物理反馈输入(0032):物理演算读参数当前值做归一化,先写再 save,每帧生效
