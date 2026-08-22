@@ -527,6 +527,8 @@ class CubismRuntime implements Live2dRuntime {
   private ready = false
   private disposed = false
   private viewMatrix = new CubismViewMatrix()
+  /** [临时调试 0067] 日志节流:上次打印时间(ms),拖拽中 rebuildView 高频触发,500ms 内只打一条。 */
+  private debugLastLogAt = 0
   private paramIndex: ParamIndexSet = {
     headX: -1,
     headY: -1,
@@ -615,21 +617,30 @@ class CubismRuntime implements Live2dRuntime {
     const actualDim = fitByWidth ? canvasW : canvasH
     const sizeScale = this.appearance.scale * (refDim / Math.max(1, actualDim))
     view.scale(sizeScale, sizeScale)
-    // 0067:投影链路 projection = modelMatrix·viewMatrix·P0 中,modelMatrix 是常数均匀
-    // 缩放(mm),会把 viewMatrix 的平移量放大 mm 倍 —— 模型中心 NDC = (mm·tx, mm·ty),
-    // 屏幕位置 = ((1+mm·tx)/2·width, (1-mm·ty)/2·height)。tx/ty 必须按 mm 反解,
-    // 且按 fitByWidth 与 buildProjectionMatrix 对齐 modelMatrix 状态(setWidth/setHeight
-    // 均为幂等赋值,不影响 buildProjectionMatrix 每帧的 setWidth 调用)。
     const modelMatrix = this.userModel?.getModelMatrix()
     if (modelMatrix) {
       if (fitByWidth) modelMatrix.setWidth(2.0)
       else modelMatrix.setHeight(2.0)
     }
     const mm = modelMatrix?.getScaleX() ?? 1
+    // 与 buildProjectionMatrix 完全一致的"屏幕适配"投影(P0,纯缩放无平移)。
+    // 投影链路 projection = modelMatrix·viewMatrix·P0。SDK 是**行向量**约定
+    // (transformX(src) = _tr[0]·src + _tr[12],取第 0 列),故点 v·(modelMatrix·viewMatrix·P0)
+    // 自 v 起**依次**过 modelMatrix、viewMatrix、P0。viewMatrix = scale(sizeScale)+
+    // translateRelative(tx,ty),translateRelative 内部左乘平移阵(T·S),因此 viewMatrix
+    // 真正存储的平移量是 sizeScale·(tx,ty);P0 无平移。
+    // 于是模型中心(画布原点,v=(0,0),经纯缩放 modelMatrix 仍为 (0,0))投影到 NDC =
+    //   (sizeScale·tx·P0x, sizeScale·ty·P0y)。
+    // 旧实现(0062d 起)按 mm 反解:tx=(2·positionX-1)/mm、ty=ndcY/mm —— 其前提
+    // "modelMatrix 会把 viewMatrix 平移量放大 mm 倍"对**中心点**不成立(modelMatrix
+    // 缩放的是"点",不是"平移");实际 NDC 被 sizeScale·P0 缩放而非 mm,导致宠物
+    // 位置随窗口尺寸/scale 漂移(0067)。此处按真实缩放因子 sizeScale·P0 反解。
+    const P0x = fitByWidth ? 1 : canvasH / Math.max(1, canvasW)
+    const P0y = fitByWidth ? canvasW / Math.max(1, canvasH) : 1
     // 水平:锚定窗口归一化位置 —— 模型中心屏幕 x = positionX·width。拖左/右边框时
     // renderer(main.ts 的 resize 补偿)同步更新 positionX 保持宠物屏幕 x 不变,
     // 出界由该补偿夹取 0..1(既有逻辑,与本矩阵无耦合)。
-    const tx = (2 * this.appearance.positionX - 1) / mm
+    const tx = (2 * this.appearance.positionX - 1) / (sizeScale * P0x)
     // 垂直:锚定窗口**底部** —— 模型中心距窗口底边的像素距离恒为 D,与窗口高度/
     // scale/mm 完全解耦:
     //   拖上边框(顶部移动、底部不动)→ 宠物屏幕位置不变;
@@ -644,19 +655,25 @@ class CubismRuntime implements Live2dRuntime {
     const distBottom = Math.max(0, (1 - this.appearance.positionY) * CubismRuntime.PET_REF_HEIGHT_CSS * dpr)
     // 模型中心目标 NDC_y(屏幕 y(距顶)= h - distBottom → NDC_y = 1 - 2·(h-distBottom)/h)
     const ndcY = (2 * distBottom) / Math.max(1, canvasH) - 1
-    view.translateRelative(tx, ndcY / mm)
+    view.translateRelative(tx, ndcY / (sizeScale * P0y))
     this.viewMatrix = view
-    // [临时调试 0067] 确认运行版本与锚定数值;验证后删除
-    const cw = canvasW / dpr
-    const ch = canvasH / dpr
-    const sx = ((mm * tx + 1) / 2) * cw
-    const sy = ((1 - mm * (ndcY / mm)) / 2) * ch
-    console.warn(
-      `[live2d-debug] window=${cw.toFixed(1)}x${ch.toFixed(1)} screen=(${window.screenX},${window.screenY}) ` +
-        `mm=${mm.toFixed(3)} sizeScale=${sizeScale.toFixed(3)} pos=(${this.appearance.positionX.toFixed(2)},${this.appearance.positionY.toFixed(2)}) ` +
-        `scale=${this.appearance.scale.toFixed(2)} center=(${sx.toFixed(1)},${sy.toFixed(1)}) ` +
-        `absCenter=(${(window.screenX + sx).toFixed(1)},${(window.screenY + sy).toFixed(1)}) distBottom=${distBottom.toFixed(1)}`,
-    )
+    // [临时调试 0067] 节流打印(500ms 一条):win=窗口尺寸 screen=窗口屏幕位置
+    // center=宠物窗口内中心 abs=宠物屏幕绝对中心 db=距底距离。
+    // 与渲染取值一致(真实中心 NDC = (sizeScale·tx·P0x, sizeScale·ty·P0y)),
+    // 不再是旧实现的 (mm·tx, mm·ty) —— 那会与真实渲染位置系统性地偏差。
+    const now = performance.now()
+    if (now - this.debugLastLogAt > 500) {
+      this.debugLastLogAt = now
+      const cw = canvasW / dpr
+      const ch = canvasH / dpr
+      const sx = ((sizeScale * tx * P0x + 1) / 2) * cw
+      const sy = ((1 - ndcY) / 2) * ch
+      console.warn(
+        `[live2d-debug] win=${cw.toFixed(0)}x${ch.toFixed(0)} screen=(${window.screenX},${window.screenY}) ` +
+          `center=(${sx.toFixed(0)},${sy.toFixed(0)}) abs=(${(window.screenX + sx).toFixed(0)},${(window.screenY + sy).toFixed(0)}) ` +
+          `db=${distBottom.toFixed(0)} pos=(${this.appearance.positionX.toFixed(2)},${this.appearance.positionY.toFixed(2)}) scale=${this.appearance.scale.toFixed(2)} mm=${mm.toFixed(1)}`,
+      )
+    }
   }
 
   setAppearance(appearance: Live2dAppearance): void {
