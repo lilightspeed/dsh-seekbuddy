@@ -73,7 +73,7 @@ DSH;还预留了一个 MCP server 接口(`mcp__pet__*` 工具),用于将来让 D
 
 ## 安装与运行
 
-需要 Node.js ≥ 20 与 [pnpm](https://pnpm.io)。
+需要 Node.js ≥ 22.19(harness 根 `engines` 要求 `^22.19.0 || >=24.0.0`)与 [pnpm](https://pnpm.io)。
 
 ```bash
 # 1. 先有一个 DeepSeek Harness workspace(提供 @deepseek-ai/* 包)
@@ -86,7 +86,15 @@ git clone https://github.com/lilightspeed/dsh-seekbuddy.git apps/pet
 # 3. 在 harness 根安装
 pnpm install
 
-# 4. 用 filter 操作宠物
+# 4. 构建 workspace 依赖库(宠物依赖 dsh-host-apiproxy / dsh-client-connection 等的
+#    构建产物,缺此步会报"找不到模块")
+pnpm run build:lib
+
+# 5. 启动宠物要连接的 DSH 实例(默认 http://127.0.0.1:3080),二选一:
+#    a) 直接用 dsh 发行包:        npx @deepseek-ai/dsh web
+#    b) 用本 harness 源码运行:     pnpm run build && pnpm dsh web(完整构建含 web 前端)
+
+# 6. 用 filter 操作宠物
 pnpm --filter @deepseek-ai/dsh-seekbuddy run dev        # 开发(出窗口,热重载)
 pnpm --filter @deepseek-ai/dsh-seekbuddy run typecheck  # 类型检查
 pnpm --filter @deepseek-ai/dsh-seekbuddy run build      # 构建到 out/
