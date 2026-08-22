@@ -29,7 +29,7 @@ export function createTray(
         { label: '显示 / 隐藏', click: onToggle },
         { type: 'separator' },
         {
-          label: '极简模式(仅显示宠物)',
+          label: '仅显示宠物',
           type: 'checkbox',
           checked: opts.isPetOnly(),
           click: (item) => opts.onPetOnlyToggle(item.checked),
