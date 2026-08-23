@@ -31,11 +31,11 @@
 
 ### 完整界面 / 对话 / 面板
 
-<p align="center"><video src="docs/media/demo-ui.mp4" controls width="100%"></video></p>
+<p align="center"><video src="https://raw.githubusercontent.com/lilightspeed/dsh-seekbuddy/master/docs/media/demo-ui.mp4" controls width="100%"></video></p>
 
 ### 窗口拖拽的物理反馈
 
-<p align="center"><video src="docs/media/demo-drag-physics.mp4" controls width="100%"></video></p>
+<p align="center"><video src="https://raw.githubusercontent.com/lilightspeed/dsh-seekbuddy/master/docs/media/demo-drag-physics.mp4" controls width="100%"></video></p>
 
 ---
 
