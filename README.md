@@ -66,6 +66,24 @@
 
 ---
 
+## 下载预编译版本（Release）
+
+不想从源码构建？可从 [Releases](https://github.com/lilightspeed/dsh-seekbuddy/releases) 页面下载预编译的 Windows 安装包 / 绿色版，**无需 Node.js / pnpm**：
+
+1. 先在本机启动一个 DSH 实例（宠物不是独立 app，必须连本地 `127.0.0.1:3080`）：
+   ```bash
+   npx @deepseek-ai/dsh web
+   ```
+2. 到 [Releases](https://github.com/lilightspeed/dsh-seekbuddy/releases) 下载对应版本的 exe：
+   - `SeekBuddy-Setup-<version>.exe` —— NSIS 安装包
+   - `SeekBuddy-Portable-<version>.exe` —— 绿色免安装版（解压即运行）
+3. 运行 SeekBuddy，它会自动连接 `127.0.0.1:3080`；首次可在设置面板改 `baseUrl`。
+
+> ⚠️ **仅支持 Windows x64**。macOS / Linux 暂无预编译包，需从源码在各自平台构建（见下文）。
+> ⚠️ 自带的鲸鱼娘形象为 **CC BY-NC-SA 4.0（非商业）**。公开发布 = 非商业场景；若需商用，须剥离 `assets/pet/live2d/` 与 `design/`（见文末许可）。
+
+---
+
 ## 安装与运行
 
 需要 Node.js ≥ 22.19(harness 根 `engines` 要求 `^22.19.0 || >=24.0.0`)与 [pnpm](https://pnpm.io)。
