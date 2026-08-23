@@ -74,6 +74,7 @@ git clone https://github.com/deepseek-ai/deepseek-harness.git
 cd deepseek-harness
 
 # 2. 把本仓库作为独立子仓库放进 harness 的 apps/pet(作为 workspace 成员)
+#    ⚠️ 必须在上一步的 harness 根目录内执行,因为 harness 的 workspace 配置匹配 apps/*
 git clone https://github.com/lilightspeed/dsh-seekbuddy.git apps/pet
 
 # 3. 在 harness 根安装
@@ -83,11 +84,19 @@ pnpm install
 #    构建产物,缺此步会报"找不到模块")
 pnpm run build:lib
 
-# 5. 启动宠物要连接的 DSH 实例(默认 http://127.0.0.1:3080),二选一:
+# 5. (首次从 GitHub clone 必须) 重建 Live2D Framework 运行时
+#    vendor/live2d/Framework/dist 是编译产物、不进 git,必须本地重建,
+#    否则 renderer 的 @live2d/framework 别名解析失败、dev/build 直接报错。
+#    进 pet 目录用官方同版本 TypeScript 5.9.3 编译(详见 vendor/live2d/README.md):
+cd apps/pet
+pnpm --package=typescript@5.9.3 dlx tsc -p vendor/live2d/Framework/tsconfig.build.json
+cd ..
+
+# 6. 启动宠物要连接的 DSH 实例(默认 http://127.0.0.1:3080),二选一:
 #    a) 直接用 dsh 发行包:        npx @deepseek-ai/dsh web
 #    b) 用本 harness 源码运行:     pnpm run build && pnpm dsh web(完整构建含 web 前端)
 
-# 6. 用 filter 操作宠物
+# 7. 用 filter 操作宠物
 pnpm --filter @deepseek-ai/dsh-seekbuddy run dev        # 开发(出窗口,热重载)
 pnpm --filter @deepseek-ai/dsh-seekbuddy run typecheck  # 类型检查
 pnpm --filter @deepseek-ai/dsh-seekbuddy run build      # 构建到 out/
@@ -113,6 +122,8 @@ pnpm --filter @deepseek-ai/dsh-seekbuddy run dist       # 打包安装版 / 绿�
 ---
 
 ## 开发
+
+> ⚠️ 首次从 GitHub clone 本仓库后,请先按上文「安装与运行」的**步骤 5** 重建 Live2D Framework dist(`vendor/live2d/Framework/dist` 不进 git,缺它 dev/build 会直接失败)。
 
 在 harness workspace 根执行(宠物是 `apps/pet`,包名 `@deepseek-ai/dsh-seekbuddy`):
 
