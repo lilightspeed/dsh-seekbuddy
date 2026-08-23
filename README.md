@@ -29,19 +29,15 @@
 
 ## 演示
 
-> 下方为 GIF 动图演示；需要高清原画请点各段下方链接观看 mp4。
+> 下方为 GIF 动图演示。
 
 ### 完整界面 / 对话 / 面板
 
 ![完整界面 / 对话 / 面板 演示](docs/media/demo-ui.gif)
 
-[▶ 观看高清演示（mp4）](https://raw.githubusercontent.com/lilightspeed/dsh-seekbuddy/master/docs/media/demo-ui.mp4)
-
 ### 窗口拖拽的物理反馈
 
 ![窗口拖拽的物理反馈 演示](docs/media/demo-drag-physics.gif)
-
-[▶ 观看高清演示（mp4）](https://raw.githubusercontent.com/lilightspeed/dsh-seekbuddy/master/docs/media/demo-drag-physics.mp4)
 
 ---
 
